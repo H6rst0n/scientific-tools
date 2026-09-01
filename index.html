@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>科學與實用腳本工具箱 | Tools Hub</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --primary-light: #eff6ff;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --badge-bg: #e0e7ff;
+      --badge-text: #3730a3;
+      --radius: 12px;
+      --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+      --shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Hero Header */
+    header {
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      color: white;
+      padding: 48px 24px 40px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    header::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle, rgba(37,99,235,0.15) 0%, transparent 60%);
+      pointer-events: none;
+    }
+
+    .header-content {
+      position: relative;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .header-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #93c5fd;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 16px;
+      backdrop-filter: blur(8px);
+    }
+
+    header h1 {
+      font-size: 2.2rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      margin-bottom: 12px;
+    }
+
+    header p {
+      color: #94a3b8;
+      font-size: 1.05rem;
+      line-height: 1.6;
+      max-width: 600px;
+      margin: 0 auto 28px;
+    }
+
+    /* Search & Filter Bar */
+    .controls-wrapper {
+      max-width: 680px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .search-box {
+      position: relative;
+      width: 100%;
+    }
+
+    .search-box svg {
+      position: absolute;
+      left: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 18px;
+      height: 18px;
+      color: #94a3b8;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 14px 16px 14px 46px;
+      background: rgba(255, 255, 255, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 10px;
+      font-size: 15px;
+      color: var(--text);
+      outline: none;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .search-input:focus {
+      background: #ffffff;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.3), 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    /* Categories Tabs */
+    .categories {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .cat-btn {
+      background: rgba(255, 255, 255, 0.08);
+      color: #cbd5e1;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .cat-btn:hover {
+      background: rgba(255, 255, 255, 0.16);
+      color: #ffffff;
+    }
+
+    .cat-btn.active {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
+    }
+
+    /* Main Container */
+    main {
+      flex: 1;
+      max-width: 1200px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 40px 24px;
+    }
+
+    .tools-count {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-bottom: 20px;
+      font-weight: 500;
+    }
+
+    /* Tools Grid */
+    .tools-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 24px;
+    }
+
+    /* Tool Card */
+    .tool-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+      position: relative;
+    }
+
+    .tool-card:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-hover);
+      border-color: #cbd5e1;
+    }
+
+    .card-top {
+      margin-bottom: 20px;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      margin-bottom: 12px;
+    }
+
+    .card-icon {
+      width: 48px;
+      height: 48px;
+      background: var(--primary-light);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      flex-shrink: 0;
+    }
+
+    .card-titles {
+      flex: 1;
+    }
+
+    .card-title-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .card-title {
+      font-size: 1.15rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .featured-badge {
+      font-size: 11px;
+      font-weight: 600;
+      background: #fef3c7;
+      color: #92400e;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .card-subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .card-desc {
+      color: #475569;
+      font-size: 14px;
+      line-height: 1.6;
+      margin-top: 10px;
+    }
+
+    .card-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 14px;
+    }
+
+    .tag {
+      font-size: 11px;
+      background: #f1f5f9;
+      color: #475569;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 500;
+    }
+
+    .card-footer {
+      border-top: 1px solid var(--border);
+      padding-top: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .card-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .launch-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--primary);
+      color: white;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 16px;
+      border-radius: 8px;
+      transition: background 0.15s ease, transform 0.1s ease;
+    }
+
+    .launch-btn:hover {
+      background: var(--primary-hover);
+      transform: translateX(2px);
+    }
+
+    .launch-btn svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-muted);
+      grid-column: 1 / -1;
+    }
+
+    .empty-state svg {
+      width: 48px;
+      height: 48px;
+      color: #cbd5e1;
+      margin-bottom: 12px;
+    }
+
+    /* Footer */
+    footer {
+      background: #ffffff;
+      border-top: 1px solid var(--border);
+      padding: 24px;
+      text-align: center;
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: auto;
+    }
+
+    footer a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+
+    footer a:hover {
+      text-decoration: underline;
+    }
+
+    @media (max-width: 640px) {
+      header {
+        padding: 36px 16px 30px;
+      }
+      header h1 {
+        font-size: 1.7rem;
+      }
+      .tools-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="header-content">
+      <div class="header-badge">
+        <span>⚡</span> <span>科研與實用工具平台</span>
+      </div>
+      <h1>科學與數據腳本工具箱</h1>
+      <p>精選純前端在線工具，免安裝環境，隨開即用，資料全程於本地端運算保護隱私。</p>
+
+      <div class="controls-wrapper">
+        <!-- 搜尋欄 -->
+        <div class="search-box">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+          </svg>
+          <input type="text" id="searchInput" class="search-input" placeholder="搜尋工具名稱、功能、關鍵字 (例如: 能量圖, D3, PES)..." autocomplete="off">
+        </div>
+
+        <!-- 分類過濾標籤 -->
+        <div class="categories" id="categoryContainer">
+          <!-- 由 JS 動態生成 -->
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主內容區 -->
+  <main>
+    <div class="tools-count" id="toolsCount">正在載入工具清單...</div>
+    <div class="tools-grid" id="toolsGrid">
+      <!-- 由 JS 動態渲染工具卡片 -->
+    </div>
+  </main>
+
+  <!-- 頁尾 -->
+  <footer>
+    <p>© 2026 科學與實用腳本工具箱 | 託管於 GitHub Pages | 所有計算皆於本機瀏覽器端執行</p>
+  </footer>
+
+  <script>
+    /**
+     * 工具資料庫 (Data Registry)
+     * 未來若有新增的 HTML 工具，只需在此陣列加入一筆物件即可！
+     */
+    const TOOLS_DATA = [
+      {
+        id: 'energy-profile-plotter',
+        title: '科研能量圖繪製工具',
+        titleEn: 'Reaction Energy Profile Plotter',
+        description: '專業化學/物理反應自由能坐標圖 (PES) 繪製與導出工具，支援多反應路徑比對、D3.js 互動編輯、能階調整與出版級 SVG/PNG/PDF 匯出。',
+        category: '科研繪圖',
+        tags: ['D3.js', '化學/物理', 'PES', '自由能圖', '高解析匯出'],
+        icon: '⚡',
+        badge: '熱門',
+        url: './energy-profile-plotter.html',
+        version: 'v1.2.0',
+        updatedAt: '2026-09'
+      }
+      /* 範例：未來新增工具格式
+      ,{
+        id: 'unit-converter',
+        title: '物理化學單位換算器',
+        titleEn: 'Physical Chemistry Unit Converter',
+        description: '支援 eV, Hartree, kcal/mol, kJ/mol, cm⁻¹ 等單位精確換算。',
+        category: '數據分析',
+        tags: ['單位換算', '量子化學'],
+        icon: '🔄',
+        badge: 'NEW',
+        url: './tools/unit-converter.html',
+        version: 'v1.0.0',
+        updatedAt: '2026-09'
+      }
+      */
+    ];
+
+    let currentCategory = '全部';
+    let searchQuery = '';
+
+    // 初始化分類標籤
+    function initCategories() {
+      const categories = ['全部', ...new Set(TOOLS_DATA.map(t => t.category))];
+      const container = document.getElementById('categoryContainer');
+      
+      container.innerHTML = categories.map(cat => `
+        <button class="cat-btn ${cat === currentCategory ? 'active' : ''}" data-cat="${cat}">
+          ${cat}
+        </button>
+      `).join('');
+
+      container.querySelectorAll('.cat-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          container.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          currentCategory = btn.getAttribute('data-cat');
+          renderTools();
+        });
+      });
+    }
+
+    // 渲染工具卡片
+    function renderTools() {
+      const grid = document.getElementById('toolsGrid');
+      const countEl = document.getElementById('toolsCount');
+
+      const filtered = TOOLS_DATA.filter(tool => {
+        const matchesCat = currentCategory === '全部' || tool.category === currentCategory;
+        const q = searchQuery.toLowerCase().trim();
+        const matchesSearch = !q || 
+          tool.title.toLowerCase().includes(q) ||
+          tool.titleEn.toLowerCase().includes(q) ||
+          tool.description.toLowerCase().includes(q) ||
+          tool.tags.some(tag => tag.toLowerCase().includes(q));
+
+        return matchesCat && matchesSearch;
+      });
+
+      countEl.textContent = `共顯示 ${filtered.length} 個實用工具`;
+
+      if (filtered.length === 0) {
+        grid.innerHTML = `
+          <div class="empty-state">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <p>找不到符合條件的工具，請嘗試更換搜尋關鍵字或分類。</p>
+          </div>
+        `;
+        return;
+      }
+
+      grid.innerHTML = filtered.map(tool => `
+        <div class="tool-card">
+          <div class="card-top">
+            <div class="card-header">
+              <div class="card-icon">${tool.icon || '🛠️'}</div>
+              <div class="card-titles">
+                <div class="card-title-row">
+                  <h2 class="card-title">${tool.title}</h2>
+                  ${tool.badge ? `<span class="featured-badge">${tool.badge}</span>` : ''}
+                </div>
+                <div class="card-subtitle">${tool.titleEn}</div>
+              </div>
+            </div>
+            <p class="card-desc">${tool.description}</p>
+            <div class="card-tags">
+              ${tool.tags.map(tag => `<span class="tag">${tag}</span>`).join('')}
+            </div>
+          </div>
+          <div class="card-footer">
+            <div class="card-meta">
+              <span>${tool.category}</span> · <span>${tool.version}</span>
+            </div>
+            <a href="${tool.url}" class="launch-btn">
+              開啟工具
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+              </svg>
+            </a>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // 搜尋事件監聽
+    document.getElementById('searchInput').addEventListener('input', (e) => {
+      searchQuery = e.target.value;
+      renderTools();
+    });
+
+    // 頁面載入完成後初始化
+    window.addEventListener('DOMContentLoaded', () => {
+      initCategories();
+      renderTools();
+    });
+  </script>
+</body>
+</html>
