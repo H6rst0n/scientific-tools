@@ -8,7 +8,7 @@
 
 所有工具皆採用 **純前端技術（Client-side）** 開發，無需安裝任何環境或依賴套件，打開瀏覽器即可直接使用。
 
-🌐 **線上使用入口**：[點此立即前往工具箱首頁](https://your-username.github.io/your-repo-name/) *(請替換為實際 GitHub Pages 網址)*
+🌐 **線上使用入口**：[點此立即前往工具箱首頁](https://H6rst0n.github.io/scientific-tools/) 
 
 ---
 
