@@ -33,9 +33,10 @@ body {
 /* ====== Header ====== */
 header {
   background: var(--header-bg); color: var(--header-text);
-  padding: 8px 20px; display: flex; align-items: center; gap: 12px;
-  flex-wrap: wrap; flex-shrink: 0; z-index: 10;
+  padding: 8px 16px; display: flex; align-items: center; gap: 8px;
+  flex-wrap: nowrap; flex-shrink: 0; z-index: 10;
   box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  overflow-x: auto;
 }
 header h1 { font-size: 15px; font-weight: 600; letter-spacing: 0.3px; white-space: nowrap; }
 header .spacer { flex: 1; }
@@ -94,7 +95,7 @@ header .spacer { flex: 1; }
 #btn-add-group { border-style: dashed; }
 
 /* ====== Table ====== */
-#table-container { flex: 1; overflow-y: auto; overflow-x: auto; }
+#table-container { flex: 1; min-height: 120px; overflow-y: auto; overflow-x: auto; }
 #data-table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
 #data-table th {
   background: #37474f; color: white; padding: 6px 4px; text-align: center;
@@ -112,8 +113,9 @@ header .spacer { flex: 1; }
 #data-table input:focus, #data-table select:focus { border-color: var(--accent); outline: none; background: white; }
 #data-table input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; }
 #data-table input[type="radio"] { width: 14px; height: 14px; cursor: pointer; }
-.col-check { width: 28px; } .col-name { width: 70px; } .col-coord { width: 58px; }
-.col-energy { width: 68px; } .col-type { width: 68px; } .col-ref { width: 32px; } .col-color { width: 36px; }
+.col-check { width: 26px; } .col-coord { width: 48px; }
+.col-energy { width: 58px; } .col-width, .col-type { width: 48px; } .col-ref { width: 28px; } .col-color { width: 32px; }
+.col-name { width: auto; min-width: 90px; }
 input[type="color"].cell-color { width: 26px; height: 24px; padding: 0; border: 1px solid var(--border); border-radius: 3px; cursor: pointer; background: none; }
 
 /* ====== Table Actions ====== */
@@ -139,6 +141,25 @@ input[type="color"].cell-color { width: 26px; height: 24px; padding: 0; border: 
 .section-toggle:hover { background: #f5f5f5; }
 .section-body { padding: 6px 12px 10px; }
 .section-body.hidden { display: none; }
+
+#chart-options-body {
+  max-height: 280px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+#chart-options-body::-webkit-scrollbar { width: 6px; }
+#chart-options-body::-webkit-scrollbar-track { background: #f5f5f5; border-radius: 3px; }
+#chart-options-body::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+#chart-options-body::-webkit-scrollbar-thumb:hover { background: #999; }
+
+#annotation-body {
+  max-height: 180px;
+  overflow-y: auto;
+}
+#annotation-body::-webkit-scrollbar { width: 6px; }
+#annotation-body::-webkit-scrollbar-track { background: #f5f5f5; border-radius: 3px; }
+#annotation-body::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+#annotation-body::-webkit-scrollbar-thumb:hover { background: #999; }
 .opt-row {
   display: flex; gap: 6px; align-items: center; margin-bottom: 6px;
   font-size: 11px; color: var(--text);
@@ -187,9 +208,12 @@ input[type="color"].cell-color { width: 26px; height: 24px; padding: 0; border: 
 #popup-close:hover { color: var(--text); }
 
 /* ====== D3 Chart Styles ====== */
-.axis path, .axis line { stroke: #999; }
-.axis text { fill: #555; }
-.axis-label { fill: #333; font-weight: 500; }
+.axis path, .axis line { stroke: #000000; }
+.axis text { fill: #000000; }
+.axis-label { fill: #000000; font-weight: 500; cursor: move; }
+.axis-label:hover { fill: var(--accent); }
+.chart-title-group text { cursor: move; }
+.chart-title-group:hover text { fill: var(--accent); }
 .grid line { stroke: #e8e8e8; stroke-dasharray: 2,3; }
 .grid path { stroke: none; }
 .node-line { cursor: pointer; transition: opacity 0.15s; }
@@ -224,6 +248,12 @@ input[type="color"].cell-color { width: 26px; height: 24px; padding: 0; border: 
 .opt-subhead { font-size: 11px; font-weight: 600; color: var(--accent); margin: 8px 0 4px; border-top: 1px dashed #eee; padding-top: 6px; }
 .opt-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; }
 .format-hint { font-size: 10px; color: var(--text-light); line-height: 1.35; padding: 4px 6px; background: #f5f5f5; border-radius: 4px; margin-top: 6px; }
+.opt-indent { padding-left: 18px; }
+.opt-row input[type="number"].opt-inp { width: 44px; padding: 1px 3px; font-size: 11px; border: 1px solid var(--border); border-radius: 3px; }
+.opt-row input[type="text"].opt-txt { width: 120px; padding: 2px 4px; font-size: 11px; border: 1px solid var(--border); border-radius: 3px; }
+.opt-row select.opt-sel { padding: 1px 3px; font-size: 11px; border: 1px solid var(--border); border-radius: 3px; }
+.opt-row-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 4px; margin-bottom: 4px; }
+.opt-row-grid .opt-row { margin-bottom: 0; }
 
 /* ====== Unified Color Popover & Buttons ====== */
 #color-popover {
@@ -279,6 +309,36 @@ input[type="color"].cell-color { width: 26px; height: 24px; padding: 0; border: 
 /* ====== Scrollbar ====== */
 #table-container::-webkit-scrollbar { width: 6px; }
 #table-container::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+
+/* ====== Scrollbars for Collapsible Sections ====== */
+#chart-options-body {
+  max-height: 290px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 6px 12px 10px;
+}
+#chart-options-body::-webkit-scrollbar { width: 6px; }
+#chart-options-body::-webkit-scrollbar-track { background: #f5f5f5; border-radius: 3px; }
+#chart-options-body::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+#chart-options-body::-webkit-scrollbar-thumb:hover { background: #999; }
+
+#annotation-body {
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 6px 12px 10px;
+}
+#annotation-body::-webkit-scrollbar { width: 6px; }
+#annotation-body::-webkit-scrollbar-track { background: #f5f5f5; border-radius: 3px; }
+#annotation-body::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+#annotation-body::-webkit-scrollbar-thumb:hover { background: #999; }
+
+.opt-indent { padding-left: 18px; }
+.opt-row input[type="number"].opt-inp { width: 44px; padding: 1px 3px; font-size: 11px; border: 1px solid var(--border); border-radius: 3px; }
+.opt-row input[type="text"].opt-txt { width: 120px; padding: 2px 4px; font-size: 11px; border: 1px solid var(--border); border-radius: 3px; }
+.opt-row select.opt-sel { padding: 1px 3px; font-size: 11px; border: 1px solid var(--border); border-radius: 3px; }
+.opt-row-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 4px; margin-bottom: 4px; }
+.opt-row-grid .opt-row { margin-bottom: 0; }
+
 </style>
 </head>
 <body>
@@ -314,7 +374,7 @@ input[type="color"].cell-color { width: 26px; height: 24px; padding: 0; border: 
     <label>H:</label>
     <input type="number" id="custom-h" min="200" max="3000" step="50" style="width:52px; padding:3px; border-radius:3px; border:1px solid rgba(255,255,255,0.3); background:rgba(255,255,255,0.15); color:white; font-size:11px; text-align:center;">
   </div>
-  <div class="header-group">
+  <div class="header-group" id="dpi-group">
     <label id="lbl-dpi">解析度：</label>
     <select id="export-dpi">
       <option value="1">1x (72 DPI)</option>
@@ -388,63 +448,120 @@ input[type="color"].cell-color { width: 26px; height: 24px; padding: 0; border: 
     <div id="chart-options-section">
       <h4 class="section-toggle" id="chart-options-toggle">▸ 圖表與座標軸設定</h4>
       <div id="chart-options-body" class="section-body hidden">
-        <div class="opt-row">
-          <label><input type="checkbox" id="opt-show-xticks" checked> <span id="lbl-opt-xticks">顯示 X 軸數值 (Ticks)</span></label>
-        </div>
-        <div class="opt-row">
-          <label><input type="checkbox" id="opt-show-xtitle" checked> <span id="lbl-opt-xtitle">顯示 X 軸標題 (Title)</span></label>
-        </div>
-        <div class="opt-row" id="row-xtitle-text" style="padding-left:20px;">
-          <label><span id="lbl-opt-xtitle-text">標題：</span> <input type="text" id="opt-xtitle-text" placeholder="預設 / Default" style="width:120px; padding:2px 4px; font-size:11px; border:1px solid var(--border); border-radius:3px;"></label>
-        </div>
-        <div class="opt-row">
-          <label><input type="checkbox" id="opt-show-xaxis" checked> <span id="lbl-opt-xaxis">顯示 X 軸線</span></label>
-        </div>
-        <div class="opt-row">
-          <label><input type="checkbox" id="opt-show-grid" checked> <span id="lbl-opt-grid">顯示背景網格</span></label>
-        </div>
-        <div class="opt-row">
-          <label><input type="checkbox" id="opt-show-legend" checked> <span id="lbl-opt-legend">顯示圖例 (Legend)</span></label>
-        </div>
 
-        <div class="opt-subhead" id="lbl-yrange-head">Y 軸範圍 (Y-Axis Range)</div>
-        <div class="opt-grid-2" style="margin-bottom:4px;">
-          <div class="opt-row">
-            <label><span id="lbl-ymin">Y 最小:</span> <input type="number" id="opt-ymin" step="0.5" placeholder="Auto" style="width:48px; padding:1px 3px; font-size:11px;"></label>
-          </div>
-          <div class="opt-row">
-            <label><span id="lbl-ymax">Y 最大:</span> <input type="number" id="opt-ymax" step="0.5" placeholder="Auto" style="width:48px; padding:1px 3px; font-size:11px;"></label>
-          </div>
-        </div>
-        <div class="opt-row" style="margin-bottom:8px;">
-          <button class="btn-panel btn-sm" id="btn-reset-yrange" style="font-size:11px; padding:2px 8px; width:100%; justify-content:center;">↺ 重設為自動範圍</button>
-        </div>
-
-        <div class="opt-subhead" id="lbl-typography-head">字級大小與數值設定 (Typography & Precision)</div>
-        <div class="opt-grid-2">
-          <div class="opt-row">
-            <label><span id="lbl-name-fontsize">名稱字級:</span> <input type="number" id="opt-name-fontsize" min="8" max="36" value="11" style="width:40px; padding:1px 3px; font-size:11px;"></label>
-          </div>
-          <div class="opt-row">
-            <label><span id="lbl-energy-fontsize">能量字級:</span> <input type="number" id="opt-energy-fontsize" min="8" max="36" value="13" style="width:40px; padding:1px 3px; font-size:11px;"></label>
-          </div>
-          <div class="opt-row">
-            <label><span id="lbl-axistitle-fontsize">軸標題:</span> <input type="number" id="opt-axistitle-fontsize" min="8" max="36" value="14" style="width:40px; padding:1px 3px; font-size:11px;"></label>
-          </div>
-          <div class="opt-row">
-            <label><span id="lbl-tick-fontsize">刻度數字:</span> <input type="number" id="opt-tick-fontsize" min="8" max="36" value="12" style="width:40px; padding:1px 3px; font-size:11px;"></label>
-          </div>
-          <div class="opt-row">
-            <label><span id="lbl-legend-fontsize">圖例字級:</span> <input type="number" id="opt-legend-fontsize" min="8" max="36" value="12" style="width:40px; padding:1px 3px; font-size:11px;"></label>
-          </div>
-          <div class="opt-row">
-            <label><span id="lbl-opt-decimals">小數位數:</span> <input type="number" id="opt-decimals" min="0" max="6" value="2" style="width:40px; padding:1px 3px; font-size:11px;"></label>
-          </div>
-        </div>
-        <div class="format-hint" id="lbl-format-hint">💡 <b>上下標格式：</b><br>下標輸入 <code>H_2O</code> 或 <code>TS_{1-2}</code><br>上標輸入 <code>Fe^{3+}</code> 或 <code>TS^‡</code> 或 <code>TS^*</code><br>跳脫符號：<code>\_</code> 呈現底線，<code>\^</code> 呈現帽子</div>
+      <!-- ① 圖表標題 -->
+      <div class="opt-subhead" id="lbl-chart-title-head">圖表標題 (Chart Title)</div>
+      <div class="opt-row">
+        <label><input type="checkbox" id="opt-show-chart-title"> <span id="lbl-show-chart-title">顯示圖表標題</span></label>
       </div>
+      <div class="opt-row opt-indent" id="row-chart-title-text">
+        <label><span id="lbl-chart-title-text">標題文字：</span> <input type="text" id="opt-chart-title-text" class="opt-txt" placeholder="在此輸入標題"></label>
+      </div>
+      <div class="opt-row opt-indent" id="row-chart-title-size">
+        <label><span id="lbl-chart-title-fontsize">標題字級：</span> <input type="number" id="opt-chart-title-fontsize" min="8" max="48" value="16" class="opt-inp" style="width:52px;"></label>
+      </div>
+
+      <!-- ② 軸線顯示 & 圖框 -->
+      <div class="opt-subhead" id="lbl-axis-frame-head">軸線顯示 (Axes &amp; Frame)</div>
+      <div class="opt-row-grid">
+        <div class="opt-row"><label><input type="checkbox" id="opt-show-bottom-axis" checked> <span id="lbl-show-bottom-axis">底部 X 軸</span></label></div>
+        <div class="opt-row"><label><input type="checkbox" id="opt-show-left-axis" checked> <span id="lbl-show-left-axis">左側 Y 軸</span></label></div>
+        <div class="opt-row"><label><input type="checkbox" id="opt-show-top-axis" checked> <span id="lbl-show-top-axis">頂部軸線</span></label></div>
+        <div class="opt-row"><label><input type="checkbox" id="opt-show-right-axis" checked> <span id="lbl-show-right-axis">右側軸線</span></label></div>
+      </div>
+      <div class="opt-row">
+        <label><span id="lbl-axis-thickness">軸線粗細 (px)：</span> <input type="number" id="opt-axis-thickness" class="opt-inp" min="0.5" max="6" step="0.5" value="1"></label>
+      </div>
+
+      <!-- ③ Tick 方向 -->
+      <div class="opt-subhead" id="lbl-tick-dir-head">Tick 方向 (Tick Direction)</div>
+      <div class="opt-row">
+        <label><span id="lbl-tick-dir-x">X 軸 Tick：</span>
+          <select id="opt-tick-dir-x" class="opt-sel">
+            <option value="out">向外 (Out)</option>
+            <option value="in">向內 (In)</option>
+            <option value="both">雙向 (Both)</option>
+            <option value="none">無 (None)</option>
+          </select>
+        </label>
+      </div>
+      <div class="opt-row">
+        <label><span id="lbl-tick-dir-y">Y 軸 Tick：</span>
+          <select id="opt-tick-dir-y" class="opt-sel">
+            <option value="out">向外 (Out)</option>
+            <option value="in">向內 (In)</option>
+            <option value="both">雙向 (Both)</option>
+            <option value="none">無 (None)</option>
+          </select>
+        </label>
+      </div>
+
+      <!-- ④ 軸標題設定 -->
+      <div class="opt-subhead" id="lbl-axis-title-head">軸標題設定 (Axis Titles)</div>
+      <div class="opt-row">
+        <label><input type="checkbox" id="opt-show-xtitle" checked> <span id="lbl-opt-xtitle">顯示 X 軸標題</span></label>
+      </div>
+      <div class="opt-row opt-indent" id="row-xtitle-text">
+        <label><span id="lbl-opt-xtitle-text">X 標題：</span> <input type="text" id="opt-xtitle-text" class="opt-txt" placeholder="預設 / Default"></label>
+      </div>
+      <div class="opt-row">
+        <label><span id="lbl-opt-ytitle-text">Y 標題：</span> <input type="text" id="opt-ytitle-text" class="opt-txt" placeholder="能量 / Energy"></label>
+      </div>
+
+      <!-- ⑤ X 軸 Tick 數值顯示 -->
+      <div class="opt-row">
+        <label><input type="checkbox" id="opt-show-xticks" checked> <span id="lbl-opt-xticks">顯示 X 軸刻度數值</span></label>
+      </div>
+
+      <!-- ⑥ 其他顯示選項 -->
+      <div class="opt-subhead" id="lbl-display-opts-head">其他顯示選項</div>
+      <div class="opt-row">
+        <label><input type="checkbox" id="opt-show-grid" checked> <span id="lbl-opt-grid">顯示背景網格</span></label>
+      </div>
+      <div class="opt-row">
+        <label><input type="checkbox" id="opt-show-legend" checked> <span id="lbl-opt-legend">顯示圖例 (Legend)</span></label>
+      </div>
+
+      <!-- ⑦ Y 軸範圍 -->
+      <div class="opt-subhead" id="lbl-yrange-head">Y 軸範圍 (Y-Axis Range)</div>
+      <div class="opt-grid-2" style="margin-bottom:4px;">
+        <div class="opt-row">
+          <label><span id="lbl-ymin">Y 最小:</span> <input type="number" id="opt-ymin" step="0.5" placeholder="Auto" class="opt-inp" style="width:52px;"></label>
+        </div>
+        <div class="opt-row">
+          <label><span id="lbl-ymax">Y 最大:</span> <input type="number" id="opt-ymax" step="0.5" placeholder="Auto" class="opt-inp" style="width:52px;"></label>
+        </div>
+      </div>
+      <div class="opt-row" style="margin-bottom:8px;">
+        <button class="btn-panel btn-sm" id="btn-reset-yrange" style="font-size:11px; padding:2px 8px; width:100%; justify-content:center;">↺ 重設為自動範圍</button>
+      </div>
+
+      <!-- ⑧ 字級與精度 -->
+      <div class="opt-subhead" id="lbl-typography-head">字級大小與數值設定</div>
+      <div class="opt-grid-2">
+        <div class="opt-row">
+          <label><span id="lbl-name-fontsize">名稱字級:</span> <input type="number" id="opt-name-fontsize" min="8" max="36" value="11" class="opt-inp"></label>
+        </div>
+        <div class="opt-row">
+          <label><span id="lbl-energy-fontsize">能量字級:</span> <input type="number" id="opt-energy-fontsize" min="8" max="36" value="13" class="opt-inp"></label>
+        </div>
+        <div class="opt-row">
+          <label><span id="lbl-axistitle-fontsize">軸標題:</span> <input type="number" id="opt-axistitle-fontsize" min="8" max="36" value="14" class="opt-inp"></label>
+        </div>
+        <div class="opt-row">
+          <label><span id="lbl-tick-fontsize">刻度數字:</span> <input type="number" id="opt-tick-fontsize" min="8" max="36" value="12" class="opt-inp"></label>
+        </div>
+        <div class="opt-row">
+          <label><span id="lbl-legend-fontsize">圖例字級:</span> <input type="number" id="opt-legend-fontsize" min="8" max="36" value="12" class="opt-inp"></label>
+        </div>
+        <div class="opt-row">
+          <label><span id="lbl-opt-decimals">小數位數:</span> <input type="number" id="opt-decimals" min="0" max="6" value="2" class="opt-inp"></label>
+        </div>
+      </div>
+      <div class="format-hint" id="lbl-format-hint">💡 <b>上下標與換行格式：</b><br>下標：<code>H_2O</code> 或 <code>TS_{1-2}</code><br>上標：<code>Fe^{3+}</code> 或 <code>TS^‡</code> 或 <code>TS^*</code><br>換行：Enter 或 <code>\n</code> 或 <code>&lt;br&gt;</code><br>跳脫：<code>\_</code> 底線，<code>\^</code> 帽子</div>
     </div>
-    <div id="annotation-section">
+  </div>
+  <div id="annotation-section">
       <h4 class="section-toggle" id="annotation-toggle">▸ 能量差標註</h4>
       <div id="annotation-body" class="section-body hidden">
         <div id="annotation-list"></div>
@@ -483,7 +600,6 @@ input[type="color"].cell-color { width: 26px; height: 24px; padding: 0; border: 
 
 <input type="file" id="file-input" accept=".json" style="display:none">
 
-<!-- ====== JavaScript ====== -->
 <script>
 // ============================================================
 // 1. INTERNATIONALIZATION
@@ -534,6 +650,25 @@ const LANG = {
     annFrom: '起始', annTo: '目標', annLabel: '標籤', annShowVal: '值',
     pastedRows: '已貼上 {n} 筆資料',
     noAnnotations: '尚無標註，點擊上方按鈕新增',
+    /* Chart title */
+    chartTitleHead: '圖表標題 (Chart Title)',
+    showChartTitle: '顯示圖表標題', chartTitleText: '標題文字：',
+    chartTitleFontSize: '標題字級',
+    /* Axis display */
+    axisFrameHead: '軸線顯示 (Axes & Frame)',
+    showTopAxis: '頂部軸線', showRightAxis: '右側軸線',
+    showLeftAxis: '左側 Y 軸', showBottomAxis: '底部 X 軸',
+    axisThickness: '軸線粗細 (px)：',
+    /* Tick direction */
+    tickDirHead: 'Tick 方向 (Tick Direction)',
+    tickDirX: 'X 軸 Tick：', tickDirY: 'Y 軸 Tick：',
+    tickDirOut: '向外 (Out)', tickDirIn: '向內 (In)', tickDirBoth: '雙向 (Both)', tickDirNone: '無 (None)',
+    /* Axis titles */
+    axisTitleHead: '軸標題設定 (Axis Titles)',
+    optShowXTitle: '顯示 X 軸標題', optXTitleText: 'X 標題：',
+    yAxisTitleText: 'Y 標題：',
+    optShowXTicks: '顯示 X 軸刻度數值',
+    displayOptsHead: '其他顯示選項',
   },
   en: {
     title: '⚛ Energy Profile Plotter',
@@ -579,6 +714,25 @@ const LANG = {
     annFrom: 'From', annTo: 'To', annLabel: 'Label', annShowVal: 'Val',
     pastedRows: 'Pasted {n} row(s)',
     noAnnotations: 'No annotations. Click above to add.',
+    /* Chart title */
+    chartTitleHead: 'Chart Title',
+    showChartTitle: 'Show Chart Title', chartTitleText: 'Title Text:',
+    chartTitleFontSize: 'Title Size',
+    /* Axis display */
+    axisFrameHead: 'Axes & Frame',
+    showTopAxis: 'Top Axis', showRightAxis: 'Right Axis',
+    showLeftAxis: 'Left Y Axis', showBottomAxis: 'Bottom X Axis',
+    axisThickness: 'Axis Line Width (px):',
+    /* Tick direction */
+    tickDirHead: 'Tick Direction',
+    tickDirX: 'X Ticks:', tickDirY: 'Y Ticks:',
+    tickDirOut: 'Out', tickDirIn: 'In', tickDirBoth: 'Both', tickDirNone: 'None',
+    /* Axis titles */
+    axisTitleHead: 'Axis Titles',
+    optShowXTitle: 'Show X Axis Title', optXTitleText: 'X Title:',
+    yAxisTitleText: 'Y Title:',
+    optShowXTicks: 'Show X Tick Values',
+    displayOptsHead: 'Other Display Options',
   }
 };
 function t(key) { return LANG[currentLang][key] || LANG['en'][key] || key; }
@@ -595,7 +749,7 @@ const PRESET_COLORS = [
   '#6a1b9a', '#00838f', '#212121', '#546e7a',
   '#c2185b', '#0097a7', '#f57c00', '#5d4037'
 ];
-const MARGIN = { top: 30, right: 40, bottom: 55, left: 70 };
+const MARGIN = { top: 22, right: 35, bottom: 44, left: 65 };
 const DEF_FULL_HW = 0.25, DEF_HALF_HW = 0.12, DEF_NODE_SW = 3.5, DEF_CONN_SW = 2.5;
 const STORAGE_KEY = 'energy-profile-plotter-v2';
 
@@ -966,11 +1120,18 @@ function defaultApp() {
     inputUnit:'eV', displayUnit:'eV', activeGroup:0, lang:'zh',
     canvasConfig: { ratio: 'auto', width: 900, height: 550, scale: 3 },
     chartOptions: {
-      showXTicks: true, showXTitle: true, showXAxis: true, xTitleText: '',
+      showXTicks: true, showXTitle: true, showXAxis: true, xTitleText: '', yTitleText: '',
       showGrid: true, showLegend: true,
       nameFontSize: 11, energyFontSize: 13,
       axisTitleFontSize: 14, axisTickFontSize: 12, legendFontSize: 12,
-      decimals: 2
+      decimals: 2,
+      /* Box frame */
+      showTopAxis: true, showRightAxis: true, showBottomAxis: true, showLeftAxis: true,
+      axisThickness: 1.0,
+      /* Tick direction: 'out'|'in'|'both'|'none' */
+      tickDirX: 'out', tickDirY: 'out',
+      /* Chart title */
+      showChartTitle: false, chartTitleText: '', chartTitleFontSize: 16,
     },
     legend: { visible: true, x: 80, y: 40, titles: {} },
     textAnnotations: [],
@@ -1049,44 +1210,74 @@ function applyLang() {
     rSel.options[5].text = t('ratioCustom');
   }
 
+  const setTxt = (id, str) => { const el = document.getElementById(id); if (el) el.textContent = str; };
+
   const optToggle = document.getElementById('chart-options-toggle');
   if (optToggle) optToggle.textContent = t('chartOptionsTitle');
-  const lTicks = document.getElementById('lbl-opt-xticks');
-  if (lTicks) lTicks.textContent = t('optShowXTicks');
-  const lTitle = document.getElementById('lbl-opt-xtitle');
-  if (lTitle) lTitle.textContent = t('optShowXTitle');
-  const lTitleText = document.getElementById('lbl-opt-xtitle-text');
-  if (lTitleText) lTitleText.textContent = t('optXTitleText');
-  const lAxis = document.getElementById('lbl-opt-xaxis');
-  if (lAxis) lAxis.textContent = t('optShowXAxis');
-  const lGrid = document.getElementById('lbl-opt-grid');
-  if (lGrid) lGrid.textContent = t('optShowGrid');
-  const lLegend = document.getElementById('lbl-opt-legend');
-  if (lLegend) lLegend.textContent = t('optShowLegend');
 
-  const lYHead = document.getElementById('lbl-yrange-head');
-  if (lYHead) lYHead.textContent = t('yrangeTitle');
-  const lYMin = document.getElementById('lbl-ymin');
-  if (lYMin) lYMin.textContent = t('yMin') + ':';
-  const lYMax = document.getElementById('lbl-ymax');
-  if (lYMax) lYMax.textContent = t('yMax') + ':';
-  const btnResetY = document.getElementById('btn-reset-yrange');
-  if (btnResetY) btnResetY.textContent = t('resetYRange');
+  /* ① Chart title */
+  setTxt('lbl-chart-title-head', t('chartTitleHead'));
+  setTxt('lbl-show-chart-title', t('showChartTitle'));
+  setTxt('lbl-chart-title-text', t('chartTitleText'));
+  const txtChartTitle = document.getElementById('opt-chart-title-text');
+  if (txtChartTitle) txtChartTitle.placeholder = currentLang === 'zh' ? '在此輸入標題' : 'Enter chart title';
 
-  const lTypo = document.getElementById('lbl-typography-head');
-  if (lTypo) lTypo.textContent = t('lblTypography');
-  const lNameFS = document.getElementById('lbl-name-fontsize');
-  if (lNameFS) lNameFS.textContent = t('nameFontSize') + ':';
-  const lEnergyFS = document.getElementById('lbl-energy-fontsize');
-  if (lEnergyFS) lEnergyFS.textContent = t('energyFontSize') + ':';
-  const lAxisFS = document.getElementById('lbl-axistitle-fontsize');
-  if (lAxisFS) lAxisFS.textContent = t('axisTitleFontSize') + ':';
-  const lTickFS = document.getElementById('lbl-tick-fontsize');
-  if (lTickFS) lTickFS.textContent = t('tickFontSize') + ':';
-  const lLegendFS = document.getElementById('lbl-legend-fontsize');
-  if (lLegendFS) lLegendFS.textContent = t('legendFontSize') + ':';
-  const lDecimals = document.getElementById('lbl-opt-decimals');
-  if (lDecimals) lDecimals.textContent = t('optDecimals') + ':';
+  /* ② Axis display & frame */
+  setTxt('lbl-axis-frame-head', t('axisFrameHead'));
+  setTxt('lbl-show-bottom-axis', t('showBottomAxis'));
+  setTxt('lbl-show-left-axis', t('showLeftAxis'));
+  setTxt('lbl-show-top-axis', t('showTopAxis'));
+  setTxt('lbl-show-right-axis', t('showRightAxis'));
+  setTxt('lbl-axis-thickness', t('axisThickness'));
+
+  /* ③ Tick direction */
+  setTxt('lbl-tick-dir-head', t('tickDirHead'));
+  setTxt('lbl-tick-dir-x', t('tickDirX'));
+  setTxt('lbl-tick-dir-y', t('tickDirY'));
+  const selTickX = document.getElementById('opt-tick-dir-x');
+  if (selTickX) {
+    selTickX.options[0].text = t('tickDirOut');
+    selTickX.options[1].text = t('tickDirIn');
+    selTickX.options[2].text = t('tickDirBoth');
+    selTickX.options[3].text = t('tickDirNone');
+  }
+  const selTickY = document.getElementById('opt-tick-dir-y');
+  if (selTickY) {
+    selTickY.options[0].text = t('tickDirOut');
+    selTickY.options[1].text = t('tickDirIn');
+    selTickY.options[2].text = t('tickDirBoth');
+    selTickY.options[3].text = t('tickDirNone');
+  }
+
+  /* ④ Axis titles */
+  setTxt('lbl-axis-title-head', t('axisTitleHead'));
+  setTxt('lbl-opt-xtitle', t('optShowXTitle'));
+  setTxt('lbl-opt-xtitle-text', t('optXTitleText'));
+  setTxt('lbl-opt-ytitle-text', t('yAxisTitleText'));
+
+  /* ⑤ X Ticks display */
+  setTxt('lbl-opt-xticks', t('optShowXTicks'));
+
+  /* ⑥ Other display options */
+  setTxt('lbl-display-opts-head', t('displayOptsHead'));
+  setTxt('lbl-opt-grid', t('optShowGrid'));
+  setTxt('lbl-opt-legend', t('optShowLegend'));
+
+  /* ⑦ Y range */
+  setTxt('lbl-yrange-head', t('yrangeTitle'));
+  setTxt('lbl-ymin', t('yMin') + ':');
+  setTxt('lbl-ymax', t('yMax') + ':');
+  setTxt('btn-reset-yrange', t('resetYRange'));
+
+  /* ⑧ Typography */
+  setTxt('lbl-typography-head', t('lblTypography'));
+  setTxt('lbl-name-fontsize', t('nameFontSize') + ':');
+  setTxt('lbl-energy-fontsize', t('energyFontSize') + ':');
+  setTxt('lbl-axistitle-fontsize', t('axisTitleFontSize') + ':');
+  setTxt('lbl-tick-fontsize', t('tickFontSize') + ':');
+  setTxt('lbl-legend-fontsize', t('legendFontSize') + ':');
+  setTxt('lbl-opt-decimals', t('optDecimals') + ':');
+  setTxt('lbl-chart-title-fontsize', t('chartTitleFontSize') + ':');
   const lFormatHint = document.getElementById('lbl-format-hint');
   if (lFormatHint) lFormatHint.innerHTML = t('formatHint');
 
@@ -1180,13 +1371,20 @@ function initCanvasConfig() {
   const cwInp = document.getElementById('custom-w');
   const chInp = document.getElementById('custom-h');
   const customGroup = document.getElementById('custom-size-group');
+  const dpiGroup = dSel ? dSel.closest('.header-group') : null;
+
+  function updateDpiVisibility(ratio) {
+    if (dpiGroup) dpiGroup.style.display = (ratio === 'auto') ? 'none' : '';
+  }
 
   if (rSel) {
     rSel.value = app.canvasConfig.ratio || 'auto';
     customGroup.classList.toggle('hidden', rSel.value !== 'custom');
+    updateDpiVisibility(rSel.value);
     rSel.onchange = () => {
       app.canvasConfig.ratio = rSel.value;
       customGroup.classList.toggle('hidden', rSel.value !== 'custom');
+      updateDpiVisibility(rSel.value);
       saveAndRender();
     };
   }
@@ -1218,10 +1416,25 @@ function initCanvasConfig() {
 function initChartOptions() {
   if (!app.chartOptions) {
     app.chartOptions = {
-      showXTicks: true, showXTitle: true, showXAxis: true, xTitleText: '', showGrid: true, showLegend: true,
-      nameFontSize: 11, energyFontSize: 13, axisTitleFontSize: 14, axisTickFontSize: 12, legendFontSize: 12
+      showXTicks: true, showXTitle: true, showXAxis: true, xTitleText: '', yTitleText: '',
+      showGrid: true, showLegend: true,
+      nameFontSize: 11, energyFontSize: 13, axisTitleFontSize: 14, axisTickFontSize: 12, legendFontSize: 12,
+      decimals: 2,
+      showTopAxis: true, showRightAxis: true, showBottomAxis: true, showLeftAxis: true,
+      axisThickness: 1.0, tickDirX: 'out', tickDirY: 'out',
+      showChartTitle: false, chartTitleText: '', chartTitleFontSize: 16,
     };
   }
+  // Migrate old fields
+  if (app.chartOptions.showTopAxis === undefined) app.chartOptions.showTopAxis = true;
+  if (app.chartOptions.showRightAxis === undefined) app.chartOptions.showRightAxis = true;
+  if (app.chartOptions.showBottomAxis === undefined) app.chartOptions.showBottomAxis = true;
+  if (app.chartOptions.showLeftAxis === undefined) app.chartOptions.showLeftAxis = true;
+  if (app.chartOptions.axisThickness === undefined) app.chartOptions.axisThickness = 1.0;
+  if (app.chartOptions.tickDirX === undefined) app.chartOptions.tickDirX = 'out';
+  if (app.chartOptions.tickDirY === undefined) app.chartOptions.tickDirY = 'out';
+  if (app.chartOptions.showChartTitle === undefined) app.chartOptions.showChartTitle = false;
+  if (app.chartOptions.chartTitleFontSize === undefined) app.chartOptions.chartTitleFontSize = 16;
   
   const toggle = document.getElementById('chart-options-toggle');
   const body = document.getElementById('chart-options-body');
@@ -1229,22 +1442,67 @@ function initChartOptions() {
     toggle.onclick = () => body.classList.toggle('hidden');
   }
 
-  const cbTicks = document.getElementById('opt-show-xticks');
-  const cbTitle = document.getElementById('opt-show-xtitle');
-  const cbAxis = document.getElementById('opt-show-xaxis');
-  const cbGrid = document.getElementById('opt-show-grid');
-  const cbLegend = document.getElementById('opt-show-legend');
-  const txtTitle = document.getElementById('opt-xtitle-text');
-  const rowTitleText = document.getElementById('row-xtitle-text');
+  function bindCb(id, prop, dflt = true) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.checked = app.chartOptions[prop] !== false;
+    el.onchange = () => { app.chartOptions[prop] = el.checked; saveAndRender(); };
+  }
+  function bindInpNum(id, prop, dflt, min, max) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = app.chartOptions[prop] !== undefined ? app.chartOptions[prop] : dflt;
+    el.oninput = () => { app.chartOptions[prop] = Math.max(min, Math.min(max, parseFloat(el.value) || dflt)); renderChart(); };
+    el.onchange = () => saveState();
+  }
+  function bindInpTxt(id, prop, dflt = '') {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = app.chartOptions[prop] || dflt;
+    el.oninput = () => { app.chartOptions[prop] = el.value; renderChart(); };
+    el.onchange = () => saveState();
+  }
+  function bindSel(id, prop, dflt) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = app.chartOptions[prop] || dflt;
+    el.onchange = () => { app.chartOptions[prop] = el.value; saveAndRender(); };
+  }
 
-  if (cbTicks) {
-    cbTicks.checked = app.chartOptions.showXTicks !== false;
-    cbTicks.onchange = () => {
-      app.chartOptions.showXTicks = cbTicks.checked;
+  // ① Chart title
+  const cbChartTitle = document.getElementById('opt-show-chart-title');
+  const rowChartTitle = document.getElementById('row-chart-title-text');
+  const rowChartTitleSize = document.getElementById('row-chart-title-size');
+  if (cbChartTitle) {
+    cbChartTitle.checked = app.chartOptions.showChartTitle === true;
+    const isShown = cbChartTitle.checked ? 'flex' : 'none';
+    if (rowChartTitle) rowChartTitle.style.display = isShown;
+    if (rowChartTitleSize) rowChartTitleSize.style.display = isShown;
+    cbChartTitle.onchange = () => {
+      app.chartOptions.showChartTitle = cbChartTitle.checked;
+      const s = cbChartTitle.checked ? 'flex' : 'none';
+      if (rowChartTitle) rowChartTitle.style.display = s;
+      if (rowChartTitleSize) rowChartTitleSize.style.display = s;
       saveAndRender();
     };
   }
+  bindInpTxt('opt-chart-title-text', 'chartTitleText');
+  bindInpNum('opt-chart-title-fontsize', 'chartTitleFontSize', 16, 8, 48);
 
+  // ② Axis frame (four-side box)
+  bindCb('opt-show-bottom-axis', 'showBottomAxis');
+  bindCb('opt-show-left-axis', 'showLeftAxis');
+  bindCb('opt-show-top-axis', 'showTopAxis');
+  bindCb('opt-show-right-axis', 'showRightAxis');
+  bindInpNum('opt-axis-thickness', 'axisThickness', 1.0, 0.5, 6);
+
+  // ③ Tick direction
+  bindSel('opt-tick-dir-x', 'tickDirX', 'out');
+  bindSel('opt-tick-dir-y', 'tickDirY', 'out');
+
+  // ④ Axis titles
+  const cbTitle = document.getElementById('opt-show-xtitle');
+  const rowTitleText = document.getElementById('row-xtitle-text');
   if (cbTitle) {
     cbTitle.checked = app.chartOptions.showXTitle !== false;
     if (rowTitleText) rowTitleText.style.display = cbTitle.checked ? 'flex' : 'none';
@@ -1254,83 +1512,17 @@ function initChartOptions() {
       saveAndRender();
     };
   }
+  bindInpTxt('opt-xtitle-text', 'xTitleText');
+  bindInpTxt('opt-ytitle-text', 'yTitleText');
 
-  if (txtTitle) {
-    txtTitle.value = app.chartOptions.xTitleText || '';
-    txtTitle.oninput = () => {
-      app.chartOptions.xTitleText = txtTitle.value;
-      renderChart();
-    };
-    txtTitle.onchange = () => saveState();
-  }
+  // ⑤ X Tick values visibility
+  bindCb('opt-show-xticks', 'showXTicks');
 
-  if (cbAxis) {
-    cbAxis.checked = app.chartOptions.showXAxis !== false;
-    cbAxis.onchange = () => {
-      app.chartOptions.showXAxis = cbAxis.checked;
-      saveAndRender();
-    };
-  }
+  // ⑥ Other display options
+  bindCb('opt-show-grid', 'showGrid');
+  bindCb('opt-show-legend', 'showLegend');
 
-  if (cbGrid) {
-    cbGrid.checked = app.chartOptions.showGrid !== false;
-    cbGrid.onchange = () => {
-      app.chartOptions.showGrid = cbGrid.checked;
-      saveAndRender();
-    };
-  }
-
-  if (cbLegend) {
-    cbLegend.checked = app.chartOptions.showLegend !== false;
-    cbLegend.onchange = () => {
-      app.chartOptions.showLegend = cbLegend.checked;
-      saveAndRender();
-    };
-  }
-
-  // Typography inputs
-  const inpNFS = document.getElementById('opt-name-fontsize');
-  const inpEFS = document.getElementById('opt-energy-fontsize');
-  const inpATFS = document.getElementById('opt-axistitle-fontsize');
-  const inpTFS = document.getElementById('opt-tick-fontsize');
-  const inpLFS = document.getElementById('opt-legend-fontsize');
-
-  if (inpNFS) {
-    inpNFS.value = app.chartOptions.nameFontSize || 11;
-    inpNFS.oninput = () => { app.chartOptions.nameFontSize = parseInt(inpNFS.value) || 11; renderChart(); };
-    inpNFS.onchange = () => saveState();
-  }
-  if (inpEFS) {
-    inpEFS.value = app.chartOptions.energyFontSize || 13;
-    inpEFS.oninput = () => { app.chartOptions.energyFontSize = parseInt(inpEFS.value) || 13; renderChart(); };
-    inpEFS.onchange = () => saveState();
-  }
-  if (inpATFS) {
-    inpATFS.value = app.chartOptions.axisTitleFontSize || 14;
-    inpATFS.oninput = () => { app.chartOptions.axisTitleFontSize = parseInt(inpATFS.value) || 14; renderChart(); };
-    inpATFS.onchange = () => saveState();
-  }
-  if (inpTFS) {
-    inpTFS.value = app.chartOptions.axisTickFontSize || 12;
-    inpTFS.oninput = () => { app.chartOptions.axisTickFontSize = parseInt(inpTFS.value) || 12; renderChart(); };
-    inpTFS.onchange = () => saveState();
-  }
-  if (inpLFS) {
-    inpLFS.value = app.chartOptions.legendFontSize || 12;
-    inpLFS.oninput = () => { app.chartOptions.legendFontSize = parseInt(inpLFS.value) || 12; renderChart(); };
-    inpLFS.onchange = () => saveState();
-  }
-  const inpDec = document.getElementById('opt-decimals');
-  if (inpDec) {
-    inpDec.value = (app.chartOptions?.decimals !== undefined) ? app.chartOptions.decimals : 2;
-    inpDec.oninput = () => {
-      app.chartOptions.decimals = Math.max(0, Math.min(6, parseInt(inpDec.value) || 0));
-      renderChart();
-    };
-    inpDec.onchange = () => saveState();
-  }
-
-  // Y-Axis Range inputs
+  // ⑦ Y-Axis Range inputs
   const inpYMin = document.getElementById('opt-ymin');
   const inpYMax = document.getElementById('opt-ymax');
   const btnResetY = document.getElementById('btn-reset-yrange');
@@ -1352,14 +1544,27 @@ function initChartOptions() {
   }
   if (btnResetY) {
     btnResetY.onclick = () => {
-      if (app.chartOptions) {
-        delete app.chartOptions.yMin;
-        delete app.chartOptions.yMax;
-      }
+      if (app.chartOptions) { delete app.chartOptions.yMin; delete app.chartOptions.yMax; }
       if (inpYMin) inpYMin.value = '';
       if (inpYMax) inpYMax.value = '';
       saveAndRender();
     };
+  }
+
+  // ⑧ Typography & Precision
+  bindInpNum('opt-name-fontsize', 'nameFontSize', 11, 8, 36);
+  bindInpNum('opt-energy-fontsize', 'energyFontSize', 13, 8, 36);
+  bindInpNum('opt-axistitle-fontsize', 'axisTitleFontSize', 14, 8, 36);
+  bindInpNum('opt-tick-fontsize', 'axisTickFontSize', 12, 8, 36);
+  bindInpNum('opt-legend-fontsize', 'legendFontSize', 12, 8, 36);
+  const inpDec = document.getElementById('opt-decimals');
+  if (inpDec) {
+    inpDec.value = (app.chartOptions?.decimals !== undefined) ? app.chartOptions.decimals : 2;
+    inpDec.oninput = () => {
+      app.chartOptions.decimals = Math.max(0, Math.min(6, parseInt(inpDec.value) || 0));
+      renderChart();
+    };
+    inpDec.onchange = () => saveState();
   }
 }
 
@@ -1735,12 +1940,76 @@ function renderChart() {
   cW = dims.w;
   cH = dims.h;
 
+  const co = app.chartOptions || {};
+  const axThick = co.axisThickness || 1.0;
+  const tickDirX = co.tickDirX || 'out';
+  const tickDirY = co.tickDirY || 'out';
+  const tickFontSize = co.axisTickFontSize || 12;
+  const axisTitleSize = (co.axisTitleFontSize || 14) + 'px';
+  const tickSize = tickFontSize + 'px';
+
+  // Dynamic margin: top margin is compact and only adds necessary space when title is shown
+  const hasChartTitle = Boolean(co.showChartTitle && co.chartTitleText && co.chartTitleText.trim());
+  const CHART_TITLE_MARGIN = hasChartTitle ? ((co.chartTitleFontSize || 16) + 12) : 0;
+
+  // Bottom margin calculation: tightly fitted based on whether ticks and/or title are visible
+  const showXTicks = co.showBottomAxis !== false && co.showXTicks !== false;
+  const showXTitle = co.showXTitle !== false;
+  let bottomSpace = 16;
+  if (showXTicks && showXTitle) {
+    bottomSpace = 44 + Math.max(0, tickFontSize - 12);
+  } else if (showXTicks) {
+    bottomSpace = 26 + Math.max(0, tickFontSize - 12);
+  } else if (showXTitle) {
+    bottomSpace = 32;
+  }
+
+  const leftSpace = Math.max(MARGIN.left, (co.axisTitleFontSize || 14) + tickFontSize * 2 + 16);
+
+  const margin = {
+    top: MARGIN.top + CHART_TITLE_MARGIN,
+    right: MARGIN.right,
+    bottom: bottomSpace,
+    left: leftSpace
+  };
+
   svg.attr('viewBox', `0 0 ${cW} ${cH}`)
      .attr('preserveAspectRatio', 'xMidYMid meet');
   svg.append('rect').attr('width', cW).attr('height', cH).attr('fill', 'white');
 
-  const iW = cW - MARGIN.left - MARGIN.right, iH = cH - MARGIN.top - MARGIN.bottom;
-  const g = svg.append('g').attr('transform', `translate(${MARGIN.left},${MARGIN.top})`);
+  const iW = cW - margin.left - margin.right;
+  const iH = cH - margin.top - margin.bottom;
+  const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+  // Chart title (Draggable)
+  if (hasChartTitle) {
+    if (!app.chartOptions.chartTitleOffset) app.chartOptions.chartTitleOffset = { x: 0, y: 0 };
+    const ox = app.chartOptions.chartTitleOffset.x || 0;
+    const oy = app.chartOptions.chartTitleOffset.y || 0;
+    const baseTitleX = margin.left + iW / 2;
+    const baseTitleY = (MARGIN.top / 2) + ((co.chartTitleFontSize || 16) / 2) + 2;
+
+    const titleG = svg.append('g').attr('class', 'chart-title-group')
+      .attr('transform', `translate(${baseTitleX + ox}, ${baseTitleY + oy})`)
+      .style('cursor', 'move');
+
+    const titleEl = titleG.append('text')
+      .attr('x', 0).attr('y', 0)
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'middle')
+      .attr('font-size', (co.chartTitleFontSize || 16) + 'px')
+      .style('font-size', (co.chartTitleFontSize || 16) + 'px')
+      .attr('font-weight', 'bold')
+      .attr('fill', '#000000');
+    renderRichText(titleEl, co.chartTitleText.trim());
+
+    titleG.call(d3.drag().on('drag', function(ev) {
+      if (!app.chartOptions.chartTitleOffset) app.chartOptions.chartTitleOffset = { x: 0, y: 0 };
+      app.chartOptions.chartTitleOffset.x += ev.dx;
+      app.chartOptions.chartTitleOffset.y += ev.dy;
+      d3.select(this).attr('transform', `translate(${baseTitleX + app.chartOptions.chartTitleOffset.x}, ${baseTitleY + app.chartOptions.chartTitleOffset.y})`);
+    }).on('end', () => saveState()));
+  }
 
   // Collect all points
   const pts = [];
@@ -1759,65 +2028,142 @@ function renderChart() {
   const xPad = Math.max(0.5, (xExt[1] - xExt[0]) * 0.08);
   const yR = (yExt[1] - yExt[0]) || 1, yPad = yR * 0.15;
   const yMinAuto = yExt[0] - yPad, yMaxAuto = yExt[1] + yPad;
-  const yDomainMin = (app.chartOptions?.yMin !== undefined && app.chartOptions.yMin !== null && !isNaN(app.chartOptions.yMin)) 
-    ? app.chartOptions.yMin 
-    : yMinAuto;
-  const yDomainMax = (app.chartOptions?.yMax !== undefined && app.chartOptions.yMax !== null && !isNaN(app.chartOptions.yMax)) 
-    ? app.chartOptions.yMax 
-    : yMaxAuto;
+  const yDomainMin = (co?.yMin !== undefined && co.yMin !== null && !isNaN(co.yMin)) ? co.yMin : yMinAuto;
+  const yDomainMax = (co?.yMax !== undefined && co.yMax !== null && !isNaN(co.yMax)) ? co.yMax : yMaxAuto;
 
   const xS = d3.scaleLinear().domain([xExt[0] - xPad, xExt[1] + xPad]).range([0, iW]).nice();
   const yS = d3.scaleLinear().domain([yDomainMin, yDomainMax]).range([iH, 0]).nice();
 
   // Grid
-  if (app.chartOptions?.showGrid !== false) {
+  if (co?.showGrid !== false) {
     g.append('g').attr('class', 'grid').call(d3.axisLeft(yS).tickSize(-iW).tickFormat(''));
     g.append('g').attr('class', 'grid').attr('transform', `translate(0,${iH})`).call(d3.axisBottom(xS).tickSize(-iH).tickFormat(''));
   }
 
-  const tickSize = (app.chartOptions?.axisTickFontSize || 12) + 'px';
-
-  // Axes
-  // X-axis
-  if (app.chartOptions?.showXAxis !== false) {
-    const xAxis = d3.axisBottom(xS);
-    if (app.chartOptions?.showXTicks === false) {
+  // -------- Build axis generators with tick direction (Pure Black) --------
+  // Bottom axis (X)
+  if (co?.showBottomAxis !== false) {
+    let xAxis = d3.axisBottom(xS);
+    if (co?.showXTicks === false) {
       xAxis.tickFormat('').tickSize(0);
+    } else {
+      if (tickDirX === 'in') xAxis.tickSizeInner(-6).tickPadding(8);
+      else if (tickDirX === 'out') xAxis.tickSizeInner(6).tickPadding(8);
+      else if (tickDirX === 'both') xAxis.tickSizeInner(6).tickPadding(8);
+      else xAxis.tickSizeInner(0).tickPadding(5); // none
     }
-    const xAxG = g.append('g').attr('class', 'axis').attr('transform', `translate(0,${iH})`).call(xAxis);
-    xAxG.selectAll('text').attr('font-size', tickSize).style('font-size', tickSize);
+    const xAxG = g.append('g').attr('class', 'axis axis-bottom').attr('transform', `translate(0,${iH})`).call(xAxis);
+    xAxG.selectAll('text').attr('font-size', tickSize).style('font-size', tickSize).style('fill', '#000000');
+    xAxG.selectAll('path, line').style('stroke', '#000000').style('stroke-width', axThick + 'px');
+    if (co?.showXTicks !== false && tickDirX === 'both') {
+      xAxG.selectAll('.tick line').attr('y1', -6).attr('y2', 6);
+    }
   }
 
-  // Y-axis
-  const yAxG = g.append('g').attr('class', 'axis').call(d3.axisLeft(yS));
-  yAxG.selectAll('text').attr('font-size', tickSize).style('font-size', tickSize);
+  // Left axis (Y)
+  if (co?.showLeftAxis !== false) {
+    let yAxis = d3.axisLeft(yS);
+    if (tickDirY === 'in') yAxis.tickSizeInner(-6).tickPadding(8);
+    else if (tickDirY === 'out') yAxis.tickSizeInner(6).tickPadding(8);
+    else if (tickDirY === 'both') yAxis.tickSizeInner(6).tickPadding(8);
+    else yAxis.tickSizeInner(0).tickPadding(5); // none
+    const yAxG = g.append('g').attr('class', 'axis axis-left').call(yAxis);
+    yAxG.selectAll('text').attr('font-size', tickSize).style('font-size', tickSize).style('fill', '#000000');
+    yAxG.selectAll('path, line').style('stroke', '#000000').style('stroke-width', axThick + 'px');
+    if (tickDirY === 'both') {
+      yAxG.selectAll('.tick line').attr('x1', -6).attr('x2', 6);
+    }
+  }
 
-  // Labels
-  const axisTitleSize = (app.chartOptions?.axisTitleFontSize || 14) + 'px';
+  // Top axis (frame line)
+  if (co?.showTopAxis !== false) {
+    let topAxis = d3.axisTop(xS).tickFormat('');
+    if (tickDirX === 'in') topAxis.tickSizeInner(-6);
+    else if (tickDirX === 'out') topAxis.tickSizeInner(6);
+    else if (tickDirX === 'both') topAxis.tickSizeInner(6);
+    else topAxis.tickSizeInner(0);
+    const topG = g.append('g').attr('class', 'axis axis-top').call(topAxis);
+    topG.selectAll('path, line').style('stroke', '#000000').style('stroke-width', axThick + 'px');
+    if (tickDirX === 'both') {
+      topG.selectAll('.tick line').attr('y1', -6).attr('y2', 6);
+    }
+  }
 
-  // X-axis title
-  if (app.chartOptions?.showXTitle !== false) {
-    const xTitle = (app.chartOptions?.xTitleText && app.chartOptions.xTitleText.trim()) 
-      ? app.chartOptions.xTitleText.trim() 
+  // Right axis (frame line)
+  if (co?.showRightAxis !== false) {
+    let rightAxis = d3.axisRight(yS).tickFormat('');
+    if (tickDirY === 'in') rightAxis.tickSizeInner(-6);
+    else if (tickDirY === 'out') rightAxis.tickSizeInner(6);
+    else if (tickDirY === 'both') rightAxis.tickSizeInner(6);
+    else rightAxis.tickSizeInner(0);
+    const rightG = g.append('g').attr('class', 'axis axis-right').attr('transform', `translate(${iW},0)`).call(rightAxis);
+    rightG.selectAll('path, line').style('stroke', '#000000').style('stroke-width', axThick + 'px');
+    if (tickDirY === 'both') {
+      rightG.selectAll('.tick line').attr('x1', -6).attr('x2', 6);
+    }
+  }
+
+  // X-axis title (Draggable with Mouse)
+  if (co?.showXTitle !== false) {
+    const xTitle = (co?.xTitleText && co.xTitleText.trim()) 
+      ? co.xTitleText.trim() 
       : t('reactionCoord');
-    const yOffset = (app.chartOptions?.showXTicks === false) ? (iH + 28) : (iH + 42);
-    const xTitleEl = g.append('text').attr('class', 'axis-label')
-      .attr('x', iW / 2).attr('y', yOffset)
+    
+    if (!app.chartOptions.xTitleOffset) app.chartOptions.xTitleOffset = { x: 0, y: 0 };
+    const ox = app.chartOptions.xTitleOffset.x || 0;
+    const oy = app.chartOptions.xTitleOffset.y || 0;
+    const baseYOffset = iH + (showXTicks ? (14 + tickFontSize + 12) : 18);
+    const baseX = iW / 2;
+
+    const xTitleG = g.append('g').attr('class', 'axis-title-group x-title-group')
+      .attr('transform', `translate(${baseX + ox}, ${baseYOffset + oy})`)
+      .style('cursor', 'move');
+
+    const xTitleEl = xTitleG.append('text').attr('class', 'axis-label')
+      .attr('x', 0).attr('y', 0)
       .attr('text-anchor', 'middle')
       .attr('font-size', axisTitleSize)
-      .style('font-size', axisTitleSize);
+      .style('font-size', axisTitleSize)
+      .attr('fill', '#000000');
     renderRichText(xTitleEl, xTitle);
+
+    xTitleG.call(d3.drag().on('drag', function(ev) {
+      if (!app.chartOptions.xTitleOffset) app.chartOptions.xTitleOffset = { x: 0, y: 0 };
+      app.chartOptions.xTitleOffset.x += ev.dx;
+      app.chartOptions.xTitleOffset.y += ev.dy;
+      d3.select(this).attr('transform', `translate(${baseX + app.chartOptions.xTitleOffset.x}, ${baseYOffset + app.chartOptions.xTitleOffset.y})`);
+    }).on('end', () => saveState()));
   }
 
-  // Y-axis title
-  const yTitle = `${t('energyAxis')} (${app.displayUnit})`;
-  const yTitleEl = g.append('text').attr('class', 'axis-label')
-    .attr('transform', 'rotate(-90)')
-    .attr('x', -iH / 2).attr('y', -50)
+  // Y-axis title (Draggable with Mouse)
+  const yTitleStr = (co?.yTitleText && co.yTitleText.trim()) 
+    ? co.yTitleText.trim() + ' (' + app.displayUnit + ')'
+    : `${t('energyAxis')} (${app.displayUnit})`;
+
+  if (!app.chartOptions.yTitleOffset) app.chartOptions.yTitleOffset = { x: 0, y: 0 };
+  const yox = app.chartOptions.yTitleOffset.x || 0;
+  const yoy = app.chartOptions.yTitleOffset.y || 0;
+  const baseYX = -iH / 2;
+  const baseYY = -(margin.left - 18);
+
+  const yTitleG = g.append('g').attr('class', 'axis-title-group y-title-group')
+    .attr('transform', `translate(${yox}, ${yoy}) rotate(-90)`)
+    .style('cursor', 'move');
+
+  const yTitleEl = yTitleG.append('text').attr('class', 'axis-label')
+    .attr('x', baseYX).attr('y', baseYY)
     .attr('text-anchor', 'middle')
     .attr('font-size', axisTitleSize)
-    .style('font-size', axisTitleSize);
-  renderRichText(yTitleEl, yTitle);
+    .style('font-size', axisTitleSize)
+    .attr('fill', '#000000');
+  renderRichText(yTitleEl, yTitleStr);
+
+  yTitleG.call(d3.drag().on('drag', function(ev) {
+    if (!app.chartOptions.yTitleOffset) app.chartOptions.yTitleOffset = { x: 0, y: 0 };
+    app.chartOptions.yTitleOffset.x += ev.dx;
+    app.chartOptions.yTitleOffset.y += ev.dy;
+    d3.select(this).attr('transform', `translate(${app.chartOptions.yTitleOffset.x}, ${app.chartOptions.yTitleOffset.y}) rotate(-90)`);
+  }).on('end', () => saveState()));
 
   // Render groups
   app.groups.forEach((gr, gi) => { if (gr.visible) renderGroupChart(g, gr, gi, xS, yS); });
@@ -2545,9 +2891,9 @@ function inlineCSS(el) {
   const s = document.createElementNS('http://www.w3.org/2000/svg','style');
   s.textContent = `
     text { font-family: 'Segoe UI', Arial, sans-serif; }
-    .axis path, .axis line { stroke: #999; }
-    .axis text { fill: #555; }
-    .axis-label { fill: #333; font-weight: 500; }
+    .axis path, .axis line { stroke: #000000; }
+    .axis text { fill: #000000; }
+    .axis-label { fill: #000000; font-weight: 500; }
     .grid line { stroke: #e8e8e8; stroke-dasharray: 2,3; }
     .grid path { stroke: none; }
     .conn-path { fill: none !important; }
@@ -2881,4 +3227,6 @@ function init() {
 document.addEventListener('DOMContentLoaded', init);
 </script>
 </body>
+</html>
+
 </html>
