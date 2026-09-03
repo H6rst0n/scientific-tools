@@ -114,7 +114,7 @@ header .spacer { flex: 1; }
 #data-table input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; }
 #data-table input[type="radio"] { width: 14px; height: 14px; cursor: pointer; }
 .col-check { width: 26px; } .col-coord { width: 48px; }
-.col-energy { width: 58px; } .col-width, .col-type { width: 48px; } .col-ref { width: 28px; } .col-color { width: 32px; }
+.col-energy { width: 72px; min-width: 66px; } .col-width, .col-type { width: 48px; } .col-ref { width: 28px; } .col-color { width: 32px; }
 .col-name { width: auto; min-width: 90px; }
 input[type="color"].cell-color { width: 26px; height: 24px; padding: 0; border: 1px solid var(--border); border-radius: 3px; cursor: pointer; background: none; }
 
@@ -224,7 +224,8 @@ input[type="color"].cell-color { width: 26px; height: 24px; padding: 0; border: 
 .conn-path:hover { opacity: 0.6; }
 .energy-label, .name-label { cursor: move; user-select: none; }
 .energy-label:hover, .name-label:hover { opacity: 0.7; }
-.name-cell-wrap { display: flex; align-items: center; gap: 4px; }
+.name-cell-wrap { display: flex; align-items: center; gap: 2px; }
+.name-cell-wrap input { flex: 1; min-width: 0; }
 .btn-toggle-eye { background: none; border: none; cursor: pointer; font-size: 12px; padding: 0 2px; line-height: 1; color: #555; }
 .btn-toggle-eye:hover { opacity: 0.7; }
 .btn-toggle-eye.hidden-name { opacity: 0.25; filter: grayscale(1); }
@@ -438,6 +439,11 @@ input[type="color"].cell-color { width: 26px; height: 24px; padding: 0; border: 
           <option value="show">顯示</option>
           <option value="hide">隱藏</option>
         </select></label>
+        <label><span id="lbl-bshowenergy">能量</span> <select id="batch-showenergy">
+          <option value="">-</option>
+          <option value="show">顯示</option>
+          <option value="hide">隱藏</option>
+        </select></label>
         <label><span id="lbl-bname-size">名稱字級</span> <input type="number" id="batch-name-size" min="8" max="36" placeholder="預設" style="width:40px;"></label>
         <label><span id="lbl-bname-weight">名稱粗細</span> <select id="batch-name-weight">
           <option value="">-</option>
@@ -519,21 +525,35 @@ input[type="color"].cell-color { width: 26px; height: 24px; padding: 0; border: 
         <div style="font-size:10px; color:#94a3b8; line-height:1.2;" id="hint-plot-margins">💡 可直接用滑鼠拖曳圖表四邊或四角調整範圍</div>
       </div>
 
-      <!-- ③ Tick 方向 -->
+      <!-- ③ Tick 方向 (4軸獨立設定) -->
       <div class="opt-subhead" id="lbl-tick-dir-head">Tick 方向 (Tick Direction)</div>
-      <div class="opt-row">
-        <label><span id="lbl-tick-dir-x">X 軸 Tick：</span>
-          <select id="opt-tick-dir-x" class="opt-sel">
+      <div class="opt-row-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:4px 8px; margin-bottom:4px;">
+        <label style="display:flex; align-items:center; gap:2px;"><span id="lbl-tick-bottom" style="color:#64748b; width:48px; font-size:11px;">下軸：</span>
+          <select id="opt-tick-dir-bottom" class="opt-sel" style="flex:1;">
             <option value="out">向外 (Out)</option>
             <option value="in">向內 (In)</option>
             <option value="both">雙向 (Both)</option>
             <option value="none">無 (None)</option>
           </select>
         </label>
-      </div>
-      <div class="opt-row">
-        <label><span id="lbl-tick-dir-y">Y 軸 Tick：</span>
-          <select id="opt-tick-dir-y" class="opt-sel">
+        <label style="display:flex; align-items:center; gap:2px;"><span id="lbl-tick-top" style="color:#64748b; width:48px; font-size:11px;">上軸：</span>
+          <select id="opt-tick-dir-top" class="opt-sel" style="flex:1;">
+            <option value="out">向外 (Out)</option>
+            <option value="in">向內 (In)</option>
+            <option value="both">雙向 (Both)</option>
+            <option value="none">無 (None)</option>
+          </select>
+        </label>
+        <label style="display:flex; align-items:center; gap:2px;"><span id="lbl-tick-left" style="color:#64748b; width:48px; font-size:11px;">左軸：</span>
+          <select id="opt-tick-dir-left" class="opt-sel" style="flex:1;">
+            <option value="out">向外 (Out)</option>
+            <option value="in">向內 (In)</option>
+            <option value="both">雙向 (Both)</option>
+            <option value="none">無 (None)</option>
+          </select>
+        </label>
+        <label style="display:flex; align-items:center; gap:2px;"><span id="lbl-tick-right" style="color:#64748b; width:48px; font-size:11px;">右軸：</span>
+          <select id="opt-tick-dir-right" class="opt-sel" style="flex:1;">
             <option value="out">向外 (Out)</option>
             <option value="in">向內 (In)</option>
             <option value="both">雙向 (Both)</option>
@@ -801,6 +821,8 @@ const LANG = {
     thName: '名稱', thCoord: '座標', thEnergy: '能量', thWidth: '線寬', thRef: '基準', thColor: '色',
     toggleNameHint: '點擊切換顯示/隱藏名稱',
     showName: '顯示名稱', hideName: '隱藏名稱',
+    toggleEnergyHint: '點擊切換顯示/隱藏能量數值',
+    showEnergy: '顯示能量', hideEnergy: '隱藏能量',
     addState: '+ 新增狀態', deleteSelected: '✕ 刪除選取',
     selectAll: '全選', deselect: '取消',
     pasteHint: 'Ctrl+V 可貼上 Excel 表格',
@@ -827,6 +849,8 @@ const LANG = {
     axisThickness: '軸線粗細 (px)：',
     /* Tick direction */
     tickDirHead: 'Tick 方向 (Tick Direction)',
+    tickDirBottom: '下軸：', tickDirTop: '上軸：',
+    tickDirLeft: '左軸：', tickDirRight: '右軸：',
     tickDirX: 'X 軸 Tick：', tickDirY: 'Y 軸 Tick：',
     tickDirOut: '向外 (Out)', tickDirIn: '向內 (In)', tickDirBoth: '雙向 (Both)', tickDirNone: '無 (None)',
     /* Axis titles */
@@ -899,6 +923,8 @@ const LANG = {
     thName: 'Name', thCoord: 'Coord', thEnergy: 'Energy', thWidth: 'Width', thRef: 'Ref', thColor: '🎨',
     toggleNameHint: 'Click to toggle name visibility',
     showName: 'Show Name', hideName: 'Hide Name',
+    toggleEnergyHint: 'Click to toggle energy visibility',
+    showEnergy: 'Show Energy', hideEnergy: 'Hide Energy',
     addState: '+ Add State', deleteSelected: '✕ Delete',
     selectAll: 'All', deselect: 'None',
     pasteHint: 'Ctrl+V to paste Excel data',
@@ -925,6 +951,8 @@ const LANG = {
     axisThickness: 'Axis Line Width (px):',
     /* Tick direction */
     tickDirHead: 'Tick Direction',
+    tickDirBottom: 'Bottom (X):', tickDirTop: 'Top:',
+    tickDirLeft: 'Left (Y):', tickDirRight: 'Right:',
     tickDirX: 'X Ticks:', tickDirY: 'Y Ticks:',
     tickDirOut: 'Out', tickDirIn: 'In', tickDirBoth: 'Both', tickDirNone: 'None',
     /* Axis titles */
@@ -1313,7 +1341,7 @@ function renderRichText(textSel, rawStr) {
 let nextId = 1;
 function gid() { return 's' + (nextId++); }
 
-function mkState(name, coord, energy, width, showName) {
+function mkState(name, coord, energy, width, showName, showEnergy) {
   let w = (width !== undefined && !isNaN(width)) ? parseFloat(width) : 0.50;
   return {
     id: gid(),
@@ -1322,6 +1350,7 @@ function mkState(name, coord, energy, width, showName) {
     energy: (energy !== undefined && !isNaN(energy)) ? parseFloat(energy) : 0,
     width: w,
     showName: showName !== false,
+    showEnergy: showEnergy !== false,
     style: {},
     labelOffset: { energy: { x: 0, y: 0 }, name: { x: 0, y: 0 } }
   };
@@ -1388,6 +1417,7 @@ function defaultApp() {
 function normalize(st) {
   if (!st.id) st.id = gid();
   if (st.showName === undefined) st.showName = true;
+  if (st.showEnergy === undefined) st.showEnergy = true;
   if (st.width === undefined) {
     if (st.type === 'dot') st.width = 0;
     else if (st.type === 'half') st.width = 0.25;
@@ -1470,24 +1500,21 @@ function applyLang() {
   setTxt('lbl-margin-right', t('marginRight'));
   setTxt('hint-plot-margins', t('hintPlotMargins'));
 
-  /* ③ Tick direction */
+  /* ③ Tick direction (4-axis independent) */
   setTxt('lbl-tick-dir-head', t('tickDirHead'));
-  setTxt('lbl-tick-dir-x', t('tickDirX'));
-  setTxt('lbl-tick-dir-y', t('tickDirY'));
-  const selTickX = document.getElementById('opt-tick-dir-x');
-  if (selTickX) {
-    selTickX.options[0].text = t('tickDirOut');
-    selTickX.options[1].text = t('tickDirIn');
-    selTickX.options[2].text = t('tickDirBoth');
-    selTickX.options[3].text = t('tickDirNone');
-  }
-  const selTickY = document.getElementById('opt-tick-dir-y');
-  if (selTickY) {
-    selTickY.options[0].text = t('tickDirOut');
-    selTickY.options[1].text = t('tickDirIn');
-    selTickY.options[2].text = t('tickDirBoth');
-    selTickY.options[3].text = t('tickDirNone');
-  }
+  setTxt('lbl-tick-bottom', t('tickDirBottom'));
+  setTxt('lbl-tick-top', t('tickDirTop'));
+  setTxt('lbl-tick-left', t('tickDirLeft'));
+  setTxt('lbl-tick-right', t('tickDirRight'));
+  ['opt-tick-dir-bottom', 'opt-tick-dir-top', 'opt-tick-dir-left', 'opt-tick-dir-right'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (sel && sel.options.length >= 4) {
+      sel.options[0].text = t('tickDirOut');
+      sel.options[1].text = t('tickDirIn');
+      sel.options[2].text = t('tickDirBoth');
+      sel.options[3].text = t('tickDirNone');
+    }
+  });
 
   /* ④ Axis titles */
   setTxt('lbl-axis-title-head', t('axisTitleHead'));
@@ -1576,6 +1603,8 @@ function applyLang() {
   document.getElementById('lbl-bw').textContent = t('width');
   document.getElementById('lbl-bt').textContent = t('thickness');
   document.getElementById('lbl-bshowname').textContent = t('thName');
+  const lblBShowEnergy = document.getElementById('lbl-bshowenergy');
+  if (lblBShowEnergy) lblBShowEnergy.textContent = t('thEnergy');
   const lblBNameSize = document.getElementById('lbl-bname-size');
   if (lblBNameSize) lblBNameSize.textContent = t('nameFontSize');
   const lblBNameWeight = document.getElementById('lbl-bname-weight');
@@ -1593,6 +1622,12 @@ function applyLang() {
     bShowSel.options[0].text = '-' + (currentLang==='zh'?'保持':'Keep') + '-';
     bShowSel.options[1].text = t('showName');
     bShowSel.options[2].text = t('hideName');
+  }
+  const bShowESel = document.getElementById('batch-showenergy');
+  if (bShowESel) {
+    bShowESel.options[0].text = '-' + (currentLang==='zh'?'保持':'Keep') + '-';
+    bShowESel.options[1].text = t('showEnergy');
+    bShowESel.options[2].text = t('hideEnergy');
   }
 
   const bBgSel = document.getElementById('batch-energy-bg');
@@ -1716,6 +1751,10 @@ function initChartOptions() {
   if (app.chartOptions.axisThickness === undefined) app.chartOptions.axisThickness = 1.0;
   if (app.chartOptions.tickDirX === undefined) app.chartOptions.tickDirX = 'out';
   if (app.chartOptions.tickDirY === undefined) app.chartOptions.tickDirY = 'out';
+  if (app.chartOptions.tickDirBottom === undefined) app.chartOptions.tickDirBottom = app.chartOptions.tickDirX || 'out';
+  if (app.chartOptions.tickDirTop === undefined) app.chartOptions.tickDirTop = app.chartOptions.tickDirX || 'out';
+  if (app.chartOptions.tickDirLeft === undefined) app.chartOptions.tickDirLeft = app.chartOptions.tickDirY || 'out';
+  if (app.chartOptions.tickDirRight === undefined) app.chartOptions.tickDirRight = app.chartOptions.tickDirY || 'out';
   if (app.chartOptions.showChartTitle === undefined) app.chartOptions.showChartTitle = false;
   if (app.chartOptions.chartTitleFontSize === undefined) app.chartOptions.chartTitleFontSize = 16;
   if (app.chartOptions.fontFamily === undefined) app.chartOptions.fontFamily = 'Arial, sans-serif';
@@ -1849,9 +1888,11 @@ function initChartOptions() {
     };
   }
 
-  // ③ Tick direction
-  bindSel('opt-tick-dir-x', 'tickDirX', 'out');
-  bindSel('opt-tick-dir-y', 'tickDirY', 'out');
+  // ③ Tick direction (4-axis independent)
+  bindSel('opt-tick-dir-bottom', 'tickDirBottom', 'out');
+  bindSel('opt-tick-dir-top', 'tickDirTop', 'out');
+  bindSel('opt-tick-dir-left', 'tickDirLeft', 'out');
+  bindSel('opt-tick-dir-right', 'tickDirRight', 'out');
 
   // ④ Axis titles
   const cbTitle = document.getElementById('opt-show-xtitle');
@@ -2138,8 +2179,22 @@ function renderTable() {
 
     // Coord
     tr.appendChild(mkCell(st.coord,'number',v=>{ st.coord=parseFloat(v)||0; saveAndRender(); },'0.5'));
-    // Energy
-    tr.appendChild(mkCell(st.energy,'number',v=>{ st.energy=parseFloat(v)||0; saveAndRender(); },'0.1'));
+    // Energy + Show/Hide eye toggle
+    const tdE = document.createElement('td');
+    const ew = document.createElement('div'); ew.className = 'name-cell-wrap';
+    const inpE = document.createElement('input'); inpE.type = 'number'; inpE.step = '0.1'; inpE.value = st.energy;
+    inpE.onchange = () => { st.energy = parseFloat(inpE.value) || 0; saveAndRender(); };
+    const eyeE = document.createElement('button'); eyeE.type = 'button';
+    eyeE.className = 'btn-toggle-eye' + (st.showEnergy === false ? ' hidden-name' : '');
+    eyeE.textContent = st.showEnergy === false ? '🚫' : '👁';
+    eyeE.title = t('toggleEnergyHint');
+    eyeE.onclick = e => {
+      e.stopPropagation();
+      st.showEnergy = !(st.showEnergy !== false);
+      saveAndRender();
+    };
+    ew.appendChild(inpE); ew.appendChild(eyeE);
+    tdE.appendChild(ew); tr.appendChild(tdE);
     
     // Width (0 = Dot)
     const td4 = document.createElement('td');
@@ -2241,6 +2296,7 @@ function setupActions() {
     const g=ag();
     const bw = document.getElementById('batch-width').value;
     const bShow = document.getElementById('batch-showname').value;
+    const bShowEnergy = document.getElementById('batch-showenergy')?.value;
     const col = document.getElementById('batch-color').value;
     const th = parseFloat(document.getElementById('batch-thick').value);
     const nSize = parseInt(document.getElementById('batch-name-size').value);
@@ -2254,6 +2310,8 @@ function setupActions() {
         if (bw !== '' && !isNaN(parseFloat(bw))) s.width = Math.max(0, parseFloat(bw));
         if (bShow === 'show') s.showName = true;
         else if (bShow === 'hide') s.showName = false;
+        if (bShowEnergy === 'show') s.showEnergy = true;
+        else if (bShowEnergy === 'hide') s.showEnergy = false;
         if (col) { s.style.color = col; addRecentColor(col); }
         if (!isNaN(th)) s.style.strokeWidth = th;
         if (!isNaN(nSize) && nSize > 0) s.style.nameFontSize = nSize;
@@ -2473,8 +2531,10 @@ function renderChart() {
   svg.style('font-family', activeFont);
 
   const axThick = co.axisThickness || 1.0;
-  const tickDirX = co.tickDirX || 'out';
-  const tickDirY = co.tickDirY || 'out';
+  const tickDirBottom = co.tickDirBottom || co.tickDirX || 'out';
+  const tickDirLeft = co.tickDirLeft || co.tickDirY || 'out';
+  const tickDirTop = co.tickDirTop || co.tickDirX || 'out';
+  const tickDirRight = co.tickDirRight || co.tickDirY || 'out';
   const tickFontSize = co.axisTickFontSize || 12;
   const tickWeight = co.axisTickFontWeight || '400';
   const axisTitleSize = (co.axisTitleFontSize || 14) + 'px';
@@ -2600,9 +2660,9 @@ function renderChart() {
     if (co?.showXTicks === false) {
       xAxis.tickFormat('').tickSize(0);
     } else {
-      if (tickDirX === 'in') xAxis.tickSizeInner(-6).tickPadding(8);
-      else if (tickDirX === 'out') xAxis.tickSizeInner(6).tickPadding(8);
-      else if (tickDirX === 'both') xAxis.tickSizeInner(6).tickPadding(8);
+      if (tickDirBottom === 'in') xAxis.tickSizeInner(-6).tickPadding(8);
+      else if (tickDirBottom === 'out') xAxis.tickSizeInner(6).tickPadding(8);
+      else if (tickDirBottom === 'both') xAxis.tickSizeInner(6).tickPadding(8);
       else xAxis.tickSizeInner(0).tickPadding(5); // none
     }
     const xAxG = g.append('g').attr('class', 'axis axis-bottom')
@@ -2616,7 +2676,7 @@ function renderChart() {
       .style('fill', '#000000');
 
     xAxG.selectAll('path, line').style('stroke', '#000000').style('stroke-width', axThick + 'px');
-    if (co?.showXTicks !== false && tickDirX === 'both') {
+    if (co?.showXTicks !== false && tickDirBottom === 'both') {
       xAxG.selectAll('.tick line').attr('y1', -6).attr('y2', 6);
     }
   }
@@ -2624,9 +2684,9 @@ function renderChart() {
   // Left axis (Y)
   if (co?.showLeftAxis !== false) {
     let yAxis = d3.axisLeft(yS);
-    if (tickDirY === 'in') yAxis.tickSizeInner(-6).tickPadding(8);
-    else if (tickDirY === 'out') yAxis.tickSizeInner(6).tickPadding(8);
-    else if (tickDirY === 'both') yAxis.tickSizeInner(6).tickPadding(8);
+    if (tickDirLeft === 'in') yAxis.tickSizeInner(-6).tickPadding(8);
+    else if (tickDirLeft === 'out') yAxis.tickSizeInner(6).tickPadding(8);
+    else if (tickDirLeft === 'both') yAxis.tickSizeInner(6).tickPadding(8);
     else yAxis.tickSizeInner(0).tickPadding(5); // none
 
     const yAxG = g.append('g').attr('class', 'axis axis-left')
@@ -2639,7 +2699,7 @@ function renderChart() {
       .style('fill', '#000000');
 
     yAxG.selectAll('path, line').style('stroke', '#000000').style('stroke-width', axThick + 'px');
-    if (tickDirY === 'both') {
+    if (tickDirLeft === 'both') {
       yAxG.selectAll('.tick line').attr('x1', -6).attr('x2', 6);
     }
   }
@@ -2647,16 +2707,16 @@ function renderChart() {
   // Top axis (frame line)
   if (co?.showTopAxis !== false) {
     let topAxis = d3.axisTop(xS).tickFormat('');
-    if (tickDirX === 'in') topAxis.tickSizeInner(-6);
-    else if (tickDirX === 'out') topAxis.tickSizeInner(6);
-    else if (tickDirX === 'both') topAxis.tickSizeInner(6);
+    if (tickDirTop === 'in') topAxis.tickSizeInner(-6);
+    else if (tickDirTop === 'out') topAxis.tickSizeInner(6);
+    else if (tickDirTop === 'both') topAxis.tickSizeInner(6);
     else topAxis.tickSizeInner(0);
 
     const topG = g.append('g').attr('class', 'axis axis-top')
       .call(topAxis);
 
     topG.selectAll('path, line').style('stroke', '#000000').style('stroke-width', axThick + 'px');
-    if (tickDirX === 'both') {
+    if (tickDirTop === 'both') {
       topG.selectAll('.tick line').attr('y1', -6).attr('y2', 6);
     }
   }
@@ -2664,9 +2724,9 @@ function renderChart() {
   // Right axis (frame line)
   if (co?.showRightAxis !== false) {
     let rightAxis = d3.axisRight(yS).tickFormat('');
-    if (tickDirY === 'in') rightAxis.tickSizeInner(-6);
-    else if (tickDirY === 'out') rightAxis.tickSizeInner(6);
-    else if (tickDirY === 'both') rightAxis.tickSizeInner(6);
+    if (tickDirRight === 'in') rightAxis.tickSizeInner(-6);
+    else if (tickDirRight === 'out') rightAxis.tickSizeInner(6);
+    else if (tickDirRight === 'both') rightAxis.tickSizeInner(6);
     else rightAxis.tickSizeInner(0);
 
     const rightG = g.append('g').attr('class', 'axis axis-right')
@@ -2674,7 +2734,7 @@ function renderChart() {
       .call(rightAxis);
 
     rightG.selectAll('path, line').style('stroke', '#000000').style('stroke-width', axThick + 'px');
-    if (tickDirY === 'both') {
+    if (tickDirRight === 'both') {
       rightG.selectAll('.tick line').attr('x1', -6).attr('x2', 6);
     }
   }
@@ -3019,60 +3079,62 @@ function renderGroupChart(g, gr, gi, xS, yS) {
     const cx=xS(s.coord), y=yS(s.de), col=nc(s);
     const lo = s.labelOffset||{energy:{x:0,y:0},name:{x:0,y:0}};
 
-    // Energy label group with background badge
-    const eG = gL.append('g').attr('class', 'energy-label-group')
-      .attr('transform', `translate(${cx + lo.energy.x}, ${y - 12 + lo.energy.y})`)
-      .style('cursor', 'move');
+    // Energy label group with background badge (only if showEnergy !== false)
+    if (s.showEnergy !== false) {
+      const eG = gL.append('g').attr('class', 'energy-label-group')
+        .attr('transform', `translate(${cx + lo.energy.x}, ${y - 12 + lo.energy.y})`)
+        .style('cursor', 'move');
 
-    const eSize = (s.style?.energyFontSize || app.chartOptions?.energyFontSize || 13) + 'px';
-    const eWeight = s.style?.energyFontWeight || app.chartOptions?.energyFontWeight || '600';
-    const eL = eG.append('text').attr('class', 'energy-label')
-      .attr('x', 0).attr('y', 0)
-      .attr('text-anchor', 'middle')
-      .attr('font-size', eSize)
-      .style('font-size', eSize)
-      .attr('font-weight', eWeight)
-      .style('font-weight', eWeight)
-      .style('font-family', activeFont)
-      .attr('fill', col)
-      .attr('dominant-baseline', 'middle');
-    renderRichText(eL, fmtE(s.de));
+      const eSize = (s.style?.energyFontSize || app.chartOptions?.energyFontSize || 13) + 'px';
+      const eWeight = s.style?.energyFontWeight || app.chartOptions?.energyFontWeight || '600';
+      const eL = eG.append('text').attr('class', 'energy-label')
+        .attr('x', 0).attr('y', 0)
+        .attr('text-anchor', 'middle')
+        .attr('font-size', eSize)
+        .style('font-size', eSize)
+        .attr('font-weight', eWeight)
+        .style('font-weight', eWeight)
+        .style('font-family', activeFont)
+        .attr('fill', col)
+        .attr('dominant-baseline', 'middle');
+      renderRichText(eL, fmtE(s.de));
 
-    const bgCol = s.style?.energyBg || app.chartOptions?.energyBg || 'none';
-    if (bgCol && bgCol !== 'none' && bgCol !== 'transparent') {
-      try {
-        const bbox = eL.node().getBBox();
-        const padX = 4, padY = 2;
-        eG.insert('rect', 'text')
-          .attr('class', 'energy-label-bg')
-          .attr('x', bbox.x - padX)
-          .attr('y', bbox.y - padY)
-          .attr('width', bbox.width + padX * 2)
-          .attr('height', bbox.height + padY * 2)
-          .attr('fill', bgCol)
-          .attr('stroke', '#d0d7de')
-          .attr('stroke-width', 0.8)
-          .attr('rx', 3).attr('ry', 3);
-      } catch(e){}
-    }
-
-    bindPrecisionDrag(
-      eG,
-      () => ({ x: (lo.energy && lo.energy.x) || 0, y: (lo.energy && lo.energy.y) || 0 }),
-      (newX, newY) => {
-        const real = app.groups[gi].states[s._oi];
-        if (!real.labelOffset) real.labelOffset = { energy: {x:0, y:0}, name: {x:0, y:0} };
-        real.labelOffset.energy.x = newX;
-        real.labelOffset.energy.y = newY;
-        eG.attr('transform', `translate(${cx + newX}, ${y - 12 + newY})`);
-      },
-      () => saveState(),
-      () => {
-        const real = app.groups[gi].states[s._oi];
-        if (real.labelOffset) real.labelOffset.energy = { x: 0, y: 0 };
-        saveAndRender();
+      const bgCol = s.style?.energyBg || app.chartOptions?.energyBg || 'none';
+      if (bgCol && bgCol !== 'none' && bgCol !== 'transparent') {
+        try {
+          const bbox = eL.node().getBBox();
+          const padX = 4, padY = 2;
+          eG.insert('rect', 'text')
+            .attr('class', 'energy-label-bg')
+            .attr('x', bbox.x - padX)
+            .attr('y', bbox.y - padY)
+            .attr('width', bbox.width + padX * 2)
+            .attr('height', bbox.height + padY * 2)
+            .attr('fill', bgCol)
+            .attr('stroke', '#d0d7de')
+            .attr('stroke-width', 0.8)
+            .attr('rx', 3).attr('ry', 3);
+        } catch(e){}
       }
-    );
+
+      bindPrecisionDrag(
+        eG,
+        () => ({ x: (lo.energy && lo.energy.x) || 0, y: (lo.energy && lo.energy.y) || 0 }),
+        (newX, newY) => {
+          const real = app.groups[gi].states[s._oi];
+          if (!real.labelOffset) real.labelOffset = { energy: {x:0, y:0}, name: {x:0, y:0} };
+          real.labelOffset.energy.x = newX;
+          real.labelOffset.energy.y = newY;
+          eG.attr('transform', `translate(${cx + newX}, ${y - 12 + newY})`);
+        },
+        () => saveState(),
+        () => {
+          const real = app.groups[gi].states[s._oi];
+          if (real.labelOffset) real.labelOffset.energy = { x: 0, y: 0 };
+          saveAndRender();
+        }
+      );
+    }
 
     // Name label (only if showName !== false)
     if (s.showName !== false) {
@@ -3557,6 +3619,19 @@ function showNodePopup(gi, si, ev) {
       st.style.nameFontWeight = v;
       renderChart();
     });
+
+    // Show Energy checkbox
+    const rEnergy = document.createElement('div'); rEnergy.className = 'popup-row';
+    const lEnergy = document.createElement('label'); lEnergy.textContent = t('showEnergy');
+    const cbEnergy = document.createElement('input'); cbEnergy.type = 'checkbox';
+    cbEnergy.checked = st.showEnergy !== false;
+    cbEnergy.onchange = () => {
+      st.showEnergy = cbEnergy.checked;
+      renderTable();
+      renderChart();
+      saveState();
+    };
+    rEnergy.appendChild(lEnergy); rEnergy.appendChild(cbEnergy); popBody.appendChild(rEnergy);
 
     // Energy Font Size
     addPRow(t('energyFontSize'), 'number', st.style.energyFontSize || (app.chartOptions?.energyFontSize || 13), v => {
