@@ -2407,6 +2407,58 @@ function renderAnnotationUI() {
 // 11. CHART RENDERING
 // ============================================================
 let cW = 800, cH = 500;
+let currentPlotMargin = { top: 22, right: 35, bottom: 44, left: 65 };
+let currentPlotW = 700;
+
+function getSvgPoint(evt) {
+  const svgNode = document.getElementById('chart-svg');
+  if (!svgNode) return { x: evt.clientX, y: evt.clientY };
+  const pt = svgNode.createSVGPoint();
+  pt.x = evt.clientX;
+  pt.y = evt.clientY;
+  const ctm = svgNode.getScreenCTM();
+  if (ctm) return pt.matrixTransform(ctm.inverse());
+  const [mx, my] = d3.pointer(evt, svgNode);
+  return { x: mx, y: my };
+}
+
+function bindPrecisionDrag(d3Selection, getStartOffset, onDragUpdate, onDragEnd, onDblClick) {
+  d3Selection.on('pointerdown', function(ev) {
+    if (ev.button !== 0) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+
+    const startPt = getSvgPoint(ev);
+    const startOff = getStartOffset();
+
+    document.body.style.userSelect = 'none';
+
+    function onPointerMove(e) {
+      e.preventDefault();
+      const curPt = getSvgPoint(e);
+      const dx = curPt.x - startPt.x;
+      const dy = curPt.y - startPt.y;
+      onDragUpdate(Math.round(startOff.x + dx), Math.round(startOff.y + dy), dx, dy);
+    }
+
+    function onPointerUp(e) {
+      document.body.style.userSelect = '';
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      if (onDragEnd) onDragEnd();
+    }
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+  });
+
+  if (onDblClick) {
+    d3Selection.on('dblclick', function(ev) {
+      ev.stopPropagation();
+      onDblClick();
+    });
+  }
+}
 
 function renderChart() {
   const svg = d3.select('#chart-svg');
@@ -2467,6 +2519,8 @@ function renderChart() {
 
   const iW = cW - margin.left - margin.right;
   const iH = cH - margin.top - margin.bottom;
+  currentPlotMargin = margin;
+  currentPlotW = iW;
   const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
   // Chart title (Draggable)
@@ -2493,12 +2547,21 @@ function renderChart() {
       .attr('fill', '#000000');
     renderRichText(titleEl, co.chartTitleText.trim());
 
-    titleG.call(d3.drag().on('drag', function(ev) {
-      if (!app.chartOptions.chartTitleOffset) app.chartOptions.chartTitleOffset = { x: 0, y: 0 };
-      app.chartOptions.chartTitleOffset.x += ev.dx;
-      app.chartOptions.chartTitleOffset.y += ev.dy;
-      d3.select(this).attr('transform', `translate(${baseTitleX + app.chartOptions.chartTitleOffset.x}, ${baseTitleY + app.chartOptions.chartTitleOffset.y})`);
-    }).on('end', () => saveState()));
+    bindPrecisionDrag(
+      titleG,
+      () => ({ x: (app.chartOptions.chartTitleOffset && app.chartOptions.chartTitleOffset.x) || 0, y: (app.chartOptions.chartTitleOffset && app.chartOptions.chartTitleOffset.y) || 0 }),
+      (newX, newY) => {
+        if (!app.chartOptions.chartTitleOffset) app.chartOptions.chartTitleOffset = { x: 0, y: 0 };
+        app.chartOptions.chartTitleOffset.x = newX;
+        app.chartOptions.chartTitleOffset.y = newY;
+        titleG.attr('transform', `translate(${baseTitleX + newX}, ${baseTitleY + newY})`);
+      },
+      () => saveState(),
+      () => {
+        app.chartOptions.chartTitleOffset = { x: 0, y: 0 };
+        saveAndRender();
+      }
+    );
   }
 
   // Collect all points
@@ -2805,18 +2868,21 @@ function renderChart() {
       .attr('fill', '#000000');
     renderRichText(xTitleEl, xTitle);
 
-    xTitleG.call(d3.drag().on('drag', function(ev) {
-      if (!app.chartOptions.xTitleOffset) app.chartOptions.xTitleOffset = { x: 0, y: 0 };
-      app.chartOptions.xTitleOffset.x += ev.dx;
-      app.chartOptions.xTitleOffset.y += ev.dy;
-      d3.select(this).attr('transform', `translate(${baseX + app.chartOptions.xTitleOffset.x}, ${baseYOffset + app.chartOptions.xTitleOffset.y})`);
-    }).on('end', () => saveState()));
-
-    xTitleG.on('dblclick', function(ev) {
-      ev.stopPropagation();
-      app.chartOptions.xTitleOffset = { x: 0, y: 0 };
-      saveAndRender();
-    });
+    bindPrecisionDrag(
+      xTitleG,
+      () => ({ x: (app.chartOptions.xTitleOffset && app.chartOptions.xTitleOffset.x) || 0, y: (app.chartOptions.xTitleOffset && app.chartOptions.xTitleOffset.y) || 0 }),
+      (newX, newY) => {
+        if (!app.chartOptions.xTitleOffset) app.chartOptions.xTitleOffset = { x: 0, y: 0 };
+        app.chartOptions.xTitleOffset.x = newX;
+        app.chartOptions.xTitleOffset.y = newY;
+        xTitleG.attr('transform', `translate(${baseX + newX}, ${baseYOffset + newY})`);
+      },
+      () => saveState(),
+      () => {
+        app.chartOptions.xTitleOffset = { x: 0, y: 0 };
+        saveAndRender();
+      }
+    );
   }
 
   // Y-axis title (Draggable with Mouse)
@@ -2846,18 +2912,21 @@ function renderChart() {
     .attr('fill', '#000000');
   renderRichText(yTitleEl, yTitleStr);
 
-  yTitleG.call(d3.drag().on('drag', function(ev) {
-    if (!app.chartOptions.yTitleOffset) app.chartOptions.yTitleOffset = { x: 0, y: 0 };
-    app.chartOptions.yTitleOffset.x += ev.dx;
-    app.chartOptions.yTitleOffset.y += ev.dy;
-    d3.select(this).attr('transform', `translate(${app.chartOptions.yTitleOffset.x}, ${app.chartOptions.yTitleOffset.y}) rotate(-90)`);
-  }).on('end', () => saveState()));
-
-  yTitleG.on('dblclick', function(ev) {
-    ev.stopPropagation();
-    app.chartOptions.yTitleOffset = { x: 0, y: 0 };
-    saveAndRender();
-  });
+  bindPrecisionDrag(
+    yTitleG,
+    () => ({ x: (app.chartOptions.yTitleOffset && app.chartOptions.yTitleOffset.x) || 0, y: (app.chartOptions.yTitleOffset && app.chartOptions.yTitleOffset.y) || 0 }),
+    (newX, newY) => {
+      if (!app.chartOptions.yTitleOffset) app.chartOptions.yTitleOffset = { x: 0, y: 0 };
+      app.chartOptions.yTitleOffset.x = newX;
+      app.chartOptions.yTitleOffset.y = newY;
+      yTitleG.attr('transform', `translate(${newX}, ${newY}) rotate(-90)`);
+    },
+    () => saveState(),
+    () => {
+      app.chartOptions.yTitleOffset = { x: 0, y: 0 };
+      saveAndRender();
+    }
+  );
 
   // Render groups
   app.groups.forEach((gr, gi) => { if (gr.visible) renderGroupChart(g, gr, gi, xS, yS); });
@@ -2987,13 +3056,23 @@ function renderGroupChart(g, gr, gi, xS, yS) {
       } catch(e){}
     }
 
-    eG.call(d3.drag().on('drag', function(ev){
-      const real = app.groups[gi].states[s._oi];
-      if (!real.labelOffset) real.labelOffset = { energy: {x:0, y:0}, name: {x:0, y:0} };
-      real.labelOffset.energy.x += ev.dx;
-      real.labelOffset.energy.y += ev.dy;
-      d3.select(this).attr('transform', `translate(${cx + real.labelOffset.energy.x}, ${y - 12 + real.labelOffset.energy.y})`);
-    }).on('end', () => saveState()));
+    bindPrecisionDrag(
+      eG,
+      () => ({ x: (lo.energy && lo.energy.x) || 0, y: (lo.energy && lo.energy.y) || 0 }),
+      (newX, newY) => {
+        const real = app.groups[gi].states[s._oi];
+        if (!real.labelOffset) real.labelOffset = { energy: {x:0, y:0}, name: {x:0, y:0} };
+        real.labelOffset.energy.x = newX;
+        real.labelOffset.energy.y = newY;
+        eG.attr('transform', `translate(${cx + newX}, ${y - 12 + newY})`);
+      },
+      () => saveState(),
+      () => {
+        const real = app.groups[gi].states[s._oi];
+        if (real.labelOffset) real.labelOffset.energy = { x: 0, y: 0 };
+        saveAndRender();
+      }
+    );
 
     // Name label (only if showName !== false)
     if (s.showName !== false) {
@@ -3014,13 +3093,23 @@ function renderGroupChart(g, gr, gi, xS, yS) {
         .attr('fill', '#555');
       renderRichText(nL, s.name);
 
-      nG.call(d3.drag().on('drag', function(ev) {
-        const real = app.groups[gi].states[s._oi];
-        if (!real.labelOffset) real.labelOffset = { energy: {x:0, y:0}, name: {x:0, y:0} };
-        real.labelOffset.name.x += ev.dx;
-        real.labelOffset.name.y += ev.dy;
-        d3.select(this).attr('transform', `translate(${cx + real.labelOffset.name.x}, ${y + 22 + real.labelOffset.name.y})`);
-      }).on('end', () => saveState()));
+      bindPrecisionDrag(
+        nG,
+        () => ({ x: (lo.name && lo.name.x) || 0, y: (lo.name && lo.name.y) || 0 }),
+        (newX, newY) => {
+          const real = app.groups[gi].states[s._oi];
+          if (!real.labelOffset) real.labelOffset = { energy: {x:0, y:0}, name: {x:0, y:0} };
+          real.labelOffset.name.x = newX;
+          real.labelOffset.name.y = newY;
+          nG.attr('transform', `translate(${cx + newX}, ${y + 22 + newY})`);
+        },
+        () => saveState(),
+        () => {
+          const real = app.groups[gi].states[s._oi];
+          if (real.labelOffset) real.labelOffset.name = { x: 0, y: 0 };
+          saveAndRender();
+        }
+      );
     }
   });
 
@@ -3067,7 +3156,8 @@ function renderAnnOnChart(gL, gr, gi, xS, yS) {
 
     // Arrow container (draggable horizontally)
     const arrowG = aG.append('g').attr('class', 'ann-arrow-shaft')
-      .style('cursor', 'ew-resize');
+      .style('cursor', 'ew-resize')
+      .attr('title', currentLang === 'zh' ? '拖曳調整雙箭頭水平位置（雙擊還原置中）' : 'Drag arrow horizontally (double-click to reset)');
 
     const headH = 7;
     // Vertical arrow shaft
@@ -3086,17 +3176,58 @@ function renderAnnOnChart(gL, gr, gi, xS, yS) {
       .attr('d', `M${arrowX},${botY} L${arrowX-4},${botY-headH} L${arrowX+4},${botY-headH} Z`)
       .attr('fill', ann.color);
 
-    // Make arrow horizontally draggable
-    arrowG.call(d3.drag()
-      .on('drag', function(ev) {
-        const curPx = xS((ann.coord !== undefined && !isNaN(ann.coord)) ? ann.coord : midCoord);
-        const newCoord = xS.invert(curPx + ev.dx);
+    // Wide hit rect for effortless, 100% reliable grabbing (same concept as border controller)
+    const hitW = 32;
+    const hitH = Math.max(20, botY - topY);
+    arrowG.append('rect')
+      .attr('class', 'ann-arrow-hit')
+      .attr('x', arrowX - hitW / 2)
+      .attr('y', topY)
+      .attr('width', hitW)
+      .attr('height', hitH)
+      .attr('fill', 'transparent')
+      .attr('pointer-events', 'all')
+      .style('cursor', 'ew-resize');
+
+    arrowG.on('pointerdown', function(ev) {
+      if (ev.button !== 0) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+
+      const startPt = getSvgPoint(ev);
+      const startCoord = (ann.coord !== undefined && !isNaN(ann.coord)) ? ann.coord : midCoord;
+      const startArrowX = xS(startCoord);
+
+      document.body.style.userSelect = 'none';
+
+      function onPointerMove(e) {
+        e.preventDefault();
+        const curPt = getSvgPoint(e);
+        const dx = curPt.x - startPt.x;
+        const newArrowX = startArrowX + dx;
+        const clampedX = Math.max(0, Math.min(currentPlotW, newArrowX));
+        const newCoord = xS.invert(clampedX);
         ann.coord = Math.round(newCoord * 100) / 100;
         renderChart();
+      }
+
+      function onPointerUp(e) {
+        document.body.style.userSelect = '';
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+        saveState();
         renderAnnotationUI();
-      })
-      .on('end', () => saveState())
-    );
+      }
+
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerUp);
+    });
+
+    arrowG.on('dblclick', function(ev) {
+      ev.stopPropagation();
+      delete ann.coord;
+      saveAndRender();
+    });
 
     // Label text with user-defined decimals
     const d = (app.chartOptions?.decimals !== undefined) ? app.chartOptions.decimals : 2;
@@ -3110,7 +3241,8 @@ function renderAnnOnChart(gL, gr, gi, xS, yS) {
     // Label group with optional background
     const lG = aG.append('g').attr('class', 'ann-label-group')
       .attr('transform', `translate(${lx}, ${ly})`)
-      .style('cursor', 'move');
+      .style('cursor', 'move')
+      .attr('title', currentLang === 'zh' ? '拖曳移動標籤位置（雙擊還原）' : 'Drag to move label (double-click to reset)');
 
     const annSize = (ann.fontSize || app.chartOptions?.annFontSize || 12) + 'px';
     const annWeight = ann.fontWeight || app.chartOptions?.annFontWeight || '600';
@@ -3141,11 +3273,21 @@ function renderAnnOnChart(gL, gr, gi, xS, yS) {
       } catch(e){}
     }
 
-    lG.call(d3.drag().on('drag', function(ev) {
-      if (!ann.labelOffset) ann.labelOffset = {x:0,y:0};
-      ann.labelOffset.x += ev.dx; ann.labelOffset.y += ev.dy;
-      d3.select(this).attr('transform', `translate(${arrowX + 10 + ann.labelOffset.x}, ${(fromY + toY) / 2 + ann.labelOffset.y})`);
-    }).on('end', () => saveState()));
+    bindPrecisionDrag(
+      lG,
+      () => ({ x: (lo.x || 0), y: (lo.y || 0) }),
+      (newX, newY) => {
+        if (!ann.labelOffset) ann.labelOffset = { x: 0, y: 0 };
+        ann.labelOffset.x = newX;
+        ann.labelOffset.y = newY;
+        lG.attr('transform', `translate(${arrowX + 10 + newX}, ${(fromY + toY) / 2 + newY})`);
+      },
+      () => saveState(),
+      () => {
+        ann.labelOffset = { x: 0, y: 0 };
+        saveAndRender();
+      }
+    );
   });
 }
 
@@ -3712,6 +3854,7 @@ function inlineCSS(el) {
     .text-annotation-group text { font-family: ${ff}; }
     .legend-resize-handle { display: none !important; }
     .plot-box-handles { display: none !important; }
+    .ann-arrow-hit { display: none !important; }
   `;
   el.insertBefore(s, el.firstChild);
 }
