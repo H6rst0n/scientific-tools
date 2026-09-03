@@ -85,7 +85,7 @@ const GeometryAdjuster = {
     }
 
     structure.syncFractionalFromCartesian();
-    structure.detectBonds();
+    structure.updateBondDistances();
   },
 
   /**
@@ -175,7 +175,7 @@ const GeometryAdjuster = {
     }
 
     structure.syncFractionalFromCartesian();
-    structure.detectBonds();
+    structure.updateBondDistances();
   },
 
   /**
@@ -255,7 +255,7 @@ const GeometryAdjuster = {
     }
 
     structure.syncFractionalFromCartesian();
-    structure.detectBonds();
+    structure.updateBondDistances();
   },
 
   /**

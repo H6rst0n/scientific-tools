@@ -22,7 +22,98 @@ class App {
     this.redoStack = [];
     this.maxHistory = 40;
 
+    // 最近使用的顏色 (最多 10 個，持久化儲存)
+    this.recentColors = this.loadRecentColors();
+
     this.init();
+  }
+
+  loadRecentColors() {
+    try {
+      const saved = localStorage.getItem('atomcraft_recent_colors');
+      if (saved) {
+        const arr = JSON.parse(saved);
+        if (Array.isArray(arr) && arr.length > 0) return arr.slice(0, 10);
+      }
+    } catch (e) {}
+    return ['#131722', '#000000', '#ffffff', '#1e293b', '#38bdf8', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
+  }
+
+  addRecentColor(colorHex) {
+    if (!colorHex || typeof colorHex !== 'string') return;
+    const hex = colorHex.toLowerCase().trim();
+    if (!/^#[0-9a-f]{6}$/i.test(hex)) return;
+
+    this.recentColors = [hex, ...this.recentColors.filter(c => c.toLowerCase() !== hex)].slice(0, 10);
+    try {
+      localStorage.setItem('atomcraft_recent_colors', JSON.stringify(this.recentColors));
+    } catch (e) {}
+    this.renderRecentColorsBar();
+  }
+
+  renderRecentColorsBar() {
+    const targets = [
+      { id: 'recent-colors-bg', type: 'bg' },
+      { id: 'recent-colors-elem', type: 'elem' },
+      { id: 'recent-colors-atom', type: 'atom' }
+    ];
+
+    targets.forEach(({ id, type }) => {
+      const bar = document.getElementById(id);
+      if (!bar) return;
+      bar.innerHTML = '';
+
+      if (this.recentColors.length === 0) {
+        bar.innerHTML = '<span style="font-size: 10px; color: var(--text-muted);">尚無最近使用顏色</span>';
+        return;
+      }
+
+      this.recentColors.forEach(c => {
+        const swatch = document.createElement('div');
+        swatch.className = 'recent-color-swatch';
+        swatch.style.backgroundColor = c;
+
+        if (type === 'bg') {
+          swatch.title = `點擊直接套用至背景色 (${c})`;
+          swatch.onclick = () => {
+            this.setBackgroundColor(c);
+            this.showToast(`已套用背景色 ${c}`);
+          };
+        } else if (type === 'elem') {
+          swatch.title = `點擊直接套用至目前所選元素 (${c})`;
+          swatch.onclick = () => {
+            const inputElem = document.getElementById('input-elem-color');
+            if (inputElem) inputElem.value = c;
+            const selectElem = document.getElementById('select-custom-element');
+            const sym = selectElem ? selectElem.value : null;
+            if (sym) {
+              this.renderer.setElementOverride(sym, { color: c });
+              this.renderer.update(this.structure);
+              this.addRecentColor(c);
+              this.showToast(`已套用顏色 ${c} 至元素 ${sym}`);
+            }
+          };
+        } else if (type === 'atom') {
+          swatch.title = `點擊直接套用至選中原子 (${c})`;
+          swatch.onclick = () => {
+            const inputAtom = document.getElementById('input-atom-color');
+            if (inputAtom) inputAtom.value = c;
+            const selAtoms = this.structure.atoms.filter(a => a.selected);
+            if (selAtoms.length > 0) {
+              this.pushHistory();
+              selAtoms.forEach(a => { a.customColor = c; });
+              this.renderer.update(this.structure);
+              this.addRecentColor(c);
+              this.showToast(`已套用顏色 ${c} 至 ${selAtoms.length} 顆選中原子`);
+            } else {
+              this.showToast('⚠️ 請先在畫布上選取欲套用顏色的原子');
+            }
+          };
+        }
+
+        bar.appendChild(swatch);
+      });
+    });
   }
 
   init() {
@@ -41,7 +132,10 @@ class App {
     // 5. 綁定檔案拖曳 (Drag & Drop)
     this.bindFileDrop();
 
-    // 6. 載入初始範例
+    // 6. 綁定外觀與色彩自訂面板
+    this.bindAppearanceModal();
+
+    // 7. 載入初始範例
     this.loadPreset('caffeine');
 
     console.log('AtomCraft 3D (GaussView Full Edition) initialized.');
@@ -395,26 +489,53 @@ class App {
       });
     }
 
-    // 2. 透視 (Perspective) / 正交 (Orthographic) 投影一鍵切換開關
+    // 2. 透視 / 正交 投影一鍵切換開關 (簡化中文)
     const btnToggleProj = document.getElementById('btn-toggle-projection');
     if (btnToggleProj) {
       btnToggleProj.addEventListener('click', () => {
         const nextOrtho = !this.renderer.isOrthographic;
         this.renderer.setProjection(nextOrtho);
         this.updateUI();
-        this.showToast(nextOrtho ? '已切換為正交投影 (Orthographic)' : '已切換為透視投影 (Perspective)');
+        this.showToast(nextOrtho ? '已切換為正交投影' : '已切換為透視投影');
       });
     }
 
     // 3. 綁定幾何微調懸浮控制板 (非阻塞式 Dock)
     this.bindGeometryAdjustDock();
 
-    // 4. 顯示風格切換
+    // 4. 顯示風格切換與空間填充大小滑桿
     const styleSelect = document.getElementById('select-style');
+    const spacefillScaleWrapper = document.getElementById('spacefill-scale-wrapper');
+    const sliderSpacefill = document.getElementById('slider-spacefill');
+    const valSpacefill = document.getElementById('val-spacefill');
+
     if (styleSelect) {
       styleSelect.addEventListener('change', (e) => {
         this.renderer.setStyle(e.target.value);
+        if (spacefillScaleWrapper) {
+          spacefillScaleWrapper.style.display = (e.target.value === 'spacefill') ? 'inline-flex' : 'none';
+        }
         this.renderer.update(this.structure);
+      });
+    }
+
+    if (sliderSpacefill && valSpacefill) {
+      sliderSpacefill.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value) || 1.0;
+        valSpacefill.textContent = `${val.toFixed(2)}x`;
+        this.renderer.setSpacefillScale(val);
+      });
+    }
+
+    // 4b. 週期性工具面板平滑摺疊收合按鈕
+    const btnToggleCrystal = document.getElementById('btn-toggle-crystal-panel');
+    const crystalPanel = document.getElementById('crystal-panel');
+    if (btnToggleCrystal && crystalPanel) {
+      btnToggleCrystal.addEventListener('click', () => {
+        crystalPanel.classList.toggle('collapsed');
+        const isCollapsed = crystalPanel.classList.contains('collapsed');
+        btnToggleCrystal.textContent = isCollapsed ? '◀' : '▶';
+        btnToggleCrystal.title = isCollapsed ? '展開週期性工具' : '收合週期性工具';
       });
     }
 
@@ -588,6 +709,34 @@ class App {
         this.applyAdjustValue(parseFloat(e.target.value));
       });
     }
+
+    // 成鍵拓樸 (Topology) 按鈕群組監聽
+    const bondTypeButtons = document.querySelectorAll('.btn-bond-type');
+    bondTypeButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const seq = this.controller.selectedSequence;
+        if (seq.length !== 2) return;
+        const [i1, i2] = seq;
+        const order = btn.getAttribute('data-order');
+
+        this.pushHistory();
+        this.structure.setBondOrder(i1, i2, order);
+        this.renderer.update(this.structure);
+        this.updateUI();
+
+        bondTypeButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        const orderNames = {
+          '0': '無鍵結 (已清除兩原子間連線)',
+          '1': '單鍵',
+          '2': '雙鍵',
+          '3': '三鍵',
+          'hb': '氫鍵'
+        };
+        this.showToast(`已設定原子 #${i1+1} 與 #${i2+1} 為 ${orderNames[order] || order}`);
+      });
+    });
   }
 
   /**
@@ -622,6 +771,23 @@ class App {
     if (s1) { s1.innerHTML = bondOptions; s1.value = 'fixed'; }
     if (s2) { s2.innerHTML = bondOptions; s2.value = 'group'; }
 
+    // 展開成鍵拓樸狀態行並同步目前鍵型
+    const bondTypeRow = document.getElementById('adjust-dock-bond-type-row');
+    if (bondTypeRow) bondTypeRow.style.display = 'flex';
+
+    const existingBond = this.structure.bonds.find(bd =>
+      (bd.a === Math.min(i1, i2) && bd.b === Math.max(i1, i2)) ||
+      (bd.a === Math.max(i1, i2) && bd.b === Math.min(i1, i2))
+    );
+    const curOrder = existingBond ? String(existingBond.order) : '0';
+    document.querySelectorAll('.btn-bond-type').forEach(btn => {
+      if (btn.getAttribute('data-order') === curOrder) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+
     const slider = document.getElementById('slider-adjust');
     const input = document.getElementById('input-adjust');
     if (slider) {
@@ -651,6 +817,9 @@ class App {
 
     this.isAdjustDockOpen = true;
     this.adjustDockType = 'angle';
+
+    const bondTypeRow = document.getElementById('adjust-dock-bond-type-row');
+    if (bondTypeRow) bondTypeRow.style.display = 'none';
 
     document.getElementById('adjust-dock-title').textContent = `📐 調整鍵角: ${a.element}${i1+1} - ${b.element}${i2+1} - ${c.element}${i3+1}`;
     document.getElementById('adjust-dock-unit').textContent = '°';
@@ -700,6 +869,9 @@ class App {
 
     this.isAdjustDockOpen = true;
     this.adjustDockType = 'dihedral';
+
+    const bondTypeRow = document.getElementById('adjust-dock-bond-type-row');
+    if (bondTypeRow) bondTypeRow.style.display = 'none';
 
     document.getElementById('adjust-dock-title').textContent = `🔗 調整二面角: ${p1.element}${i1+1}-${p2.element}${i2+1}-${p3.element}${i3+1}-${p4.element}${i4+1}`;
     document.getElementById('adjust-dock-unit').textContent = '°';
@@ -802,6 +974,8 @@ class App {
       else if (fmt === 'qe') text = Parsers.exportQE(this.structure);
       else if (fmt === 'cif') text = Parsers.exportCIF(this.structure);
       else if (fmt === 'pdb') text = Parsers.exportPDB(this.structure);
+      else if (fmt === 'tinker') text = Parsers.exportTinkerXYZ(this.structure);
+      else if (fmt === 'lammps') text = Parsers.exportLAMMPSData(this.structure);
 
       textarea.value = text;
     };
@@ -843,9 +1017,11 @@ class App {
         vasp: 'POSCAR',
         qe: 'in',
         cif: 'cif',
-        pdb: 'pdb'
+        pdb: 'pdb',
+        tinker: 'arc',
+        lammps: 'data'
       };
-      const filename = fmt === 'vasp' ? 'POSCAR' : `structure.${extMap[fmt] || 'txt'}`;
+      const filename = fmt === 'vasp' ? 'POSCAR' : (fmt === 'lammps' ? 'structure.data' : `structure.${extMap[fmt] || 'txt'}`);
       const blob = new Blob([textarea.value], { type: 'text/plain;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -865,11 +1041,11 @@ class App {
     this.updateUndoRedoButtons();
     this.updateElementFragmentBadge();
 
-    // 1. 更新相機投影模式按鈕標籤
+    // 1. 更新相機投影模式按鈕標籤 (簡化中文)
     const btnToggleProj = document.getElementById('btn-toggle-projection');
     if (btnToggleProj) {
-      btnToggleProj.innerHTML = this.renderer.isOrthographic ? '📐 正交 (Orthographic)' : '👁️ 透視 (Perspective)';
-      btnToggleProj.title = this.renderer.isOrthographic ? '點擊切換為透視投影 (Perspective)' : '點擊切換為正交投影 (Orthographic)';
+      btnToggleProj.innerHTML = this.renderer.isOrthographic ? '📐 正交' : '👁️ 透視';
+      btnToggleProj.title = this.renderer.isOrthographic ? '點擊切換為透視投影' : '點擊切換為正交投影';
     }
 
     // 2. 更新 GaussView 三大微調按鈕啟用與高亮狀態
@@ -905,6 +1081,219 @@ class App {
     if (crystalPanel) {
       crystalPanel.style.opacity = this.structure.cell ? '1' : '0.45';
     }
+
+    // 5. 若外觀懸浮面板開啟中，即時同步更新選取與元素資訊
+    if (this.updateAppearanceDock) {
+      this.updateAppearanceDock();
+    }
+  }
+
+  /**
+   * 綁定外觀與色彩樣式非阻塞懸浮面版 (背景顏色、元素樣式、個別原子自訂、最近使用顏色)
+   */
+  bindAppearanceModal() {
+    const dock = document.getElementById('appearance-dock');
+    const btnToggle = document.getElementById('btn-open-appearance');
+    const btnClose = document.getElementById('btn-close-appearance');
+    const inputBgColor = document.getElementById('input-bg-color');
+
+    // 元素自訂
+    const selectElem = document.getElementById('select-custom-element');
+    const inputElemColor = document.getElementById('input-elem-color');
+    const sliderElemRadius = document.getElementById('slider-elem-radius');
+    const valElemRadius = document.getElementById('val-elem-radius');
+    const btnApplyElemColor = document.getElementById('btn-apply-elem-color');
+    const btnResetElemStyle = document.getElementById('btn-reset-elem-style');
+
+    // 個別原子自訂
+    const labelSelectedCount = document.getElementById('label-selected-atoms-count');
+    const inputAtomColor = document.getElementById('input-atom-color');
+    const sliderAtomRadius = document.getElementById('slider-atom-radius');
+    const valAtomRadius = document.getElementById('val-atom-radius');
+    const btnApplyAtomColor = document.getElementById('btn-apply-atom-color');
+    const btnApplyAtomRadius = document.getElementById('btn-apply-atom-radius');
+    const btnResetAtomStyle = document.getElementById('btn-reset-atom-style');
+
+    if (!dock || !btnToggle) return;
+
+    this.renderRecentColorsBar();
+
+    // 刷新面板內容
+    this.updateAppearanceDock = () => {
+      this.renderRecentColorsBar();
+
+      // 1. 背景顏色
+      if (inputBgColor) inputBgColor.value = this.renderer.backgroundColor || '#131722';
+
+      // 2. 填充元素清單
+      if (selectElem) {
+        const currentElements = [...new Set(this.structure.atoms.map(a => a.element))];
+        const list = currentElements.length > 0 ? currentElements : ['C', 'H', 'O', 'N', 'Li', 'Na', 'Si', 'Fe', 'Pt', 'Au'];
+        const prevSelected = selectElem.value;
+        selectElem.innerHTML = list.map(elem => {
+          const info = getElementInfo(elem);
+          return `<option value="${elem}">${elem} (${info.nameZh || ''})</option>`;
+        }).join('');
+        if (list.includes(prevSelected)) {
+          selectElem.value = prevSelected;
+        }
+
+        const updateElemInputs = () => {
+          const sym = selectElem.value;
+          const override = this.renderer.elementOverrides[sym] || {};
+          const info = getElementInfo(sym);
+          if (inputElemColor) inputElemColor.value = override.color || info.color;
+          const rScale = override.radiusScale !== undefined ? override.radiusScale : 1.0;
+          if (sliderElemRadius) sliderElemRadius.value = rScale;
+          if (valElemRadius) valElemRadius.textContent = `${rScale.toFixed(2)}x`;
+        };
+
+        selectElem.onchange = updateElemInputs;
+        updateElemInputs();
+      }
+
+      // 3. 選中原子計數
+      const selAtoms = this.structure.atoms.filter(a => a.selected);
+      if (labelSelectedCount) {
+        labelSelectedCount.textContent = selAtoms.length > 0
+          ? `已選中 ${selAtoms.length} 顆原子`
+          : `尚未選取 (點擊/Shift框選)`;
+        labelSelectedCount.style.color = selAtoms.length > 0 ? 'var(--primary)' : 'var(--text-muted)';
+      }
+    };
+
+    // 切換懸浮面板開關
+    btnToggle.addEventListener('click', () => {
+      if (dock.style.display === 'none' || !dock.style.display) {
+        this.updateAppearanceDock();
+        dock.style.display = 'flex';
+      } else {
+        dock.style.display = 'none';
+      }
+    });
+
+    if (btnClose) {
+      btnClose.addEventListener('click', () => {
+        dock.style.display = 'none';
+      });
+    }
+
+    // 背景顏色即時變更
+    if (inputBgColor) {
+      inputBgColor.addEventListener('input', (e) => {
+        this.setBackgroundColor(e.target.value);
+        this.addRecentColor(e.target.value);
+      });
+    }
+
+    // 元素顏色套用
+    if (btnApplyElemColor && selectElem && inputElemColor) {
+      btnApplyElemColor.addEventListener('click', () => {
+        const sym = selectElem.value;
+        const color = inputElemColor.value;
+        this.renderer.setElementOverride(sym, { color: color });
+        this.addRecentColor(color);
+        this.showToast(`已更新元素 ${sym} 全域顯示顏色`);
+      });
+    }
+
+    // 元素半徑縮放 (即時連續滑動預覽)
+    if (sliderElemRadius && selectElem && valElemRadius) {
+      sliderElemRadius.addEventListener('input', (e) => {
+        const sym = selectElem.value;
+        const scale = parseFloat(e.target.value) || 1.0;
+        valElemRadius.textContent = `${scale.toFixed(2)}x`;
+        this.renderer.setElementOverride(sym, { radiusScale: scale });
+      });
+    }
+
+    // 元素重設預設
+    if (btnResetElemStyle && selectElem) {
+      btnResetElemStyle.addEventListener('click', () => {
+        const sym = selectElem.value;
+        this.renderer.clearElementOverride(sym);
+        const info = getElementInfo(sym);
+        if (inputElemColor) inputElemColor.value = info.color;
+        if (sliderElemRadius) sliderElemRadius.value = 1.0;
+        if (valElemRadius) valElemRadius.textContent = '1.00x';
+        this.showToast(`已重設元素 ${sym} 為系統預設樣式`);
+      });
+    }
+
+    // 選中原子半徑滑桿數值變更
+    if (sliderAtomRadius && valAtomRadius) {
+      sliderAtomRadius.addEventListener('input', (e) => {
+        const scale = parseFloat(e.target.value) || 1.0;
+        valAtomRadius.textContent = `${scale.toFixed(2)}x`;
+        // 即時預覽！
+        const selAtoms = this.structure.atoms.filter(a => a.selected);
+        if (selAtoms.length > 0) {
+          selAtoms.forEach(a => { a.customRadius = scale; });
+          this.renderer.update(this.structure);
+        }
+      });
+    }
+
+    // 個別原子顏色套用
+    if (btnApplyAtomColor && inputAtomColor) {
+      btnApplyAtomColor.addEventListener('click', () => {
+        const selAtoms = this.structure.atoms.filter(a => a.selected);
+        if (selAtoms.length === 0) {
+          this.showToast('請先選取至少一個原子 (可使用 Shift+左鍵框選)');
+          return;
+        }
+        this.pushHistory();
+        const color = inputAtomColor.value;
+        selAtoms.forEach(a => { a.customColor = color; });
+        this.renderer.update(this.structure);
+        this.addRecentColor(color);
+        this.showToast(`已自訂 ${selAtoms.length} 個原子的顏色`);
+      });
+    }
+
+    // 個別原子尺寸套用 (確認記錄歷史)
+    if (btnApplyAtomRadius && sliderAtomRadius) {
+      btnApplyAtomRadius.addEventListener('click', () => {
+        const selAtoms = this.structure.atoms.filter(a => a.selected);
+        if (selAtoms.length === 0) {
+          this.showToast('請先選取至少一個原子');
+          return;
+        }
+        this.pushHistory();
+        const scale = parseFloat(sliderAtomRadius.value) || 1.0;
+        selAtoms.forEach(a => { a.customRadius = scale; });
+        this.renderer.update(this.structure);
+        this.showToast(`已自訂 ${selAtoms.length} 個原子的尺寸倍率 (${scale.toFixed(2)}x)`);
+      });
+    }
+
+    // 個別原子重設
+    if (btnResetAtomStyle) {
+      btnResetAtomStyle.addEventListener('click', () => {
+        const selAtoms = this.structure.atoms.filter(a => a.selected);
+        if (selAtoms.length === 0) {
+          this.showToast('請先選取欲恢復的原子');
+          return;
+        }
+        this.pushHistory();
+        selAtoms.forEach(a => {
+          delete a.customColor;
+          delete a.customRadius;
+        });
+        this.renderer.update(this.structure);
+        this.showToast(`已重設 ${selAtoms.length} 個原子的外觀樣式`);
+      });
+    }
+  }
+
+  /**
+   * 設定 3D 畫布背景色
+   */
+  setBackgroundColor(colorHex) {
+    this.renderer.setBackgroundColor(colorHex);
+    const input = document.getElementById('input-bg-color');
+    if (input) input.value = colorHex;
+    this.addRecentColor(colorHex);
   }
 
   /**

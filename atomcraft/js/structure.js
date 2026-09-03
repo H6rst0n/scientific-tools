@@ -241,6 +241,63 @@ class Structure {
   }
 
   /**
+   * 計算兩原子間的笛卡爾歐氏距離 (Å)
+   */
+  getDistance(i, j) {
+    const a = this.atoms[i];
+    const b = this.atoms[j];
+    if (!a || !b) return 0;
+    return Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+  }
+
+  /**
+   * 僅更新既有各化學鍵的即時空間長度 (保留成鍵拓樸，不隨距離破壞鍵結)
+   */
+  updateBondDistances() {
+    for (const b of this.bonds) {
+      b.dist = this.getDistance(b.a, b.b);
+    }
+  }
+
+  /**
+   * 設定兩原子間的化學鍵拓樸型態 (0: 斷鍵, 1: 單鍵, 2: 雙鍵, 3: 三鍵, 'hb': 氫鍵)
+   */
+  setBondOrder(idx1, idx2, order) {
+    if (idx1 === idx2 || idx1 < 0 || idx2 < 0 || idx1 >= this.atoms.length || idx2 >= this.atoms.length) {
+      return null;
+    }
+    const a = Math.min(idx1, idx2);
+    const b = Math.max(idx1, idx2);
+
+    const existingIdx = this.bonds.findIndex(bond => bond.a === a && bond.b === b);
+
+    if (order === 0 || order === '0' || order === 'none') {
+      // 移除鍵結 (無鍵結)
+      if (existingIdx !== -1) {
+        this.bonds.splice(existingIdx, 1);
+      }
+      return null;
+    } else {
+      const parsedOrder = order === 'hb' ? 'hb' : (parseInt(order, 10) || 1);
+      if (existingIdx !== -1) {
+        this.bonds[existingIdx].order = parsedOrder;
+        this.bonds[existingIdx].dist = this.getDistance(a, b);
+        return this.bonds[existingIdx];
+      } else {
+        const newBond = {
+          a: a,
+          b: b,
+          dist: this.getDistance(a, b),
+          order: parsedOrder,
+          offset: [0, 0, 0]
+        };
+        this.bonds.push(newBond);
+        return newBond;
+      }
+    }
+  }
+
+  /**
    * 偵測化學鍵 (支援孤立分子與週期性邊界最小鏡像約定)
    */
   detectBonds(tolerance = 0.40) {

@@ -35,10 +35,10 @@
     </div>
 
     <div class="menu-section">
-      <button class="btn-header" onclick="document.getElementById('file-input').click()" title="開啟結構檔 (XYZ, GJF, ORCA, POSCAR, CIF, PDB)">
+      <button class="btn-header" onclick="document.getElementById('file-input').click()" title="開啟結構檔 (XYZ, GJF, ORCA, VASP, CIF, PDB, Tinker, LAMMPS)">
         📁 開啟檔案
       </button>
-      <input type="file" id="file-input" style="display: none;" accept=".xyz,.gjf,.com,.inp,.cif,.pdb,.vasp,POSCAR,CONTCAR">
+      <input type="file" id="file-input" style="display: none;" accept=".xyz,.gjf,.com,.inp,.cif,.pdb,.vasp,.data,.lammps,.lammpstrj,.dump,.arc,POSCAR,CONTCAR">
 
       <button class="btn-header primary" id="btn-open-export">
         💾 匯出檔案
@@ -48,7 +48,6 @@
 
       <button class="btn-header" id="btn-undo" onclick="window.app.undo()" title="復原 (Ctrl+Z)" disabled>↶ 復原</button>
       <button class="btn-header" id="btn-redo" onclick="window.app.redo()" title="重做 (Ctrl+Y)" disabled>↷ 重做</button>
-      <button class="btn-header" onclick="window.app.centerStructure()" title="居中分子或晶胞">🎯 居中</button>
       <button class="btn-header" onclick="window.app.clearStructure()" title="清空畫布">🗑️ 清空</button>
       <button class="btn-header" onclick="document.getElementById('modal-shortcuts').classList.add('show')" title="快捷鍵說明">❓ 說明</button>
     </div>
@@ -66,21 +65,21 @@
         ⊞ 元素: C (正四面體 sp³)
       </button>
 
-      <!-- 透視 / 正交 投影切換按鈕 -->
+      <!-- 透視 / 正交 投影切換按鈕 (簡化為圖示+中文) -->
       <button class="tool-btn" id="btn-toggle-projection" title="點擊在透視投影與正交投影之間切換">
-        👁️ 透視 (Perspective)
+        👁️ 透視
       </button>
 
       <div class="tool-separator"></div>
 
       <!-- GaussView 三大獨立幾何微調按鈕 -->
-      <button class="tool-btn" id="btn-mod-bond" title="選取剛好 2 個原子時啟用：調整鍵長距離" disabled>
+      <button class="tool-btn" id="btn-mod-bond" title="選取剛好 2 個原子時啟用：調整鍵長距離">
         📏 調整鍵長
       </button>
-      <button class="tool-btn" id="btn-mod-angle" title="選取剛好 3 個原子時啟用：調整鍵角 (頂點為第2原子)" disabled>
+      <button class="tool-btn" id="btn-mod-angle" title="選取剛好 3 個原子時啟用：調整鍵角 (頂點為第2原子)">
         📐 調整鍵角
       </button>
-      <button class="tool-btn" id="btn-mod-dihedral" title="選取剛好 4 個原子時啟用：調整二面角" disabled>
+      <button class="tool-btn" id="btn-mod-dihedral" title="選取剛好 4 個原子時啟用：調整二面角">
         🔗 調整二面角
       </button>
 
@@ -100,25 +99,44 @@
 
       <div class="tool-separator"></div>
 
+      <!-- 外觀與色彩自訂按鈕 🎨 -->
+      <button class="tool-btn" id="btn-open-appearance" title="設定背景顏色、特定元素樣式與個別原子色彩大小">
+        🎨 外觀與顏色
+      </button>
+
+      <div class="tool-separator"></div>
+
       <select id="select-style" class="dropdown-select" style="font-size: 12px; padding: 4px 8px;">
         <option value="ball_and_stick" selected>球棒模型 (Ball & Stick)</option>
         <option value="spacefill">空間填充 (Space-filling CPK)</option>
         <option value="stick">棍狀模型 (Stick)</option>
         <option value="wireframe">線框模型 (Wireframe)</option>
       </select>
+
+      <!-- 空間填充大小縮放滑桿 (僅在 spacefill 模式顯示) -->
+      <div id="spacefill-scale-wrapper" style="display: none; align-items: center; gap: 4px; margin-left: 2px;">
+        <span style="font-size: 11px; color: var(--text-dim);">尺寸:</span>
+        <input type="range" id="slider-spacefill" min="0.3" max="1.6" step="0.05" value="1.0" style="width: 70px; accent-color: var(--primary); cursor: pointer;">
+        <span id="val-spacefill" style="font-size: 11px; color: #fff; width: 26px;">1.0x</span>
+      </div>
     </div>
 
-    <!-- 浮動原子替換筆刷提示條 (Brush Mode HUD) -->
-    <div class="brush-hud-banner" id="brush-hud" style="display: none;">
-      <span id="brush-hud-label">🖌️ 原子替換筆刷啟動中：左鍵點擊原子替換為 <b>C</b></span>
-      <button class="btn-exit-brush" id="btn-exit-brush">退出筆刷 (Esc)</button>
+    <!-- 框選多個原子半透明矩形框 (Shift + 左鍵拖曳) -->
+    <div id="marquee-selection-box" class="marquee-selection-box" style="display: none;"></div>
+
+    <!-- 筆刷模式進行中狀態提示條 (HUD) -->
+    <div class="brush-hud" id="brush-hud" style="display: none;">
+      <span id="brush-hud-label">🖌️ 筆刷模式中：點擊原子替換，點擊空白處新增原子</span>
+      <button class="btn-exit-brush" id="btn-exit-brush" title="退出替換/新增筆刷模式 (Esc)">✕ 結束筆刷 (Esc)</button>
     </div>
 
-    <!-- 右側週期性與晶胞擴充面板 (Crystal & Supercell Panel) -->
-    <div class="side-panel crystal-panel" id="crystal-panel">
+    <!-- 右側週期性系統與晶胞工具面板 (可平滑摺疊收合至右側) -->
+    <div class="floating-panel" id="crystal-panel">
+      <!-- 展開/收合標籤切換按鈕 -->
+      <button class="crystal-collapse-btn" id="btn-toggle-crystal-panel" title="收合/展開週期性工具">▶</button>
       <div class="panel-header">
-        <span>🧊 週期性晶體工具</span>
-        <label style="font-size: 11px; cursor: pointer;">
+        <span>🧊 週期性晶胞工具</span>
+        <label style="font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 3px;">
           <input type="checkbox" id="check-cell-box" checked onchange="window.app.renderer.showCellBox=this.checked; window.app.renderer.update(window.app.structure);"> 晶格框
         </label>
       </div>
@@ -170,7 +188,6 @@
 
     <!-- 視角快速對齊控制 (View Gizmo Controls) -->
     <div class="view-controls">
-      <button class="view-btn" data-view="reset" title="重設視角視野">⟲</button>
       <button class="view-btn" data-view="x" title="沿 X 軸正視">X</button>
       <button class="view-btn" data-view="y" title="沿 Y 軸正視">Y</button>
       <button class="view-btn" data-view="z" title="沿 Z 軸俯視">Z</button>
@@ -249,6 +266,18 @@
           </select>
         </div>
       </div>
+
+      <!-- 鍵結拓樸狀態設定 (Bond Type / Topology Selector - 僅在調整鍵長時顯示) -->
+      <div id="adjust-dock-bond-type-row" class="adjust-dock-bond-type-row" style="display: none; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #334155; flex-direction: column; gap: 4px;">
+        <span style="font-size: 11px; color: var(--text-dim); font-weight: 600;">成鍵類型 (Topology):</span>
+        <div class="bond-type-btn-group" id="bond-type-btn-group" style="display: flex; gap: 4px; flex-wrap: wrap;">
+          <button class="btn-bond-type" data-order="0" title="無鍵結 (清除兩原子間連線)">🚫 無鍵結</button>
+          <button class="btn-bond-type active" data-order="1" title="單鍵 (Single Bond)">➖ 單鍵</button>
+          <button class="btn-bond-type" data-order="2" title="雙鍵 (Double Bond)">⚌ 雙鍵</button>
+          <button class="btn-bond-type" data-order="3" title="三鍵 (Triple Bond)">⚞ 三鍵</button>
+          <button class="btn-bond-type" data-order="hb" title="氫鍵 (Hydrogen Bond / 虛線鍵)">⋯ 氫鍵</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -271,6 +300,8 @@
               <option value="xyz">Standard / Extended XYZ (*.xyz)</option>
               <option value="cif">Crystallographic Information (*.cif)</option>
               <option value="pdb">Protein Data Bank (*.pdb)</option>
+              <option value="tinker">Tinker Cartesian XYZ (*.arc / *.xyz)</option>
+              <option value="lammps">LAMMPS Data File (*.data / *.lammps)</option>
             </select>
           </div>
           <div class="form-group" style="width: 80px;">
@@ -346,7 +377,94 @@
     </div>
   </div>
 
-  <!-- ================= 8. 快捷鍵說明彈窗 (Shortcuts Modal) ================= -->
+  <!-- ================= 8. 外觀與色彩樣式懸浮面板 (Non-blocking Floating Dock) ================= -->
+  <div class="floating-dock-panel appearance-dock" id="appearance-dock" style="display: none;">
+    <div class="appearance-dock-header">
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <span style="font-size: 14px;">🎨</span>
+        <span style="font-weight: 700; font-size: 13px; color: #fff;">外觀與色彩自訂</span>
+      </div>
+      <button class="modal-close" id="btn-close-appearance" title="關閉外觀面板 (Esc)">&times;</button>
+    </div>
+
+    <div class="appearance-dock-body">
+      <!-- 1. 背景顏色 -->
+      <div class="form-group" style="margin-bottom: 12px;">
+        <label style="font-size: 11px; font-weight: 600; color: #fff; margin-bottom: 4px; display: block;">3D 畫布背景顏色</label>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <input type="color" id="input-bg-color" value="#131722" class="color-picker-input">
+          <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+            <button class="btn-header small" onclick="window.app.setBackgroundColor('#131722')">深藍黑</button>
+            <button class="btn-header small" onclick="window.app.setBackgroundColor('#000000')">純黑</button>
+            <button class="btn-header small" onclick="window.app.setBackgroundColor('#ffffff')">純白</button>
+            <button class="btn-header small" onclick="window.app.setBackgroundColor('#1e293b')">科研灰</button>
+          </div>
+        </div>
+        <div style="margin-top: 6px;">
+          <span style="font-size: 10px; color: var(--text-dim); display: block; margin-bottom: 2px;">🕒 最近使用的顏色 (點擊直接套用背景):</span>
+          <div class="recent-colors-bar" id="recent-colors-bg"></div>
+        </div>
+      </div>
+
+      <hr style="border: 0; border-top: 1px solid var(--border); margin: 10px 0;">
+
+      <!-- 2. 特定元素全域樣式 -->
+      <div class="form-group" style="margin-bottom: 12px;">
+        <label style="font-size: 11px; font-weight: 600; color: #fff; margin-bottom: 4px; display: block;">特定元素全域樣式 (例如修改所有 Li)</label>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: center;">
+          <div>
+            <span style="font-size: 10px; color: var(--text-dim); display: block; margin-bottom: 2px;">目標元素：</span>
+            <select id="select-custom-element" class="dropdown-select small" style="width: 100%;"></select>
+          </div>
+          <div>
+            <span style="font-size: 10px; color: var(--text-dim); display: block; margin-bottom: 2px;">元素顏色：</span>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <input type="color" id="input-elem-color" class="color-picker-input">
+              <button class="btn-header small" id="btn-apply-elem-color">套用</button>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top: 6px;">
+          <span style="font-size: 10px; color: var(--text-dim); display: block; margin-bottom: 2px;">🕒 最近使用的顏色 (點擊直接套用此元素):</span>
+          <div class="recent-colors-bar" id="recent-colors-elem"></div>
+        </div>
+        <div style="margin-top: 6px; display: flex; align-items: center; gap: 6px;">
+          <span style="font-size: 10px; color: var(--text-dim);">尺寸:</span>
+          <input type="range" id="slider-elem-radius" min="0.3" max="2.5" step="0.05" value="1.0" style="flex: 1; accent-color: var(--primary);">
+          <span id="val-elem-radius" style="font-size: 10px; color: #fff; width: 28px;">1.0x</span>
+          <button class="btn-header small" id="btn-reset-elem-style" title="恢復此元素的預設顏色與尺寸">恢復</button>
+        </div>
+      </div>
+
+      <hr style="border: 0; border-top: 1px solid var(--border); margin: 10px 0;">
+
+      <!-- 3. 目前選中原子單獨自訂 -->
+      <div class="form-group">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+          <label style="font-size: 11px; font-weight: 600; color: #fff;">個別選中原子自訂</label>
+          <span id="label-selected-atoms-count" style="font-size: 10px; color: var(--primary);">已選 0 顆</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+          <span style="font-size: 10px; color: var(--text-dim);">顏色:</span>
+          <input type="color" id="input-atom-color" value="#ff3366" class="color-picker-input">
+          <button class="btn-header small primary" id="btn-apply-atom-color">套用選中</button>
+          <button class="btn-header small" id="btn-reset-atom-style" title="清除選中原子的自訂色彩與半徑">恢復</button>
+        </div>
+        <div style="margin-top: 4px; margin-bottom: 6px;">
+          <span style="font-size: 10px; color: var(--text-dim); display: block; margin-bottom: 2px;">🕒 最近使用的顏色 (點擊直接套用選中原子):</span>
+          <div class="recent-colors-bar" id="recent-colors-atom"></div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span style="font-size: 10px; color: var(--text-dim);">尺寸:</span>
+          <input type="range" id="slider-atom-radius" min="0.3" max="2.5" step="0.05" value="1.0" style="flex: 1; accent-color: var(--primary);">
+          <span id="val-atom-radius" style="font-size: 10px; color: #fff; width: 28px;">1.0x</span>
+          <button class="btn-header small" id="btn-apply-atom-radius">套用</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 9. 快捷鍵說明彈窗 (Shortcuts Modal) ================= -->
   <div class="modal-overlay" id="modal-shortcuts">
     <div class="modal-card" style="width: 560px;">
       <div class="modal-header">
@@ -362,10 +480,11 @@
           <tr><td style="padding: 5px 0;"><b>滑鼠左鍵拖曳</b></td><td>3D 視角旋轉 (Orbit)</td></tr>
           <tr><td style="padding: 5px 0;"><b>滑鼠右鍵 / 滾輪拖曳</b></td><td>3D 視角平移 (Pan)</td></tr>
           <tr><td style="padding: 5px 0;"><b>滾輪滾動</b></td><td>縮放視野 (Zoom)</td></tr>
+          <tr><td style="padding: 5px 0;"><b>Shift + 左鍵拖曳</b></td><td><b>矩形框選多個原子 (Marquee Select)</b></td></tr>
           <tr><td style="padding: 5px 0;"><b>點擊原子 (1~4下)</b></td><td>依序量測：第1下顯示坐標，第2下顯示鍵長，第3下顯示鍵角，第4下顯示二面角</td></tr>
           <tr><td style="padding: 5px 0;"><b>點擊第 5 下</b></td><td>自動取消前 4 顆選取，重新從第 1 顆開始循環量測</td></tr>
-          <tr><td style="padding: 5px 0;"><b>點擊空白處</b></td><td>取消所有選取，清空量測資訊</td></tr>
-          <tr><td style="padding: 5px 0;"><b>替換筆刷模式</b></td><td>點擊週期表啟用筆刷，點擊原子直接置換為該元素，按 Esc 退出</td></tr>
+          <tr><td style="padding: 5px 0;"><b>點擊空白處</b></td><td>取消所有選取（筆刷模式下為新增原子並自動補氫）</td></tr>
+          <tr><td style="padding: 5px 0;"><b>替換筆刷模式</b></td><td>點擊週期表啟用筆刷，點擊原子直接置換並自動補氫，按 Esc 退出</td></tr>
           <tr><td style="padding: 5px 0;"><b>Alt + 左鍵拖曳</b></td><td>旋轉選中的原子群 (Rotate Selected)</td></tr>
           <tr><td style="padding: 5px 0;"><b>Alt + 右鍵拖曳</b></td><td>平移選中的原子群 (Translate Selected)</td></tr>
           <tr><td style="padding: 5px 0;"><b>Ctrl + Z / Ctrl + Y</b></td><td>復原 (Undo) / 重做 (Redo)</td></tr>

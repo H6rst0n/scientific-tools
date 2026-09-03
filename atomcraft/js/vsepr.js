@@ -442,5 +442,206 @@ const VSEPR = {
     }
     structure.syncFractionalFromCartesian();
     structure.detectBonds();
+  },
+
+  /**
+   * 針對單一特定原子進行局部自動補氫 (Saturate Single Atom with Hydrogens, GaussView Style)
+   * 適用於：筆刷新增原子時自動飽和，或筆刷置換原子時自動修正其連接之氫原子
+   * @param {Structure} structure 
+   * @param {number} atomIndex 目標原子索引
+   * @param {string} hybridMode 可選混成模式 ('sp3' | 'sp2' | 'sp' | 'sq_planar' | 'octahedral')
+   */
+  saturateAtom(structure, atomIndex, hybridMode = '') {
+    if (atomIndex < 0 || atomIndex >= structure.atoms.length) return;
+    structure.detectBonds();
+
+    const targetAtom = structure.atoms[atomIndex];
+    if (targetAtom.element === 'H') return;
+
+    // 1. 找出與 targetAtom 相連的所有鄰居
+    const connectedHydrogens = [];
+
+    for (const b of structure.bonds) {
+      let nbr = -1;
+      if (b.a === atomIndex) nbr = b.b;
+      else if (b.b === atomIndex) nbr = b.a;
+
+      if (nbr !== -1 && structure.atoms[nbr].element === 'H') {
+        connectedHydrogens.push(nbr);
+      }
+    }
+
+    // 2. 若該原子上已經連有舊氫原子，先予以清理以重新依新元素/混成飽和
+    if (connectedHydrogens.length > 0) {
+      const hSet = new Set(connectedHydrogens);
+      let newTargetIndex = atomIndex;
+      const remainingAtoms = [];
+      for (let i = 0; i < structure.atoms.length; i++) {
+        if (!hSet.has(i)) {
+          remainingAtoms.push(structure.atoms[i]);
+        } else if (i < atomIndex) {
+          newTargetIndex--;
+        }
+      }
+      structure.atoms = remainingAtoms;
+      atomIndex = newTargetIndex;
+      structure.detectBonds();
+    }
+
+    const atom = structure.atoms[atomIndex];
+    const elemInfo = getElementInfo(atom.element);
+
+    // 3. 判定目標價態 / 配位數 (Target Valence / Coordination)
+    let targetValence = elemInfo.valence || 4;
+    if (hybridMode === 'sp3') targetValence = 4;
+    else if (hybridMode === 'sp2') targetValence = 3;
+    else if (hybridMode === 'sp') targetValence = 2;
+    else if (hybridMode === 'octahedral') targetValence = 6;
+    else if (hybridMode === 'sq_planar') targetValence = 4;
+
+    // 計算當前連接的重原子數量 (重原子不清除)
+    const currentHeavy = [];
+    for (const b of structure.bonds) {
+      let nbr = -1;
+      if (b.a === atomIndex) nbr = b.b;
+      else if (b.b === atomIndex) nbr = b.a;
+      if (nbr !== -1 && structure.atoms[nbr].element !== 'H') {
+        currentHeavy.push(structure.atoms[nbr]);
+      }
+    }
+
+    const hNeeded = targetValence - currentHeavy.length;
+    if (hNeeded <= 0) {
+      structure.syncFractionalFromCartesian();
+      structure.detectBonds();
+      return;
+    }
+
+    const bondDist = VSEPR.getIdealBondLength(atom.element, 'H');
+
+    // 4. 取得現有重原子成鍵向量
+    const existingVectors = [];
+    for (const nbr of currentHeavy) {
+      let vx = nbr.x - atom.x;
+      let vy = nbr.y - atom.y;
+      let vz = nbr.z - atom.z;
+      const len = Math.hypot(vx, vy, vz);
+      if (len > 1e-4) {
+        existingVectors.push([vx / len, vy / len, vz / len]);
+      }
+    }
+
+    const newDirs = [];
+
+    // 5. 按照 VSEPR 空間幾何分配新氫原子方向向量
+    if (existingVectors.length === 0) {
+      // 孤立中心原子
+      if (hNeeded === 1) {
+        newDirs.push([0, 0, 1]);
+      } else if (hNeeded === 2) {
+        const half = (104.5 * Math.PI) / 360;
+        newDirs.push([Math.sin(half), Math.cos(half), 0]);
+        newDirs.push([-Math.sin(half), Math.cos(half), 0]);
+      } else if (hNeeded === 3) {
+        newDirs.push([0, 0.96, 0.28]);
+        newDirs.push([0.83, -0.48, 0.28]);
+        newDirs.push([-0.83, -0.48, 0.28]);
+      } else if (hNeeded >= 4) {
+        const s = 1.0 / Math.sqrt(3);
+        newDirs.push([s, s, s]);
+        newDirs.push([-s, -s, s]);
+        newDirs.push([-s, s, -s]);
+        newDirs.push([s, -s, -s]);
+      }
+    } else if (existingVectors.length === 1) {
+      const v = existingVectors[0];
+      const p1 = VSEPR.getPerpendicular(v);
+      const p2 = [
+        v[1] * p1[2] - v[2] * p1[1],
+        v[2] * p1[0] - v[0] * p1[2],
+        v[0] * p1[1] - v[1] * p1[0]
+      ];
+
+      if (hNeeded === 1) {
+        newDirs.push([-v[0], -v[1], -v[2]]);
+      } else if (hNeeded === 2) {
+        const angle = (120 * Math.PI) / 180;
+        const cosA = Math.cos(angle);
+        const sinA = Math.sin(angle);
+        newDirs.push([cosA * v[0] + sinA * p1[0], cosA * v[1] + sinA * p1[1], cosA * v[2] + sinA * p1[2]]);
+        newDirs.push([cosA * v[0] - sinA * p1[0], cosA * v[1] - sinA * p1[1], cosA * v[2] - sinA * p1[2]]);
+      } else if (hNeeded >= 3) {
+        const cosTetra = -1.0 / 3.0; // 109.47°
+        const sinTetra = Math.sqrt(8.0 / 9.0);
+        for (let k = 0; k < 3; k++) {
+          const phi = (k * 2 * Math.PI) / 3;
+          newDirs.push([
+            cosTetra * v[0] + sinTetra * (Math.cos(phi) * p1[0] + Math.sin(phi) * p2[0]),
+            cosTetra * v[1] + sinTetra * (Math.cos(phi) * p1[1] + Math.sin(phi) * p2[1]),
+            cosTetra * v[2] + sinTetra * (Math.cos(phi) * p1[2] + Math.sin(phi) * p2[2])
+          ]);
+        }
+      }
+    } else if (existingVectors.length === 2) {
+      const v1 = existingVectors[0];
+      const v2 = existingVectors[1];
+      const bisect = [-(v1[0] + v2[0]), -(v1[1] + v2[1]), -(v1[2] + v2[2])];
+      const blen = Math.hypot(bisect[0], bisect[1], bisect[2]);
+
+      if (blen > 1e-4) {
+        bisect[0] /= blen; bisect[1] /= blen; bisect[2] /= blen;
+      } else {
+        const perp = VSEPR.getPerpendicular(v1);
+        bisect[0] = perp[0]; bisect[1] = perp[1]; bisect[2] = perp[2];
+      }
+
+      if (hNeeded === 1) {
+        newDirs.push(bisect);
+      } else if (hNeeded >= 2) {
+        const normal = [
+          v1[1] * v2[2] - v1[2] * v2[1],
+          v1[2] * v2[0] - v1[0] * v2[2],
+          v1[0] * v2[1] - v1[1] * v2[0]
+        ];
+        const nlen = Math.hypot(normal[0], normal[1], normal[2]);
+        if (nlen > 1e-4) {
+          normal[0] /= nlen; normal[1] /= nlen; normal[2] /= nlen;
+          const halfAngle = (109.5 * Math.PI) / 360;
+          const cosH = Math.cos(halfAngle);
+          const sinH = Math.sin(halfAngle);
+          newDirs.push([
+            cosH * bisect[0] + sinH * normal[0],
+            cosH * bisect[1] + sinH * normal[1],
+            cosH * bisect[2] + sinH * normal[2]
+          ]);
+          newDirs.push([
+            cosH * bisect[0] - sinH * normal[0],
+            cosH * bisect[1] - sinH * normal[1],
+            cosH * bisect[2] - sinH * normal[2]
+          ]);
+        } else {
+          newDirs.push(bisect);
+        }
+      }
+    } else if (existingVectors.length === 3) {
+      let sumX = -(existingVectors[0][0] + existingVectors[1][0] + existingVectors[2][0]);
+      let sumY = -(existingVectors[0][1] + existingVectors[1][1] + existingVectors[2][1]);
+      let sumZ = -(existingVectors[0][2] + existingVectors[1][2] + existingVectors[2][2]);
+      const slen = Math.hypot(sumX, sumY, sumZ);
+      if (slen > 1e-4) {
+        newDirs.push([sumX / slen, sumY / slen, sumZ / slen]);
+      } else {
+        newDirs.push([0, 0, 1]);
+      }
+    }
+
+    // 6. 新增氫原子並同步檢測成鍵
+    for (let k = 0; k < Math.min(hNeeded, newDirs.length); k++) {
+      const d = newDirs[k];
+      structure.addAtom('H', atom.x + d[0] * bondDist, atom.y + d[1] * bondDist, atom.z + d[2] * bondDist);
+    }
+
+    structure.syncFractionalFromCartesian();
+    structure.detectBonds();
   }
 };

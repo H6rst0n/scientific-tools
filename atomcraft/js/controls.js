@@ -55,6 +55,27 @@ class InteractionController {
 
     const selectedAtoms = this.structure.atoms.filter(a => a.selected);
 
+    // Shift + 左鍵拖曳 -> 框選多個原子 (Marquee Box Selection)
+    if (e.shiftKey && e.button === 0) {
+      this.isDragging = true;
+      this.dragMode = 'box_select';
+      this.boxSelectStart = { x: e.clientX, y: e.clientY };
+      this.renderer.controls.enabled = false;
+      let box = document.getElementById('marquee-selection-box');
+      if (!box) {
+        box = document.createElement('div');
+        box.id = 'marquee-selection-box';
+        box.className = 'marquee-selection-box';
+        document.body.appendChild(box);
+      }
+      box.style.left = `${e.clientX}px`;
+      box.style.top = `${e.clientY}px`;
+      box.style.width = '0px';
+      box.style.height = '0px';
+      box.style.display = 'block';
+      return;
+    }
+
     // GaussView 規範：Alt + 左鍵拖曳 -> 繞重心旋轉選中原子 (Rotate selected atoms)
     if (e.altKey && e.button === 0 && selectedAtoms.length > 0) {
       this.isDragging = true;
@@ -94,6 +115,21 @@ class InteractionController {
 
     if (!this.isDragging) return;
 
+    if (this.dragMode === 'box_select' && this.boxSelectStart) {
+      const box = document.getElementById('marquee-selection-box');
+      if (box) {
+        const left = Math.min(this.boxSelectStart.x, e.clientX);
+        const top = Math.min(this.boxSelectStart.y, e.clientY);
+        const width = Math.abs(e.clientX - this.boxSelectStart.x);
+        const height = Math.abs(e.clientY - this.boxSelectStart.y);
+        box.style.left = `${left}px`;
+        box.style.top = `${top}px`;
+        box.style.width = `${width}px`;
+        box.style.height = `${height}px`;
+      }
+      return;
+    }
+
     if (this.dragMode === 'move_atoms') {
       // 沿相機視野平面平移選中原子
       const cam = this.renderer.camera;
@@ -127,6 +163,55 @@ class InteractionController {
   }
 
   onPointerUp(e) {
+    if (this.dragMode === 'box_select' && this.boxSelectStart) {
+      const box = document.getElementById('marquee-selection-box');
+      if (box) box.style.display = 'none';
+
+      const minX = Math.min(this.boxSelectStart.x, e.clientX);
+      const maxX = Math.max(this.boxSelectStart.x, e.clientX);
+      const minY = Math.min(this.boxSelectStart.y, e.clientY);
+      const maxY = Math.max(this.boxSelectStart.y, e.clientY);
+      const width = maxX - minX;
+      const height = maxY - minY;
+
+      this.isDragging = false;
+      this.dragMode = null;
+      this.renderer.controls.enabled = true;
+
+      if (width > 6 || height > 6) {
+        const rect = this.renderer.container ? this.renderer.container.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+        let newlySelectedCount = 0;
+
+        for (let i = 0; i < this.structure.atoms.length; i++) {
+          const atom = this.structure.atoms[i];
+          const pos = new THREE.Vector3(atom.x, atom.y, atom.z);
+          pos.project(this.renderer.camera);
+
+          // 位於鏡頭前方且在螢幕框內
+          if (pos.z < 1) {
+            const screenX = ((pos.x + 1) / 2) * rect.width + rect.left;
+            const screenY = ((-pos.y + 1) / 2) * rect.height + rect.top;
+
+            if (screenX >= minX && screenX <= maxX && screenY >= minY && screenY <= maxY) {
+              if (!atom.selected) {
+                atom.selected = true;
+                newlySelectedCount++;
+                if (!this.selectedSequence.includes(i)) {
+                  this.selectedSequence.push(i);
+                }
+              }
+            }
+          }
+        }
+
+        this.renderer.update(this.structure);
+        this.updateMeasurementDisplay();
+        this.app.updateUI();
+        this.app.showToast(`框選加入 ${newlySelectedCount} 個原子 (共選中 ${this.structure.atoms.filter(a => a.selected).length} 個)`);
+        return;
+      }
+    }
+
     const totalDist = Math.hypot(e.clientX - this.dragStartPos.x, e.clientY - this.dragStartPos.y);
 
     if (this.isDragging) {
@@ -134,7 +219,7 @@ class InteractionController {
       this.renderer.controls.enabled = true;
 
       if (this.dragMode === 'move_atoms' || this.dragMode === 'rotate_atoms') {
-        this.structure.detectBonds();
+        this.structure.updateBondDistances();
         this.renderer.update(this.structure);
       }
     }
@@ -154,16 +239,16 @@ class InteractionController {
     // 【替換/新增筆刷模式】：點中原子替換，點擊空白處直接在視野平面新增原子！
     if (this.isBrushMode) {
       if (pickedIdx >= 0) {
-        // 點中既有原子：替換為當前元素
+        // 點中既有原子：替換為當前元素，並自動進行局部補氫 (GaussView Style)
         this.app.pushHistory();
         const oldElem = this.structure.atoms[pickedIdx].element;
         this.structure.atoms[pickedIdx].element = this.brushElement;
-        this.structure.detectBonds();
+        VSEPR.saturateAtom(this.structure, pickedIdx, this.activeHybrid);
         this.renderer.update(this.structure);
         this.app.updateUI();
-        this.app.showToast(`已將原子 #${pickedIdx + 1} (${oldElem}) 替換為 ${this.brushElement}`);
+        this.app.showToast(`已將原子 #${pickedIdx + 1} (${oldElem}) 替換為 ${this.brushElement} 並自動補氫`);
       } else {
-        // 點擊空白處：在相機視野目標平面上新增原子
+        // 點擊空白處：在相機視野目標平面上新增原子，並自動進行局部補氫 (如放 C 自動生成 CH4)
         this.app.pushHistory();
         const rect = this.renderer.container ? this.renderer.container.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
         const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -186,13 +271,14 @@ class InteractionController {
 
         if (hitPoint) {
           this.structure.addAtom(this.brushElement, hitPoint.x, hitPoint.y, hitPoint.z);
-          this.structure.detectBonds();
+          const newIdx = this.structure.atoms.length - 1;
+          VSEPR.saturateAtom(this.structure, newIdx, this.activeHybrid);
           this.renderer.update(this.structure);
           if (this.structure.atoms.length === 1) {
             this.renderer.resetCamera(this.structure);
           }
           this.app.updateUI();
-          this.app.showToast(`已在空白處新增 ${this.brushElement} 原子 (#${this.structure.atoms.length})`);
+          this.app.showToast(`已在空白處新增 ${this.brushElement} 原子並自動補氫 (#${newIdx + 1})`);
         }
       }
       return;
@@ -411,8 +497,13 @@ class InteractionController {
       return;
     }
 
-    // 6. Escape: 退出微調面板、退出筆刷模式、或取消所有選取
+    // 6. Escape: 退出微調面板、關閉外觀面板、退出筆刷模式、或取消所有選取
     if (e.key === 'Escape' || e.code === 'Escape') {
+      const appDock = document.getElementById('appearance-dock');
+      if (appDock && appDock.style.display !== 'none') {
+        appDock.style.display = 'none';
+        return;
+      }
       if (this.app.isAdjustDockOpen) {
         this.app.closeAdjustDock();
         return;

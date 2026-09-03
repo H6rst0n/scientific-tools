@@ -50,6 +50,12 @@ class MoleculeRenderer {
     this.axesHelper = null;
     this.isRendering = true;
 
+    // 自訂外觀與樣式屬性
+    this.spacefillScale = 1.0;
+    this.elementOverrides = {}; // { 'Li': { color: '#...', radiusScale: 1.2 } }
+    this.backgroundColor = '#131722';
+    this.currentStructure = null;
+
     this.init();
   }
 
@@ -202,17 +208,91 @@ class MoleculeRenderer {
   /**
    * 取得原子顯示半徑 (Å)
    */
-  getAtomRadius(elem) {
+  getAtomRadius(elem, atom = null) {
     const info = getElementInfo(elem);
+    let r = 0.3;
     if (this.style === 'spacefill') {
-      return info.vdwRadius * 0.75;
+      r = info.vdwRadius * 0.75 * this.spacefillScale;
     } else if (this.style === 'stick') {
-      return 0.22;
+      r = 0.22;
     } else if (this.style === 'wireframe') {
-      return 0.10;
+      r = 0.10;
+    } else {
+      // ball_and_stick
+      r = Math.max(0.25, info.covRadius * 0.42);
     }
-    // ball_and_stick
-    return Math.max(0.25, info.covRadius * 0.42);
+
+    // 1. 全域特定元素自訂縮放倍率
+    const elemOverride = this.elementOverrides[elem];
+    if (elemOverride && elemOverride.radiusScale !== undefined) {
+      r *= elemOverride.radiusScale;
+    }
+
+    // 2. 個別原子單獨自訂縮放倍率 (優先級最高)
+    if (atom && atom.customRadius !== undefined && atom.customRadius !== null) {
+      r *= atom.customRadius;
+    }
+    return r;
+  }
+
+  /**
+   * 取得原子顯示顏色
+   */
+  getAtomColor(elem, atom = null) {
+    // 1. 個別原子單獨自訂顏色 (優先級最高)
+    if (atom && atom.customColor) {
+      return atom.customColor;
+    }
+    // 2. 全域特定元素自訂顏色
+    const elemOverride = this.elementOverrides[elem];
+    if (elemOverride && elemOverride.color) {
+      return elemOverride.color;
+    }
+    // 3. 預設 CPK 元素色彩
+    const info = getElementInfo(elem);
+    return info.color;
+  }
+
+  /**
+   * 設定場景背景顏色
+   */
+  setBackgroundColor(colorHex) {
+    this.backgroundColor = colorHex;
+    if (this.scene) {
+      this.scene.background = new THREE.Color(colorHex);
+    }
+  }
+
+  /**
+   * 設定空間填充縮放倍率
+   */
+  setSpacefillScale(scale) {
+    this.spacefillScale = Math.max(0.1, Math.min(3.0, Number(scale) || 1.0));
+    if (this.currentStructure) {
+      this.update(this.currentStructure);
+    }
+  }
+
+  /**
+   * 設定特定元素的全域顏色或尺寸覆寫
+   */
+  setElementOverride(elem, opts = {}) {
+    if (!this.elementOverrides[elem]) this.elementOverrides[elem] = {};
+    if (opts.color !== undefined) this.elementOverrides[elem].color = opts.color;
+    if (opts.radiusScale !== undefined) this.elementOverrides[elem].radiusScale = opts.radiusScale;
+    if (this.currentStructure) {
+      this.update(this.currentStructure);
+    }
+  }
+
+  /**
+   * 清除特定元素的全域樣式覆寫
+   */
+  clearElementOverride(elem) {
+    delete this.elementOverrides[elem];
+    if (this.currentStructure) {
+      this.update(this.currentStructure);
+    }
   }
 
   /**
@@ -229,6 +309,7 @@ class MoleculeRenderer {
    * 更新分子與晶格 3D 渲染 (核心渲染函數)
    */
   update(structure) {
+    this.currentStructure = structure;
     // 1. 清除舊有的 InstancedMesh 與晶格邊框
     if (this.atomMesh) {
       this.scene.remove(this.atomMesh);
@@ -281,7 +362,7 @@ class MoleculeRenderer {
 
           for (let i = 0; i < nAtoms; i++) {
             const a = structure.atoms[i];
-            const r = this.getAtomRadius(a.element);
+            const r = this.getAtomRadius(a.element, a);
             const posX = a.x + shiftX;
             const posY = a.y + shiftY;
             const posZ = a.z + shiftZ;
@@ -293,9 +374,8 @@ class MoleculeRenderer {
 
             this.atomMesh.setMatrixAt(instIdx, dummy.matrix);
 
-            // 設定顏色
-            const elemInfo = getElementInfo(a.element);
-            color.set(elemInfo.color);
+            // 設定顏色 (支援個別原子及特定元素自訂覆寫)
+            color.set(this.getAtomColor(a.element, a));
             // 若為視覺擴胞的副本，稍微降低飽和度以區分原胞
             if (!isBaseCell) {
               color.lerp(new THREE.Color(0x334155), 0.35);
@@ -325,12 +405,13 @@ class MoleculeRenderer {
 
       if (nBonds > 0) {
         const renderedBonds = new Set();
-        const maxPossibleBonds = Math.max(nBonds * totalReplicas * 3, 100);
+        const maxPossibleBonds = Math.max(nBonds * totalReplicas * 6, 200);
         this.bondMesh = new THREE.InstancedMesh(this.cylinderGeo, this.bondMaterial, maxPossibleBonds);
         this.bondMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
         let bondInstIdx = 0;
         const bondColor = new THREE.Color(0x94a3b8);
+        const hbColor = new THREE.Color(0x38bdf8); // 氫鍵亮青色
 
         for (let ia = 0; ia < na; ia++) {
           for (let ib = 0; ib < nb; ib++) {
@@ -341,6 +422,8 @@ class MoleculeRenderer {
 
               for (let b = 0; b < nBonds; b++) {
                 const bond = bonds[b];
+                if (bond.order === 0) continue; // 無鍵結不繪製
+
                 const atomA = structure.atoms[bond.a];
                 const atomB = structure.atoms[bond.b];
                 if (!atomA || !atomB) continue;
@@ -371,16 +454,44 @@ class MoleculeRenderer {
                 const pB = new THREE.Vector3(atomB.x + shiftBX, atomB.y + shiftBY, atomB.z + shiftBZ);
 
                 const len = pA.distanceTo(pB);
-                if (len < 0.2 || len > 4.5) continue;
+                if (len < 0.1 || len > 20.0) continue;
 
-                dummy.position.copy(pA);
-                dummy.scale.set(bondRadius, bondRadius, len);
-                dummy.lookAt(pB);
-                dummy.updateMatrix();
+                const order = bond.order || 1;
+                const bondDir = new THREE.Vector3().subVectors(pB, pA).normalize();
+                const up = Math.abs(bondDir.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+                const perp = new THREE.Vector3().crossVectors(up, bondDir).normalize();
 
-                this.bondMesh.setMatrixAt(bondInstIdx, dummy.matrix);
-                this.bondMesh.setColorAt(bondInstIdx, bondColor);
-                bondInstIdx++;
+                const renderCylinder = (posA, posB, r, col) => {
+                  if (bondInstIdx >= maxPossibleBonds) return;
+                  dummy.position.copy(posA);
+                  dummy.scale.set(r, r, len);
+                  dummy.lookAt(posB);
+                  dummy.updateMatrix();
+                  this.bondMesh.setMatrixAt(bondInstIdx, dummy.matrix);
+                  this.bondMesh.setColorAt(bondInstIdx, col);
+                  bondInstIdx++;
+                };
+
+                if (order === 2) {
+                  // 雙鍵：平行兩根圓柱
+                  const offsetDist = bondRadius * 1.25;
+                  const offVec = perp.clone().multiplyScalar(offsetDist);
+                  renderCylinder(pA.clone().add(offVec), pB.clone().add(offVec), bondRadius * 0.72, bondColor);
+                  renderCylinder(pA.clone().sub(offVec), pB.clone().sub(offVec), bondRadius * 0.72, bondColor);
+                } else if (order === 3) {
+                  // 三鍵：中央單柱 + 兩側雙柱
+                  const offsetDist = bondRadius * 1.5;
+                  const offVec = perp.clone().multiplyScalar(offsetDist);
+                  renderCylinder(pA, pB, bondRadius * 0.65, bondColor);
+                  renderCylinder(pA.clone().add(offVec), pB.clone().add(offVec), bondRadius * 0.65, bondColor);
+                  renderCylinder(pA.clone().sub(offVec), pB.clone().sub(offVec), bondRadius * 0.65, bondColor);
+                } else if (order === 'hb') {
+                  // 氫鍵：亮青色細柱
+                  renderCylinder(pA, pB, bondRadius * 0.55, hbColor);
+                } else {
+                  // 單鍵 (預設)
+                  renderCylinder(pA, pB, bondRadius, bondColor);
+                }
               }
             }
           }
