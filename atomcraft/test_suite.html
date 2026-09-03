@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>AtomCraft 3D Test Suite</title>
+  <script>
+    window.errs = [];
+    window.onerror = function(msg, url, lineNo, colNo, error) {
+      window.errs.push(`${msg} in ${url}:${lineNo}`);
+      var el = document.getElementById('test-results');
+      if (el) el.textContent += `ERR: ${msg} in ${url} at ${lineNo}\n`;
+    };
+  </script>
+</head>
+<body>
+  <h1>AtomCraft 3D Automated Verification Test Suite</h1>
+  <pre id="test-results"></pre>
+
+  <script src="lib/three.min.js"></script>
+  <script src="lib/OrbitControls.js"></script>
+  <script src="js/elements.js"></script>
+  <script src="js/periodic_table.js"></script>
+  <script src="js/structure.js"></script>
+  <script src="js/vsepr.js"></script>
+  <script src="js/crystal.js"></script>
+  <script src="js/adjust_geometry.js"></script>
+  <script src="js/parsers.js"></script>
+  <script src="js/presets.js"></script>
+  <script src="js/renderer.js"></script>
+  <script src="js/controls.js"></script>
+
+  <script>
+    const log = (msg) => {
+      console.log(msg);
+      document.getElementById('test-results').textContent += msg + '\n';
+    };
+
+    let passed = 0;
+    let failed = 0;
+
+    function assert(cond, name) {
+      if (cond) {
+        passed++;
+        log(`[PASS] ${name}`);
+      } else {
+        failed++;
+        log(`[FAIL] ${name}`);
+      }
+    }
+
+    function assertNear(actual, expected, tol, name) {
+      const diff = Math.abs(actual - expected);
+      if (diff <= tol) {
+        passed++;
+        log(`[PASS] ${name} (actual: ${actual.toFixed(4)}, expected: ${expected.toFixed(4)}, diff: ${diff.toFixed(6)})`);
+      } else {
+        failed++;
+        log(`[FAIL] ${name} (actual: ${actual.toFixed(4)}, expected: ${expected.toFixed(4)}, diff: ${diff.toFixed(6)} > ${tol})`);
+      }
+    }
+
+    try {
+      log('=== 1. Structure & Fractional Math Test ===');
+      const s = new Structure();
+      s.setCellParameters(5.0, 6.0, 7.0, 90, 90, 90);
+      const params = s.getCellParameters();
+      assertNear(params.volume, 210.0, 1e-4, 'Lattice volume calculation');
+      
+      const cart = s.fractionalToCartesian(0.5, 0.5, 0.5);
+      assertNear(cart[0], 2.5, 1e-4, 'Fractional to Cartesian X');
+      assertNear(cart[1], 3.0, 1e-4, 'Fractional to Cartesian Y');
+      assertNear(cart[2], 3.5, 1e-4, 'Fractional to Cartesian Z');
+
+      const frac = s.cartesianToFractional(2.5, 3.0, 3.5);
+      assertNear(frac[0], 0.5, 1e-4, 'Cartesian to Fractional U');
+      assertNear(frac[1], 0.5, 1e-4, 'Cartesian to Fractional V');
+      assertNear(frac[2], 0.5, 1e-4, 'Cartesian to Fractional W');
+
+      log('=== 2. VASP POSCAR Parser & Exporter Test ===');
+      const poscarText = `Silicon Bulk
+1.0
+  5.4300000000   0.0000000000   0.0000000000
+  0.0000000000   5.4300000000   0.0000000000
+  0.0000000000   0.0000000000   5.4300000000
+Si
+2
+Direct
+  0.0000000000   0.0000000000   0.0000000000
+  0.2500000000   0.2500000000   0.2500000000
+`;
+      const vaspStruct = Parsers.parseVASP(poscarText);
+      assert(vaspStruct.atoms.length === 2, 'VASP loaded 2 atoms');
+      assert(vaspStruct.cell !== null, 'VASP cell parsed');
+      assertNear(vaspStruct.atoms[1].x, 5.43 * 0.25, 1e-4, 'VASP atom coordinate conversion');
+      const exportedVasp = Parsers.exportVASP(vaspStruct, { direct: true });
+      assert(exportedVasp.includes('Si'), 'VASP export contains species');
+      assert(exportedVasp.includes('Direct'), 'VASP export is Direct mode');
+
+      log('=== 3. Gaussian GJF & ORCA INP Parser Test ===');
+      const gjfText = `%chk=test.chk
+#p b3lyp/6-31g* opt
+
+Water Molecule
+
+0 1
+O   0.000000   0.000000   0.117000
+H   0.000000   0.757000  -0.469000
+H   0.000000  -0.757000  -0.469000
+
+`;
+      const gjfStruct = Parsers.parseGaussian(gjfText);
+      assert(gjfStruct.atoms.length === 3, 'Gaussian loaded 3 atoms');
+      assert(gjfStruct.charge === 0 && gjfStruct.multiplicity === 1, 'Gaussian charge/mult parsed');
+      const orcaOut = Parsers.exportORCA(gjfStruct);
+      assert(orcaOut.includes('* xyz 0 1'), 'ORCA exported xyz block');
+
+      log('=== 4. VSEPR Clean 🧹 Algorithm Test ===');
+      // 故意建立一個扭曲的水分子 (鍵長 2.5 Å, 夾角 60°)
+      const badWater = new Structure();
+      badWater.addAtom('O', 0, 0, 0);
+      badWater.addAtom('H', 2.0, 0, 0); // 嚴重過長
+      badWater.addAtom('H', 1.0, 1.732, 0); // 夾角 60度
+      VSEPR.cleanGeometry(badWater, false);
+      
+      const d1 = Math.hypot(badWater.atoms[1].x - badWater.atoms[0].x, badWater.atoms[1].y - badWater.atoms[0].y, badWater.atoms[1].z - badWater.atoms[0].z);
+      const idealOH = VSEPR.getIdealBondLength('O', 'H'); // ~0.97 Å
+      assertNear(d1, idealOH, 0.15, 'VSEPR adjusted bond length towards ideal');
+      
+      const v1 = [badWater.atoms[1].x - badWater.atoms[0].x, badWater.atoms[1].y - badWater.atoms[0].y, badWater.atoms[1].z - badWater.atoms[0].z];
+      const v2 = [badWater.atoms[2].x - badWater.atoms[0].x, badWater.atoms[2].y - badWater.atoms[0].y, badWater.atoms[2].z - badWater.atoms[0].z];
+      const dot = v1[0]*v2[0] + v1[1]*v2[1] + v1[2]*v2[2];
+      const l1 = Math.hypot(...v1);
+      const l2 = Math.hypot(...v2);
+      const angleDeg = Math.acos(dot / (l1 * l2)) * (180 / Math.PI);
+      assert(angleDeg > 80 && angleDeg < 125, `VSEPR relaxed angle towards bent geometry (actual: ${angleDeg.toFixed(1)}°)`);
+
+      log('=== 5. Crystal Supercell & Vacuum Test ===');
+      const cry = new Structure();
+      cry.setCellParameters(3.0, 3.0, 3.0, 90, 90, 90);
+      cry.addAtom('C', 0, 0, 0);
+      Crystal.expandSupercell(cry, 2, 2, 2);
+      assert(cry.atoms.length === 8, 'Physical supercell expanded to 8 atoms');
+      assertNear(cry.cell[0][0], 6.0, 1e-4, 'Expanded cell A vector doubled');
+      
+      Crystal.adjustVacuum(cry, 15.0);
+      assertNear(cry.cell[2][2], 15.0 + 3.0, 1e-3, 'Z vacuum correctly added');
+
+      log('=== 7. Lattice Box Orthogonality Test ===');
+      const orthCell = [
+        [5.0, 0.0, 0.0],
+        [0.0, 6.0, 0.0],
+        [0.0, 0.0, 7.0]
+      ];
+      const boxLines = Crystal.getLatticeBoxLines(orthCell);
+      assert(boxLines.length === 12, 'Lattice box has exactly 12 edges');
+      // 驗證頂點 p6 (頂面對角端點) 坐標為嚴格的 [5.0, 6.0, 7.0]
+      const p6 = boxLines[5][1]; // edge [p5, p6]
+      assertNear(p6[0], 5.0, 1e-4, 'p6 X coordinate is 5.0');
+      assertNear(p6[1], 6.0, 1e-4, 'p6 Y coordinate is 6.0 (no skew!)');
+      assertNear(p6[2], 7.0, 1e-4, 'p6 Z coordinate is 7.0');
+
+      log('=== 8. Periodic Table & Hybridization Lookup Test ===');
+      const cHybrids = getHybridizationsForElement('C');
+      assert(cHybrids.some(h => h.id === 'sp3'), 'Carbon has sp3 tetrahedral');
+      assert(cHybrids.some(h => h.id === 'sp2'), 'Carbon has sp2 planar');
+      assert(cHybrids.some(h => h.id === 'sp'), 'Carbon has sp linear');
+
+      const ptHybrids = getHybridizationsForElement('Pt');
+      assert(ptHybrids.some(h => h.id === 'square_planar'), 'Platinum has square planar');
+      assert(ptHybrids.some(h => h.id === 'octahedral'), 'Platinum has octahedral');
+
+      log('=== 9. GaussView 1-2-3-4-5 Selection & Measurement Cycle Test ===');
+      const dummyApp = {
+        structure: new Structure(),
+        renderer: {
+          update: () => {},
+          controls: { enabled: true },
+          renderer: { domElement: document.createElement('div') },
+          camera: new THREE.PerspectiveCamera(),
+          pickAtom: () => -1
+        },
+        pushHistory: () => {},
+        updateUI: () => {},
+        updateStatus: () => {},
+        setMeasurementDisplay: () => {},
+        showToast: () => {}
+      };
+      for (let i = 0; i < 6; i++) {
+        dummyApp.structure.addAtom('C', i * 1.5, 0, 0);
+      }
+      const ctrl = new InteractionController(dummyApp);
+
+      // 模擬點擊第 1 顆 (idx 0)
+      dummyApp.renderer.pickAtom = () => 0;
+      ctrl.handleClick({ clientX: 10, clientY: 10, button: 0 });
+      assert(ctrl.selectedSequence.length === 1 && ctrl.selectedSequence[0] === 0, 'Click 1: Selected atom #1');
+
+      // 模擬點擊第 2 顆 (idx 1)
+      dummyApp.renderer.pickAtom = () => 1;
+      ctrl.handleClick({ clientX: 20, clientY: 10, button: 0 });
+      assert(ctrl.selectedSequence.length === 2 && ctrl.selectedSequence[1] === 1, 'Click 2: Selected atom #2');
+
+      // 模擬點擊第 3 顆 (idx 2)
+      dummyApp.renderer.pickAtom = () => 2;
+      ctrl.handleClick({ clientX: 30, clientY: 10, button: 0 });
+      assert(ctrl.selectedSequence.length === 3 && ctrl.selectedSequence[2] === 2, 'Click 3: Selected atom #3');
+
+      // 模擬點擊第 4 顆 (idx 3)
+      dummyApp.renderer.pickAtom = () => 3;
+      ctrl.handleClick({ clientX: 40, clientY: 10, button: 0 });
+      assert(ctrl.selectedSequence.length === 4 && ctrl.selectedSequence[3] === 3, 'Click 4: Selected atom #4');
+
+      // 模擬點擊第 5 顆 (idx 4) -> 應自動取消前 4 顆，重新從第 1 顆 (idx 4) 開始！
+      dummyApp.renderer.pickAtom = () => 4;
+      ctrl.handleClick({ clientX: 50, clientY: 10, button: 0 });
+      assert(ctrl.selectedSequence.length === 1 && ctrl.selectedSequence[0] === 4, 'Click 5: Reset previous 4 and restarted cycle at atom #5');
+      log('=== 10. Geometry Adjuster (Bond, Angle, Dihedral) Test ===');
+      const ethane = new Structure();
+      ethane.addAtom('C', 0, 0, 0);
+      ethane.addAtom('C', 1.54, 0, 0);
+      ethane.addAtom('H', 2.0, 1.0, 0);
+      ethane.detectBonds();
+
+      // 測試鍵長調整
+      const curBond = GeometryAdjuster.getBondLength(ethane, 0, 1);
+      assertNear(curBond, 1.54, 1e-4, 'Initial C-C bond length is 1.54 Å');
+      GeometryAdjuster.setBondLength(ethane, 0, 1, 2.00);
+      const newBond = GeometryAdjuster.getBondLength(ethane, 0, 1);
+      assertNear(newBond, 2.00, 1e-3, 'Adjusted C-C bond length to 2.00 Å');
+      assertNear(ethane.atoms[2].x, 2.0 + (2.00 - 1.54), 1e-3, 'Subgroup H atom translated along with C2');
+
+      // 測試鍵角調整
+      const initialAngle = GeometryAdjuster.getBondAngle(ethane, 0, 1, 2);
+      GeometryAdjuster.setBondAngle(ethane, 0, 1, 2, 120.0);
+      const newAngle = GeometryAdjuster.getBondAngle(ethane, 0, 1, 2);
+      assertNear(newAngle, 120.0, 1e-2, 'Adjusted bond angle to 120.0°');
+
+      // 測試二面角調整
+      ethane.addAtom('H', -0.5, 1.0, 0);
+      ethane.detectBonds();
+      GeometryAdjuster.setDihedralAngle(ethane, 3, 0, 1, 2, 60.0);
+      const newDihedral = GeometryAdjuster.getDihedralAngle(ethane, 3, 0, 1, 2);
+      assertNear(newDihedral, 60.0, 1e-2, 'Adjusted dihedral angle to 60.0°');
+
+      log('=== 11. Atom Replacement Brush Mode Test ===');
+      ctrl.isBrushMode = true;
+      ctrl.brushElement = 'O';
+      dummyApp.renderer.pickAtom = () => 0;
+      ctrl.handleClick({ clientX: 10, clientY: 10, button: 0 });
+      assert(dummyApp.structure.atoms[0].element === 'O', 'Brush replaced atom #1 with Oxygen');
+
+      dummyApp.renderer.pickAtom = () => 1;
+      ctrl.handleClick({ clientX: 20, clientY: 10, button: 0 });
+      assert(dummyApp.structure.atoms[1].element === 'O', 'Brush replaced atom #2 with Oxygen');
+
+      // 按 Esc 退出筆刷
+      ctrl.onKeyDown({ key: 'Escape', code: 'Escape', preventDefault: () => {} });
+      assert(!ctrl.isBrushMode, 'Escape key exited brush mode');
+
+      log('=== 13. Ring Molecule Bond Adjustment Safety Test ===');
+      const ringCaff = PRESETS.caffeine.build();
+      const origCaffPos0 = [ringCaff.atoms[0].x, ringCaff.atoms[0].y, ringCaff.atoms[0].z];
+      // 在咖啡因環狀分子中連續快速調整鍵長
+      for (let step = 0; step < 10; step++) {
+        GeometryAdjuster.setBondLength(ringCaff, 0, 1, 1.40 + step * 0.05);
+      }
+      assert(isFinite(ringCaff.atoms[0].x) && isFinite(ringCaff.atoms[1].x), 'Coordinates remain finite numbers');
+      assertNear(ringCaff.atoms[0].x, origCaffPos0[0], 1e-4, 'Fixed atom idx0 was not drifted or moved');
+      const caffMax = Math.max(...ringCaff.atoms.map(a => Math.hypot(a.x, a.y, a.z)));
+      assert(caffMax < 25.0, `Molecule did not explode into infinity (max radius: ${caffMax.toFixed(2)} Å)`);
+
+      log('=== 14. Brush Empty Space Atom Creation Test ===');
+      ctrl.isBrushMode = true;
+      ctrl.brushElement = 'Fe';
+      const initialCount = dummyApp.structure.atoms.length;
+      dummyApp.renderer.pickAtom = () => -1; // 模擬點擊空白處
+      ctrl.handleClick({ clientX: 100, clientY: 100, button: 0 });
+      assert(dummyApp.structure.atoms.length === initialCount + 1, 'Clicking empty space added new atom');
+      const addedAtom = dummyApp.structure.atoms[dummyApp.structure.atoms.length - 1];
+      assert(addedAtom.element === 'Fe', 'Added atom has element Fe');
+      assert(isFinite(addedAtom.x) && isFinite(addedAtom.y) && isFinite(addedAtom.z), 'Added atom has valid 3D coordinates');
+      ctrl.isBrushMode = false;
+
+      log('=== 15. ActiveTool Sequence Auto-Dock Trigger Test ===');
+      let bondDockOpened = false;
+      dummyApp.openBondAdjustDock = () => { bondDockOpened = true; };
+      ctrl.activeTool = 'mod_bond';
+      ctrl.clearSelection();
+
+      dummyApp.renderer.pickAtom = () => 2;
+      ctrl.handleClick({ clientX: 10, clientY: 10, button: 0 });
+      assert(!bondDockOpened, 'Dock not opened after 1st atom');
+
+      dummyApp.renderer.pickAtom = () => 3;
+      ctrl.handleClick({ clientX: 20, clientY: 10, button: 0 });
+      assert(bondDockOpened, 'Dock opened automatically after 2nd atom clicked with mod_bond active');
+      assert(ctrl.activeTool === null, 'ActiveTool reset to null after dock opened');
+
+      log('=== 16. GaussView Movement & Rotation Modes Test ===');
+      const ethaneModes = new Structure();
+      ethaneModes.addAtom('C', 0, 0, 0);
+      ethaneModes.addAtom('C', 1.54, 0, 0);
+      ethaneModes.addAtom('H', 2.0, 1.0, 0);
+      ethaneModes.detectBonds();
+      const origC1 = ethaneModes.atoms[0].x;
+      const origC2 = ethaneModes.atoms[1].x;
+      // 測試 mode1 = 'atom', mode2 = 'fixed'：僅原子 1 移動，原子 2 固定
+      GeometryAdjuster.setBondLength(ethaneModes, 0, 1, 2.0, 'atom', 'fixed');
+      assertNear(ethaneModes.atoms[1].x, origC2, 1e-4, 'Atom 2 stayed completely fixed');
+      assert(Math.abs(ethaneModes.atoms[0].x - origC1) > 0.3, 'Atom 1 moved towards target length');
+      assertNear(GeometryAdjuster.getBondLength(ethaneModes, 0, 1), 2.0, 1e-4, 'Bond length reached 2.0 Å');
+
+      // 測試兩端皆 Fixed 時的防護機制 (自動 fallback)
+      GeometryAdjuster.setBondLength(ethaneModes, 0, 1, 1.8, 'fixed', 'fixed');
+      assertNear(GeometryAdjuster.getBondLength(ethaneModes, 0, 1), 1.8, 1e-4, 'Fallback prevented freeze when both were fixed');
+
+      // 測試兩側對稱移動 mode1 = 'group', mode2 = 'group'
+      const posC1Before = ethaneModes.atoms[0].x;
+      const posC2Before = ethaneModes.atoms[1].x;
+      GeometryAdjuster.setBondLength(ethaneModes, 0, 1, 2.2, 'group', 'group');
+      const shift1 = Math.abs(ethaneModes.atoms[0].x - posC1Before);
+      const shift2 = Math.abs(ethaneModes.atoms[1].x - posC2Before);
+      assertNear(shift1, shift2, 1e-4, 'Both sides moved symmetrically by equal amount');
+
+      log('=== 17. GaussView Alt Drag Interaction Test ===');
+      dummyApp.structure.atoms[0].selected = true;
+      // Alt + 左鍵 (button === 0) -> 旋轉選中原子群 (rotate_atoms)
+      ctrl.onPointerDown({ clientX: 50, clientY: 50, altKey: true, button: 0 });
+      assert(ctrl.dragMode === 'rotate_atoms', 'Alt + Left click triggered rotate_atoms');
+      assert(!dummyApp.renderer.controls.enabled, 'OrbitControls disabled during atom rotation');
+
+      // Alt + 右鍵 (button === 2) -> 平移選中原子群 (move_atoms)
+      ctrl.onPointerDown({ clientX: 50, clientY: 50, altKey: true, button: 2 });
+      assert(ctrl.dragMode === 'move_atoms', 'Alt + Right click triggered move_atoms');
+
+      log('=== 18. Periodic Boundary Cross-Cell Bond Offset & Cell Box Test ===');
+      const siCryst = PRESETS.silicon.build();
+      siCryst.detectBonds();
+      const pbcBonds = siCryst.bonds.filter(b => b.offset && (b.offset[0] !== 0 || b.offset[1] !== 0 || b.offset[2] !== 0));
+      assert(pbcBonds.length > 0, 'Detected bonds crossing periodic boundaries with non-zero offset');
+
+      const testBoxRenderer = new MoleculeRenderer(document.createElement('div'));
+      testBoxRenderer.visualReplicas = [2, 2, 2];
+      testBoxRenderer.drawLatticeBox(siCryst.cell);
+      // 單元晶胞線段必定剛好由 12 條邊組成 (12 * 2 頂點 = 24 頂點)
+      const lineCount = testBoxRenderer.cellLines.geometry.attributes.position.count / 2;
+      assert(lineCount === 12, `Only base unit cell box rendered (12 edges), outer replica box removed!`);
+
+      log(`\n========================================`);
+      log(`TEST SUMMARY: ${passed} PASSED, ${failed} FAILED`);
+      log(`========================================`);
+    } catch (e) {
+      log(`TEST EXCEPTION: ${e.message}\n${e.stack}`);
+    }
+  </script>
+</body>
+</html>

@@ -8,7 +8,7 @@
 
 所有工具皆採用 **純前端技術（Client-side）** 開發，無需安裝任何環境或依賴套件，打開瀏覽器即可直接使用。
 
-🌐 **線上使用入口**：[點此立即前往工具箱首頁](https://H6rst0n.github.io/scientific-tools/) 
+🌐 **線上使用入口**：[點此立即前往工具箱首頁](https://your-username.github.io/your-repo-name/) *(請替換為實際 GitHub Pages 網址)*
 
 ---
 
@@ -23,7 +23,17 @@
 
 ## 🛠️ 工具清單
 
-### 1. ⚛️ 科研能量圖繪製工具 (Reaction Energy Profile Plotter)
+### 1. ⚛️ AtomCraft 3D 分子與晶體材料建模工具 (AtomCraft 3D Builder)
+- **簡介**：專為計算化學與材料科學設計的輕量級 3D 視覺化建模工具，結合 GaussView 的直覺編輯體驗與 VESTA 的週期性晶胞處理能力。
+- **主要功能**：
+  - **GaussView 風格 VSEPR 幾何整理 🧹**：基於混成軌域與共價半徑快速修正分子鍵長與鍵角。
+  - **強大 3D 互動與二面角旋轉**：支援單鍵二面角直接扭轉、局部原子/基團平移旋轉、即時距離/角度/二面角測量。
+  - **週期性晶胞與材料工具**：支援晶胞框顯示、GPU 零負擔視覺擴胞、實體超晶胞生成、真空層厚度調整與密勒指數表面切割 (Slab Cleaver)。
+  - **多格式計算化學相容**：支援讀寫 Gaussian (`.gjf`/`.com`)、ORCA (`.inp`)、VASP (`POSCAR`/`CONTCAR`)、Quantum ESPRESSO (`.in`)、Extended XYZ、CIF、PDB。
+  - **GPU 實例化加速**：採用 Three.js `InstancedMesh` 技術，順暢承載數萬至數十萬原子。
+- **工具路徑**：[`atomcraft/index.html`](./atomcraft/index.html)
+
+### 2. ⚡ 科研能量圖繪製工具 (Reaction Energy Profile Plotter)
 - **簡介**：專為化學、物理與材料計算化學設計的反應位能面（PES / Reaction Coordinate Diagram）繪製工具。
 - **主要功能**：
   - 支援多反應路徑（Multi-pathway）對比。

@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AtomCraft 3D | 計算化學與材料建模工具 (GaussView Style Edition)</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- ================= 1. 頂部主導覽列 ================= -->
+  <header>
+    <div class="brand-section">
+      <a href="../index.html" class="btn-header" style="text-decoration: none; display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; font-size: 11px; margin-right: 6px;" title="返回工具箱首頁">🏠 工具首頁</a>
+      <div class="brand-title">
+        <span>⚛️ AtomCraft 3D</span>
+        <span class="brand-badge">GaussView Edition</span>
+      </div>
+      <select id="preset-selector" class="dropdown-select" onchange="if(this.value) { window.app.loadPreset(this.value); this.value=''; }">
+        <option value="" disabled selected>📂 載入內建模範結構...</option>
+        <optgroup label="── 孤立小分子 (0D) ──">
+          <option value="caffeine">☕ 咖啡因 (Caffeine)</option>
+          <option value="benzene">⬡ 苯環 (Benzene)</option>
+          <option value="ferrocene">🥪 二茂鐵 (Ferrocene)</option>
+          <option value="water">💧 水分子 (Water)</option>
+          <option value="methane">⛽ 甲烷 (Methane)</option>
+        </optgroup>
+        <optgroup label="── 週期性晶體與二維材料 ──">
+          <option value="silicon">💎 矽金剛石晶體 (Silicon Bulk)</option>
+          <option value="graphene">🕸️ 石墨烯 2D 材料 (Graphene)</option>
+          <option value="rutile">🔴 金紅石二氧化鈦 (TiO2 Rutile)</option>
+          <option value="nacl">🧂 食鹽晶體 (Rock Salt NaCl)</option>
+        </optgroup>
+      </select>
+    </div>
+
+    <div class="menu-section">
+      <button class="btn-header" onclick="document.getElementById('file-input').click()" title="開啟結構檔 (XYZ, GJF, ORCA, POSCAR, CIF, PDB)">
+        📁 開啟檔案
+      </button>
+      <input type="file" id="file-input" style="display: none;" accept=".xyz,.gjf,.com,.inp,.cif,.pdb,.vasp,POSCAR,CONTCAR">
+
+      <button class="btn-header primary" id="btn-open-export">
+        💾 匯出檔案
+      </button>
+
+      <div class="tool-separator"></div>
+
+      <button class="btn-header" id="btn-undo" onclick="window.app.undo()" title="復原 (Ctrl+Z)" disabled>↶ 復原</button>
+      <button class="btn-header" id="btn-redo" onclick="window.app.redo()" title="重做 (Ctrl+Y)" disabled>↷ 重做</button>
+      <button class="btn-header" onclick="window.app.centerStructure()" title="居中分子或晶胞">🎯 居中</button>
+      <button class="btn-header" onclick="window.app.clearStructure()" title="清空畫布">🗑️ 清空</button>
+      <button class="btn-header" onclick="document.getElementById('modal-shortcuts').classList.add('show')" title="快捷鍵說明">❓ 說明</button>
+    </div>
+  </header>
+
+  <!-- ================= 2. 主 3D 工作視窗 ================= -->
+  <main class="workspace">
+    <!-- Three.js 畫布容器 (左鍵旋轉、右鍵平移、滾輪縮放、點選原子量測) -->
+    <div id="viewport"></div>
+
+    <!-- 頂部 GaussView 風格核心工具列 (Ribbon) -->
+    <div class="floating-ribbon">
+      <!-- 週期表與替換筆刷按鈕 -->
+      <button class="tool-btn elem-picker-btn" id="btn-elem-fragment" title="點擊開啟元素週期表，可自選元素與混成狀態並啟用替換筆刷">
+        ⊞ 元素: C (正四面體 sp³)
+      </button>
+
+      <!-- 透視 / 正交 投影切換按鈕 -->
+      <button class="tool-btn" id="btn-toggle-projection" title="點擊在透視投影與正交投影之間切換">
+        👁️ 透視 (Perspective)
+      </button>
+
+      <div class="tool-separator"></div>
+
+      <!-- GaussView 三大獨立幾何微調按鈕 -->
+      <button class="tool-btn" id="btn-mod-bond" title="選取剛好 2 個原子時啟用：調整鍵長距離" disabled>
+        📏 調整鍵長
+      </button>
+      <button class="tool-btn" id="btn-mod-angle" title="選取剛好 3 個原子時啟用：調整鍵角 (頂點為第2原子)" disabled>
+        📐 調整鍵角
+      </button>
+      <button class="tool-btn" id="btn-mod-dihedral" title="選取剛好 4 個原子時啟用：調整二面角" disabled>
+        🔗 調整二面角
+      </button>
+
+      <div class="tool-separator"></div>
+
+      <!-- GaussView 掃把按鈕 🧹 -->
+      <button class="tool-btn clean-btn" onclick="window.app.runVSEPRClean()" title="GaussView 掃把：VSEPR 快速整理鍵長與幾何構型 (快捷鍵: Space 或 Ctrl+E)">
+        🧹 VSEPR 整理
+      </button>
+
+      <button class="tool-btn" onclick="window.app.addHydrogens()" title="自動補滿氫 (快捷鍵: H)">
+        +H 加氫
+      </button>
+      <button class="tool-btn" onclick="window.app.removeHydrogens()" title="移除氫原子 (快捷鍵: Shift+H)">
+        -H 去氫
+      </button>
+
+      <div class="tool-separator"></div>
+
+      <select id="select-style" class="dropdown-select" style="font-size: 12px; padding: 4px 8px;">
+        <option value="ball_and_stick" selected>球棒模型 (Ball & Stick)</option>
+        <option value="spacefill">空間填充 (Space-filling CPK)</option>
+        <option value="stick">棍狀模型 (Stick)</option>
+        <option value="wireframe">線框模型 (Wireframe)</option>
+      </select>
+    </div>
+
+    <!-- 浮動原子替換筆刷提示條 (Brush Mode HUD) -->
+    <div class="brush-hud-banner" id="brush-hud" style="display: none;">
+      <span id="brush-hud-label">🖌️ 原子替換筆刷啟動中：左鍵點擊原子替換為 <b>C</b></span>
+      <button class="btn-exit-brush" id="btn-exit-brush">退出筆刷 (Esc)</button>
+    </div>
+
+    <!-- 右側週期性與晶胞擴充面板 (Crystal & Supercell Panel) -->
+    <div class="side-panel crystal-panel" id="crystal-panel">
+      <div class="panel-header">
+        <span>🧊 週期性晶體工具</span>
+        <label style="font-size: 11px; cursor: pointer;">
+          <input type="checkbox" id="check-cell-box" checked onchange="window.app.renderer.showCellBox=this.checked; window.app.renderer.update(window.app.structure);"> 晶格框
+        </label>
+      </div>
+
+      <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 8px;">視覺擴胞 (GPU 零負擔預覽)：</div>
+      <div class="panel-row">
+        <span>a 軸:</span>
+        <input type="range" id="slider-na" min="1" max="4" value="1">
+        <span id="val-na" style="width: 24px;">1x</span>
+      </div>
+      <div class="panel-row">
+        <span>b 軸:</span>
+        <input type="range" id="slider-nb" min="1" max="4" value="1">
+        <span id="val-nb" style="width: 24px;">1x</span>
+      </div>
+      <div class="panel-row">
+        <span>c 軸:</span>
+        <input type="range" id="slider-nc" min="1" max="4" value="1">
+        <span id="val-nc" style="width: 24px;">1x</span>
+      </div>
+
+      <div class="tool-separator" style="width: 100%; height: 1px; margin: 10px 0;"></div>
+
+      <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 6px;">實體擴胞 (生成真實超晶胞座標)：</div>
+      <div class="panel-row" style="gap: 4px;">
+        <input type="number" id="input-expand-na" class="input-num" value="2" min="1" max="10">
+        <span>×</span>
+        <input type="number" id="input-expand-nb" class="input-num" value="2" min="1" max="10">
+        <span>×</span>
+        <input type="number" id="input-expand-nc" class="input-num" value="1" min="1" max="10">
+      </div>
+      <button class="btn-block" id="btn-expand-supercell">🔨 執行實體擴胞</button>
+
+      <div class="tool-separator" style="width: 100%; height: 1px; margin: 10px 0;"></div>
+
+      <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 6px;">表面模型與真空層：</div>
+      <div class="panel-row">
+        <span>Z 真空厚度:</span>
+        <input type="number" id="input-vacuum-thick" class="input-num" value="15" min="0" step="1">
+        <span>Å</span>
+      </div>
+      <button class="btn-block" onclick="window.app.pushHistory(); Crystal.adjustVacuum(window.app.structure, document.getElementById('input-vacuum-thick').value); window.app.renderer.update(window.app.structure); window.app.updateUI(); window.app.showToast('已調整真空層');">
+        ☁️ 設定真空層 (Vacuum)
+      </button>
+      <button class="btn-block" onclick="document.getElementById('modal-cleaver').classList.add('show')" style="margin-top: 6px;">
+        🔪 密勒指數表面切割 (Cleaver)
+      </button>
+    </div>
+
+    <!-- 視角快速對齊控制 (View Gizmo Controls) -->
+    <div class="view-controls">
+      <button class="view-btn" data-view="reset" title="重設視角視野">⟲</button>
+      <button class="view-btn" data-view="x" title="沿 X 軸正視">X</button>
+      <button class="view-btn" data-view="y" title="沿 Y 軸正視">Y</button>
+      <button class="view-btn" data-view="z" title="沿 Z 軸俯視">Z</button>
+    </div>
+  </main>
+
+  <!-- ================= 3. 底部狀態列與右下角量測 HUD ================= -->
+  <footer>
+    <div class="status-group">
+      <span id="status-atoms">原子數: 0 | 鍵數: 0</span>
+      <span id="status-formula">化學式: Empty</span>
+      <span id="status-cell">晶胞: 孤立分子</span>
+    </div>
+    <div class="status-group">
+      <!-- GaussView 1-2-3-4-5 即時量測與選取資訊顯示區 -->
+      <span id="status-measurement" class="status-measurement"></span>
+    </div>
+  </footer>
+
+  <!-- ================= 4. GaussView 風格週期表彈窗 (選取並啟用替換筆刷) ================= -->
+  <div class="modal-overlay" id="modal-ptable">
+    <div class="modal-card ptable-card">
+      <div class="modal-header">
+        <h3 style="display: flex; align-items: center; gap: 8px;">
+          <span>⊞ 元素週期表 (選取元素並啟用替換筆刷)</span>
+        </h3>
+        <button class="modal-close" id="btn-close-ptable">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 12px 16px;">
+        <div class="ptable-grid" id="ptable-grid"></div>
+
+        <div class="hybrid-section">
+          <div class="hybrid-header">
+            <span id="ptable-selected-title" style="font-weight: 600; color: #fff;">已選中：C (碳 / Carbon - No.6)</span>
+            <span style="font-size: 11px; color: var(--text-dim);">點選下方混成幾何，再按「啟用替換筆刷」</span>
+          </div>
+          <div class="hybrid-list" id="ptable-hybrid-list"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-header" onclick="document.getElementById('modal-ptable').classList.remove('show')">取消</button>
+        <button class="btn-header primary" id="btn-start-brush" title="左鍵點擊畫布原子替換為所選元素，可連續替換多個原子，按 Esc 退出">
+          🖌️ 啟用替換筆刷 (點擊原子替換)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 5. GaussView 幾何微調非阻塞式懸浮控制板 (Floating Dock，不遮擋分子視野) ================= -->
+  <div class="floating-adjust-dock" id="adjust-dock" style="display: none;">
+    <div class="adjust-dock-header">
+      <span id="adjust-dock-title" style="font-size: 13px; font-weight: 700; color: var(--primary);">📏 調整鍵長</span>
+      <button class="btn-dock-close" id="btn-dock-close" title="關閉微調 (Esc)">&times;</button>
+    </div>
+    <div class="adjust-dock-body">
+      <div class="adjust-dock-row">
+        <input type="range" id="slider-adjust" style="flex: 1; accent-color: var(--primary); cursor: pointer;">
+        <input type="number" id="input-adjust" class="input-num" style="width: 80px; text-align: center;">
+        <span id="adjust-dock-unit" style="font-size: 13px; font-weight: 700; color: #fff; width: 18px;">Å</span>
+      </div>
+      <div class="adjust-dock-modes-row">
+        <div class="adjust-mode-item">
+          <span id="adjust-mode-label-1" style="font-size: 11px; color: var(--text-muted); font-weight: 600;">原子 1:</span>
+          <select id="adjust-mode-1" class="dropdown-select small">
+            <option value="fixed" selected>Fixed (固定)</option>
+            <option value="group">Move Group (移動基團)</option>
+            <option value="atom">Move Atom (單獨移動)</option>
+          </select>
+        </div>
+        <div class="adjust-mode-item">
+          <span id="adjust-mode-label-2" style="font-size: 11px; color: var(--text-muted); font-weight: 600;">原子 2:</span>
+          <select id="adjust-mode-2" class="dropdown-select small">
+            <option value="group" selected>Move Group (移動基團)</option>
+            <option value="atom">Move Atom (單獨移動)</option>
+            <option value="fixed">Fixed (固定)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 6. 匯出設定彈窗 (Export Modal) ================= -->
+  <div class="modal-overlay" id="modal-export">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>💾 匯出計算化學輸入檔 / 結構檔</h3>
+        <button class="modal-close" id="btn-close-export">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div style="display: flex; gap: 12px;">
+          <div class="form-group" style="flex: 1;">
+            <label>匯出格式 (Target Format)</label>
+            <select id="export-format" class="form-select">
+              <option value="gjf" selected>Gaussian Input (*.gjf / *.com)</option>
+              <option value="orca">ORCA Input (*.inp)</option>
+              <option value="vasp">VASP POSCAR (Direct 分數座標)</option>
+              <option value="qe">Quantum ESPRESSO (*.in)</option>
+              <option value="xyz">Standard / Extended XYZ (*.xyz)</option>
+              <option value="cif">Crystallographic Information (*.cif)</option>
+              <option value="pdb">Protein Data Bank (*.pdb)</option>
+            </select>
+          </div>
+          <div class="form-group" style="width: 80px;">
+            <label>淨電荷</label>
+            <input type="number" id="export-charge" class="form-input" value="0">
+          </div>
+          <div class="form-group" style="width: 80px;">
+            <label>自旋重數</label>
+            <input type="number" id="export-mult" class="form-input" value="1" min="1">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>計算方法與關鍵字 Header (Route Line)</label>
+          <input type="text" id="export-route" class="form-input" value="#p b3lyp/6-31g(d) opt freq">
+        </div>
+
+        <div class="form-group">
+          <label>輸出內容預覽 (Preview)</label>
+          <textarea id="export-preview" class="code-textarea" readonly></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-header" id="btn-copy-export">📋 複製到剪貼簿</button>
+        <button class="btn-header primary" id="btn-download-export">⬇️ 下載檔案</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 7. 表面切割彈窗 (Surface Cleaver Modal) ================= -->
+  <div class="modal-overlay" id="modal-cleaver">
+    <div class="modal-card" style="width: 480px;">
+      <div class="modal-header">
+        <h3>🔪 密勒指數表面切割 (Miller Surface Cleaver)</h3>
+        <button class="modal-close" onclick="document.getElementById('modal-cleaver').classList.remove('show')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>密勒指數 (Miller Indices h, k, l)</label>
+          <div style="display: flex; gap: 8px;">
+            <input type="number" id="cleave-h" class="form-input" value="0" style="text-align: center;">
+            <input type="number" id="cleave-k" class="form-input" value="0" style="text-align: center;">
+            <input type="number" id="cleave-l" class="form-input" value="1" style="text-align: center;">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Slab 切片重複層數 (Layers / Multiplier)</label>
+          <input type="number" id="cleave-layers" class="form-input" value="3" min="1" max="10">
+        </div>
+        <div class="form-group">
+          <label>真空層厚度 (Vacuum Thickness in Å)</label>
+          <input type="number" id="cleave-vacuum" class="form-input" value="15.0" min="0" step="1">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-header" onclick="document.getElementById('modal-cleaver').classList.remove('show')">取消</button>
+        <button class="btn-header primary" onclick="
+          window.app.pushHistory();
+          const h = parseInt(document.getElementById('cleave-h').value, 10);
+          const k = parseInt(document.getElementById('cleave-k').value, 10);
+          const l = parseInt(document.getElementById('cleave-l').value, 10);
+          const layers = parseInt(document.getElementById('cleave-layers').value, 10);
+          const vac = parseFloat(document.getElementById('cleave-vacuum').value);
+          if (Crystal.cleaveSurface(window.app.structure, h, k, l, layers, vac)) {
+            window.app.renderer.resetCamera(window.app.structure);
+            window.app.renderer.update(window.app.structure);
+            window.app.updateUI();
+            window.app.showToast(`已生成 (${h} ${k} ${l}) 表面 Slab 模型`);
+          }
+          document.getElementById('modal-cleaver').classList.remove('show');
+        ">🔪 生成表面 Slab</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 8. 快捷鍵說明彈窗 (Shortcuts Modal) ================= -->
+  <div class="modal-overlay" id="modal-shortcuts">
+    <div class="modal-card" style="width: 560px;">
+      <div class="modal-header">
+        <h3>⌨️ 鍵盤與滑鼠快捷鍵指南 (GaussView Style)</h3>
+        <button class="modal-close" onclick="document.getElementById('modal-shortcuts').classList.remove('show')">&times;</button>
+      </div>
+      <div class="modal-body" style="font-size: 13px; line-height: 1.7;">
+        <table style="width: 100%; border-collapse: collapse; color: var(--text-main);">
+          <tr style="border-bottom: 1px solid var(--border);">
+            <th style="text-align: left; padding: 6px 0; color: var(--primary);">操作 / 按鍵</th>
+            <th style="text-align: left; padding: 6px 0; color: var(--primary);">功能說明</th>
+          </tr>
+          <tr><td style="padding: 5px 0;"><b>滑鼠左鍵拖曳</b></td><td>3D 視角旋轉 (Orbit)</td></tr>
+          <tr><td style="padding: 5px 0;"><b>滑鼠右鍵 / 滾輪拖曳</b></td><td>3D 視角平移 (Pan)</td></tr>
+          <tr><td style="padding: 5px 0;"><b>滾輪滾動</b></td><td>縮放視野 (Zoom)</td></tr>
+          <tr><td style="padding: 5px 0;"><b>點擊原子 (1~4下)</b></td><td>依序量測：第1下顯示坐標，第2下顯示鍵長，第3下顯示鍵角，第4下顯示二面角</td></tr>
+          <tr><td style="padding: 5px 0;"><b>點擊第 5 下</b></td><td>自動取消前 4 顆選取，重新從第 1 顆開始循環量測</td></tr>
+          <tr><td style="padding: 5px 0;"><b>點擊空白處</b></td><td>取消所有選取，清空量測資訊</td></tr>
+          <tr><td style="padding: 5px 0;"><b>替換筆刷模式</b></td><td>點擊週期表啟用筆刷，點擊原子直接置換為該元素，按 Esc 退出</td></tr>
+          <tr><td style="padding: 5px 0;"><b>Alt + 左鍵拖曳</b></td><td>旋轉選中的原子群 (Rotate Selected)</td></tr>
+          <tr><td style="padding: 5px 0;"><b>Alt + 右鍵拖曳</b></td><td>平移選中的原子群 (Translate Selected)</td></tr>
+          <tr><td style="padding: 5px 0;"><b>Ctrl + Z / Ctrl + Y</b></td><td>復原 (Undo) / 重做 (Redo)</td></tr>
+          <tr><td style="padding: 5px 0;"><b>Space / Ctrl + E</b></td><td>🧹 觸發 VSEPR 掃把幾何整理</td></tr>
+          <tr><td style="padding: 5px 0;"><b>H / Shift + H</b></td><td>自動補氫 (+H) / 移除氫 (-H)</td></tr>
+          <tr><td style="padding: 5px 0;"><b>Ctrl + A</b></td><td>全選所有原子</td></tr>
+          <tr><td style="padding: 5px 0;"><b>Delete / Backspace</b></td><td>刪除選中的原子</td></tr>
+          <tr><td style="padding: 5px 0;"><b>直接拖曳檔案進視窗</b></td><td>支援 XYZ, GJF, ORCA, POSCAR, CIF, PDB</td></tr>
+        </table>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-header primary" onclick="document.getElementById('modal-shortcuts').classList.remove('show')">了解</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 載入函式庫與核心模組 ================= -->
+  <!-- 1. Three.js 核心與軌道控制器 (本地離線相容) -->
+  <script src="lib/three.min.js"></script>
+  <script src="lib/OrbitControls.js"></script>
+
+  <!-- 2. AtomCraft 3D 核心化學與材料模組 -->
+  <script src="js/elements.js"></script>
+  <script src="js/periodic_table.js"></script>
+  <script src="js/structure.js"></script>
+  <script src="js/vsepr.js"></script>
+  <script src="js/crystal.js"></script>
+  <script src="js/adjust_geometry.js"></script>
+  <script src="js/parsers.js"></script>
+  <script src="js/presets.js"></script>
+  <script src="js/renderer.js"></script>
+  <script src="js/controls.js"></script>
+  <script src="js/app.js"></script>
+
+</body>
+</html>
