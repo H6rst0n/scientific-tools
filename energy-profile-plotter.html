@@ -428,7 +428,21 @@ input[type="color"].cell-color { width: 26px; height: 24px; padding: 0; border: 
           <option value="hide">隱藏</option>
         </select></label>
         <label><span id="lbl-bname-size">名稱字級</span> <input type="number" id="batch-name-size" min="8" max="36" placeholder="預設" style="width:40px;"></label>
+        <label><span id="lbl-bname-weight">名稱粗細</span> <select id="batch-name-weight">
+          <option value="">-</option>
+          <option value="400">400 正常</option>
+          <option value="500">500 中等</option>
+          <option value="600">600 次粗</option>
+          <option value="700">700 粗體</option>
+        </select></label>
         <label><span id="lbl-benergy-size">能量字級</span> <input type="number" id="batch-energy-size" min="8" max="36" placeholder="預設" style="width:40px;"></label>
+        <label><span id="lbl-benergy-weight">能量粗細</span> <select id="batch-energy-weight">
+          <option value="">-</option>
+          <option value="400">400 正常</option>
+          <option value="500">500 中等</option>
+          <option value="600">600 次粗</option>
+          <option value="700">700 粗體</option>
+        </select></label>
         <label><span id="lbl-benergy-bg">能量底色</span> <select id="batch-energy-bg">
           <option value="">-</option>
           <option value="none">無底色</option>
@@ -458,7 +472,15 @@ input[type="color"].cell-color { width: 26px; height: 24px; padding: 0; border: 
         <label><span id="lbl-chart-title-text">標題文字：</span> <input type="text" id="opt-chart-title-text" class="opt-txt" placeholder="在此輸入標題"></label>
       </div>
       <div class="opt-row opt-indent" id="row-chart-title-size">
-        <label><span id="lbl-chart-title-fontsize">標題字級：</span> <input type="number" id="opt-chart-title-fontsize" min="8" max="48" value="16" class="opt-inp" style="width:52px;"></label>
+        <label><span id="lbl-chart-title-fontsize">標題字級：</span> <input type="number" id="opt-chart-title-fontsize" min="8" max="48" value="16" class="opt-inp" style="width:46px; text-align:center;"></label>
+        <label style="margin-left:6px;"><span id="lbl-chart-title-weight">粗細：</span>
+          <select id="opt-chart-title-weight" class="opt-inp" style="width:76px;">
+            <option value="400">400 正常</option>
+            <option value="500">500 中等</option>
+            <option value="600">600 次粗</option>
+            <option value="700" selected>700 粗體</option>
+          </select>
+        </label>
       </div>
 
       <!-- ② 軸線顯示 & 圖框 -->
@@ -536,27 +558,120 @@ input[type="color"].cell-color { width: 26px; height: 24px; padding: 0; border: 
         <button class="btn-panel btn-sm" id="btn-reset-yrange" style="font-size:11px; padding:2px 8px; width:100%; justify-content:center;">↺ 重設為自動範圍</button>
       </div>
 
-      <!-- ⑧ 字級與精度 -->
-      <div class="opt-subhead" id="lbl-typography-head">字級大小與數值設定</div>
-      <div class="opt-grid-2">
-        <div class="opt-row">
-          <label><span id="lbl-name-fontsize">名稱字級:</span> <input type="number" id="opt-name-fontsize" min="8" max="36" value="11" class="opt-inp"></label>
+      <!-- ⑧ 字型與排版系統 (Typography) -->
+      <div class="opt-subhead" id="lbl-typography-head">字型與排版設定 (Typography)</div>
+
+      <!-- 全域字型 -->
+      <div class="opt-row" style="margin-bottom:6px;">
+        <label style="flex:1; display:flex; align-items:center; gap:6px;">
+          <span id="lbl-font-family" style="font-weight:600; white-space:nowrap;">全域字型：</span>
+          <select id="opt-font-family" style="flex:1; padding:3px 4px; font-size:11px; border:1px solid var(--border); border-radius:3px;">
+            <option value="Arial, sans-serif">Arial (標準無襯線)</option>
+            <option value="'Times New Roman', Times, serif">Times New Roman (期刊經典襯線)</option>
+            <option value="'Helvetica Neue', Helvetica, Arial, sans-serif">Helvetica</option>
+            <option value="Calibri, sans-serif">Calibri</option>
+            <option value="'Segoe UI', Arial, sans-serif">Segoe UI</option>
+            <option value="Georgia, serif">Georgia</option>
+            <option value="custom">自訂字型 (Custom)...</option>
+          </select>
+        </label>
+      </div>
+      <div class="opt-row opt-indent hidden" id="row-custom-font" style="margin-bottom:6px;">
+        <label style="flex:1; display:flex; align-items:center; gap:4px;">
+          <span id="lbl-custom-font" style="white-space:nowrap;">自訂字型：</span>
+          <input type="text" id="opt-custom-font" class="opt-txt" placeholder="例如: STIX Two Text, Computer Modern" style="flex:1;">
+        </label>
+      </div>
+
+      <!-- 統一文字規格矩陣 (項目 / 字級 / 粗細) -->
+      <div class="typo-matrix" style="margin-bottom:8px; border:1px solid #e0e0e0; border-radius:4px; padding:6px 8px; background:#fafafa;">
+        <div class="typo-header" style="display:flex; align-items:center; justify-content:space-between; font-weight:600; color:#555; border-bottom:1px solid #ddd; padding-bottom:4px; margin-bottom:4px; font-size:11px;">
+          <span style="flex:1.4;" id="th-typo-item">文字項目</span>
+          <span style="width:50px; text-align:center;" id="th-typo-size">字級</span>
+          <span style="width:78px; text-align:center;" id="th-typo-weight">粗細</span>
         </div>
-        <div class="opt-row">
-          <label><span id="lbl-energy-fontsize">能量字級:</span> <input type="number" id="opt-energy-fontsize" min="8" max="36" value="13" class="opt-inp"></label>
+        <!-- 圖表標題 -->
+        <div class="typo-row" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; font-size:11px;">
+          <span style="flex:1.4;" id="lbl-charttitle-typo">圖表標題</span>
+          <input type="number" id="opt-charttitle-size" min="8" max="48" value="16" class="opt-inp" style="width:46px; text-align:center;">
+          <select id="opt-charttitle-weight" class="opt-inp" style="width:76px;">
+            <option value="400">400 正常</option>
+            <option value="500">500 中等</option>
+            <option value="600">600 次粗</option>
+            <option value="700" selected>700 粗體</option>
+          </select>
         </div>
-        <div class="opt-row">
-          <label><span id="lbl-axistitle-fontsize">軸標題:</span> <input type="number" id="opt-axistitle-fontsize" min="8" max="36" value="14" class="opt-inp"></label>
+        <!-- 軸標題 (X/Y) -->
+        <div class="typo-row" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; font-size:11px;">
+          <span style="flex:1.4;" id="lbl-axistitle-fontsize">軸標題 (X/Y)</span>
+          <input type="number" id="opt-axistitle-fontsize" min="8" max="36" value="14" class="opt-inp" style="width:46px; text-align:center;">
+          <select id="opt-axistitle-weight" class="opt-inp" style="width:76px;">
+            <option value="400">400 正常</option>
+            <option value="500" selected>500 中等</option>
+            <option value="600">600 次粗</option>
+            <option value="700">700 粗體</option>
+          </select>
         </div>
-        <div class="opt-row">
-          <label><span id="lbl-tick-fontsize">刻度數字:</span> <input type="number" id="opt-tick-fontsize" min="8" max="36" value="12" class="opt-inp"></label>
+        <!-- 刻度數字 -->
+        <div class="typo-row" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; font-size:11px;">
+          <span style="flex:1.4;" id="lbl-tick-fontsize">刻度數字</span>
+          <input type="number" id="opt-tick-fontsize" min="8" max="36" value="12" class="opt-inp" style="width:46px; text-align:center;">
+          <select id="opt-tick-weight" class="opt-inp" style="width:76px;">
+            <option value="400" selected>400 正常</option>
+            <option value="500">500 中等</option>
+            <option value="600">600 次粗</option>
+            <option value="700">700 粗體</option>
+          </select>
         </div>
-        <div class="opt-row">
-          <label><span id="lbl-legend-fontsize">圖例字級:</span> <input type="number" id="opt-legend-fontsize" min="8" max="36" value="12" class="opt-inp"></label>
+        <!-- 狀態名稱 -->
+        <div class="typo-row" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; font-size:11px;">
+          <span style="flex:1.4;" id="lbl-name-fontsize">狀態名稱</span>
+          <input type="number" id="opt-name-fontsize" min="8" max="36" value="11" class="opt-inp" style="width:46px; text-align:center;">
+          <select id="opt-name-weight" class="opt-inp" style="width:76px;">
+            <option value="400" selected>400 正常</option>
+            <option value="500">500 中等</option>
+            <option value="600">600 次粗</option>
+            <option value="700">700 粗體</option>
+          </select>
         </div>
-        <div class="opt-row">
-          <label><span id="lbl-opt-decimals">小數位數:</span> <input type="number" id="opt-decimals" min="0" max="6" value="2" class="opt-inp"></label>
+        <!-- 能量數值 -->
+        <div class="typo-row" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; font-size:11px;">
+          <span style="flex:1.4;" id="lbl-energy-fontsize">能量數值</span>
+          <input type="number" id="opt-energy-fontsize" min="8" max="36" value="13" class="opt-inp" style="width:46px; text-align:center;">
+          <select id="opt-energy-weight" class="opt-inp" style="width:76px;">
+            <option value="400">400 正常</option>
+            <option value="500">500 中等</option>
+            <option value="600" selected>600 次粗</option>
+            <option value="700">700 粗體</option>
+          </select>
         </div>
+        <!-- 圖例文字 -->
+        <div class="typo-row" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; font-size:11px;">
+          <span style="flex:1.4;" id="lbl-legend-fontsize">圖例文字</span>
+          <input type="number" id="opt-legend-fontsize" min="8" max="36" value="12" class="opt-inp" style="width:46px; text-align:center;">
+          <select id="opt-legend-weight" class="opt-inp" style="width:76px;">
+            <option value="400" selected>400 正常</option>
+            <option value="500">500 中等</option>
+            <option value="600">600 次粗</option>
+            <option value="700">700 粗體</option>
+          </select>
+        </div>
+        <!-- 能量差標註 -->
+        <div class="typo-row" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:2px; font-size:11px;">
+          <span style="flex:1.4;" id="lbl-ann-typo">能量差標註</span>
+          <input type="number" id="opt-ann-fontsize" min="8" max="36" value="12" class="opt-inp" style="width:46px; text-align:center;">
+          <select id="opt-ann-weight" class="opt-inp" style="width:76px;">
+            <option value="400">400 正常</option>
+            <option value="500">500 中等</option>
+            <option value="600" selected>600 次粗</option>
+            <option value="700">700 粗體</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 數值小數位數 -->
+      <div class="opt-row" style="margin-bottom:6px;">
+        <label><span id="lbl-opt-decimals">數值小數位數：</span> <input type="number" id="opt-decimals" min="0" max="6" value="2" class="opt-inp" style="width:46px; text-align:center;"></label>
       </div>
       <div class="format-hint" id="lbl-format-hint">💡 <b>上下標與換行格式：</b><br>下標：<code>H_2O</code> 或 <code>TS_{1-2}</code><br>上標：<code>Fe^{3+}</code> 或 <code>TS^‡</code> 或 <code>TS^*</code><br>換行：Enter 或 <code>\n</code> 或 <code>&lt;br&gt;</code><br>跳脫：<code>\_</code> 底線，<code>\^</code> 帽子</div>
     </div>
@@ -623,10 +738,29 @@ const LANG = {
     editLegendPrompt: '修改圖例名稱：',
     yrangeTitle: 'Y 軸範圍 (Y-Axis Range)',
     yMin: 'Y 最小', yMax: 'Y 最大', resetYRange: '↺ 重設為自動範圍',
-    lblTypography: '字級大小與數值設定 (Typography & Precision)',
+    /* Typography */
+    typographyHead: '字型與排版設定 (Typography)',
+    fontFamily: '全域字型',
+    customFont: '自訂字型',
+    thTypoItem: '文字項目',
+    thTypoSize: '字級',
+    thTypoWeight: '粗細',
+    chartTitleTypo: '圖表標題',
+    axisTitleTypo: '軸標題 (X/Y)',
+    tickTypo: '刻度數字',
+    nameTypo: '狀態名稱',
+    energyTypo: '能量數值',
+    legendTypo: '圖例文字',
+    annTypo: '能量差標註',
+    weightNormal: '400 正常',
+    weightMedium: '500 中等',
+    weightSemiBold: '600 次粗',
+    weightBold: '700 粗體',
+    nameWeight: '名稱粗細',
+    energyWeight: '能量粗細',
     nameFontSize: '名稱字級', energyFontSize: '能量字級',
     axisTitleFontSize: '軸標題字級', tickFontSize: '刻度數字字級',
-    legendFontSize: '圖例字級', optDecimals: '小數位數',
+    legendFontSize: '圖例字級', optDecimals: '數值小數位數',
     energyBg: '能量底色',
     bgNone: '無底色', bgWhite: '白色', bgGray: '淺灰', bgYellow: '淡黃', bgBlue: '淡藍', bgPurple: '淡紫', bgGreen: '淡綠', bgCustom: '自訂顏色...',
     annCoord: '座標',
@@ -653,7 +787,7 @@ const LANG = {
     /* Chart title */
     chartTitleHead: '圖表標題 (Chart Title)',
     showChartTitle: '顯示圖表標題', chartTitleText: '標題文字：',
-    chartTitleFontSize: '標題字級',
+    chartTitleFontSize: '標題字級', chartTitleFontWeight: '標題粗細',
     /* Axis display */
     axisFrameHead: '軸線顯示 (Axes & Frame)',
     showTopAxis: '頂部軸線', showRightAxis: '右側軸線',
@@ -687,7 +821,26 @@ const LANG = {
     editLegendPrompt: 'Edit legend label:',
     yrangeTitle: 'Y-Axis Range',
     yMin: 'Y Min', yMax: 'Y Max', resetYRange: '↺ Reset Auto Range',
-    lblTypography: 'Typography & Precision Settings',
+    /* Typography */
+    typographyHead: 'Typography & Fonts',
+    fontFamily: 'Global Font',
+    customFont: 'Custom Font',
+    thTypoItem: 'Element',
+    thTypoSize: 'Size',
+    thTypoWeight: 'Weight',
+    chartTitleTypo: 'Chart Title',
+    axisTitleTypo: 'Axis Titles (X/Y)',
+    tickTypo: 'Tick Values',
+    nameTypo: 'State Names',
+    energyTypo: 'Energy Values',
+    legendTypo: 'Legend',
+    annTypo: 'Energy Diff',
+    weightNormal: '400 Normal',
+    weightMedium: '500 Medium',
+    weightSemiBold: '600 Semi-Bold',
+    weightBold: '700 Bold',
+    nameWeight: 'Name Weight',
+    energyWeight: 'Energy Weight',
     nameFontSize: 'Name Size', energyFontSize: 'Energy Size',
     axisTitleFontSize: 'Axis Title Size', tickFontSize: 'Tick Label Size',
     legendFontSize: 'Legend Size', optDecimals: 'Decimals',
@@ -717,7 +870,7 @@ const LANG = {
     /* Chart title */
     chartTitleHead: 'Chart Title',
     showChartTitle: 'Show Chart Title', chartTitleText: 'Title Text:',
-    chartTitleFontSize: 'Title Size',
+    chartTitleFontSize: 'Title Size', chartTitleFontWeight: 'Title Weight',
     /* Axis display */
     axisFrameHead: 'Axes & Frame',
     showTopAxis: 'Top Axis', showRightAxis: 'Right Axis',
@@ -1115,6 +1268,15 @@ function mkState(name, coord, energy, width, showName) {
   };
 }
 
+function getActiveFontFamily() {
+  const ff = app.chartOptions?.fontFamily || 'Arial, sans-serif';
+  if (ff === 'custom') {
+    const cf = (app.chartOptions?.customFont || '').trim();
+    return cf || 'Arial, sans-serif';
+  }
+  return ff;
+}
+
 function defaultApp() {
   return {
     inputUnit:'eV', displayUnit:'eV', activeGroup:0, lang:'zh',
@@ -1122,8 +1284,17 @@ function defaultApp() {
     chartOptions: {
       showXTicks: true, showXTitle: true, showXAxis: true, xTitleText: '', yTitleText: '',
       showGrid: true, showLegend: true,
-      nameFontSize: 11, energyFontSize: 13,
-      axisTitleFontSize: 14, axisTickFontSize: 12, legendFontSize: 12,
+      /* Global font family */
+      fontFamily: 'Arial, sans-serif',
+      customFont: '',
+      /* Unified Typography */
+      chartTitleFontSize: 16, chartTitleFontWeight: '700',
+      axisTitleFontSize: 14, axisTitleFontWeight: '500',
+      axisTickFontSize: 12, axisTickFontWeight: '400',
+      nameFontSize: 11, nameFontWeight: '400',
+      energyFontSize: 13, energyFontWeight: '600',
+      legendFontSize: 12, legendFontWeight: '400',
+      annFontSize: 12, annFontWeight: '600',
       decimals: 2,
       /* Box frame */
       showTopAxis: true, showRightAxis: true, showBottomAxis: true, showLeftAxis: true,
@@ -1131,7 +1302,8 @@ function defaultApp() {
       /* Tick direction: 'out'|'in'|'both'|'none' */
       tickDirX: 'out', tickDirY: 'out',
       /* Chart title */
-      showChartTitle: false, chartTitleText: '', chartTitleFontSize: 16,
+      showChartTitle: false, chartTitleText: '',
+      xTitleOffset: { x: 0, y: 0 }, yTitleOffset: { x: 0, y: 0 }, chartTitleOffset: { x: 0, y: 0 }
     },
     legend: { visible: true, x: 80, y: 40, titles: {} },
     textAnnotations: [],
@@ -1269,15 +1441,52 @@ function applyLang() {
   setTxt('lbl-ymax', t('yMax') + ':');
   setTxt('btn-reset-yrange', t('resetYRange'));
 
-  /* ⑧ Typography */
-  setTxt('lbl-typography-head', t('lblTypography'));
-  setTxt('lbl-name-fontsize', t('nameFontSize') + ':');
-  setTxt('lbl-energy-fontsize', t('energyFontSize') + ':');
-  setTxt('lbl-axistitle-fontsize', t('axisTitleFontSize') + ':');
-  setTxt('lbl-tick-fontsize', t('tickFontSize') + ':');
-  setTxt('lbl-legend-fontsize', t('legendFontSize') + ':');
-  setTxt('lbl-opt-decimals', t('optDecimals') + ':');
-  setTxt('lbl-chart-title-fontsize', t('chartTitleFontSize') + ':');
+  /* ⑧ Typography & Matrix */
+  setTxt('lbl-chart-title-weight', t('chartTitleFontWeight') + '：');
+  setTxt('lbl-typography-head', t('typographyHead'));
+  setTxt('lbl-font-family', t('fontFamily') + '：');
+  setTxt('lbl-custom-font', t('customFont') + '：');
+  setTxt('th-typo-item', t('thTypoItem'));
+  setTxt('th-typo-size', t('thTypoSize'));
+  setTxt('th-typo-weight', t('thTypoWeight'));
+  setTxt('lbl-charttitle-typo', t('chartTitleTypo'));
+  setTxt('lbl-axistitle-fontsize', t('axisTitleTypo'));
+  setTxt('lbl-tick-fontsize', t('tickTypo'));
+  setTxt('lbl-name-fontsize', t('nameTypo'));
+  setTxt('lbl-energy-fontsize', t('energyTypo'));
+  setTxt('lbl-legend-fontsize', t('legendTypo'));
+  setTxt('lbl-ann-typo', t('annTypo'));
+  setTxt('lbl-opt-decimals', t('optDecimals') + '：');
+
+  const selFont = document.getElementById('opt-font-family');
+  if (selFont) {
+    selFont.options[0].text = 'Arial (' + (currentLang==='zh'?'標準無襯線':'Standard Sans') + ')';
+    selFont.options[1].text = 'Times New Roman (' + (currentLang==='zh'?'期刊經典襯線':'Classic Serif') + ')';
+    selFont.options[2].text = 'Helvetica';
+    selFont.options[3].text = 'Calibri';
+    selFont.options[4].text = 'Segoe UI';
+    selFont.options[5].text = 'Georgia';
+    selFont.options[6].text = currentLang === 'zh' ? '自訂字型 (Custom)...' : 'Custom Font...';
+  }
+
+  function updateWeightOptions(selId, includeKeep = false) {
+    const sel = document.getElementById(selId);
+    if (!sel) return;
+    const curVal = sel.value;
+    sel.innerHTML = '';
+    if (includeKeep) {
+      sel.add(new Option('-' + (currentLang === 'zh' ? '保持' : 'Keep') + '-', ''));
+    }
+    sel.add(new Option(t('weightNormal'), '400'));
+    sel.add(new Option(t('weightMedium'), '500'));
+    sel.add(new Option(t('weightSemiBold'), '600'));
+    sel.add(new Option(t('weightBold'), '700'));
+    if (curVal !== undefined && curVal !== null && curVal !== '') sel.value = curVal;
+  }
+
+  ['opt-chart-title-weight', 'opt-charttitle-weight', 'opt-axistitle-weight', 'opt-tick-weight', 'opt-name-weight', 'opt-energy-weight', 'opt-legend-weight', 'opt-ann-weight'].forEach(id => updateWeightOptions(id, false));
+  ['batch-name-weight', 'batch-energy-weight'].forEach(id => updateWeightOptions(id, true));
+
   const lFormatHint = document.getElementById('lbl-format-hint');
   if (lFormatHint) lFormatHint.innerHTML = t('formatHint');
 
@@ -1299,8 +1508,12 @@ function applyLang() {
   document.getElementById('lbl-bshowname').textContent = t('thName');
   const lblBNameSize = document.getElementById('lbl-bname-size');
   if (lblBNameSize) lblBNameSize.textContent = t('nameFontSize');
+  const lblBNameWeight = document.getElementById('lbl-bname-weight');
+  if (lblBNameWeight) lblBNameWeight.textContent = t('nameWeight');
   const lblBEnergySize = document.getElementById('lbl-benergy-size');
   if (lblBEnergySize) lblBEnergySize.textContent = t('energyFontSize');
+  const lblBEnergyWeight = document.getElementById('lbl-benergy-weight');
+  if (lblBEnergyWeight) lblBEnergyWeight.textContent = t('energyWeight');
   const lblBEnergyBg = document.getElementById('lbl-benergy-bg');
   if (lblBEnergyBg) lblBEnergyBg.textContent = t('energyBg');
 
@@ -1435,6 +1648,15 @@ function initChartOptions() {
   if (app.chartOptions.tickDirY === undefined) app.chartOptions.tickDirY = 'out';
   if (app.chartOptions.showChartTitle === undefined) app.chartOptions.showChartTitle = false;
   if (app.chartOptions.chartTitleFontSize === undefined) app.chartOptions.chartTitleFontSize = 16;
+  if (app.chartOptions.fontFamily === undefined) app.chartOptions.fontFamily = 'Arial, sans-serif';
+  if (app.chartOptions.chartTitleFontWeight === undefined) app.chartOptions.chartTitleFontWeight = '700';
+  if (app.chartOptions.axisTitleFontWeight === undefined) app.chartOptions.axisTitleFontWeight = '500';
+  if (app.chartOptions.axisTickFontWeight === undefined) app.chartOptions.axisTickFontWeight = '400';
+  if (app.chartOptions.nameFontWeight === undefined) app.chartOptions.nameFontWeight = '400';
+  if (app.chartOptions.energyFontWeight === undefined) app.chartOptions.energyFontWeight = '600';
+  if (app.chartOptions.legendFontWeight === undefined) app.chartOptions.legendFontWeight = '400';
+  if (app.chartOptions.annFontSize === undefined) app.chartOptions.annFontSize = 12;
+  if (app.chartOptions.annFontWeight === undefined) app.chartOptions.annFontWeight = '600';
   
   const toggle = document.getElementById('chart-options-toggle');
   const body = document.getElementById('chart-options-body');
@@ -1469,6 +1691,28 @@ function initChartOptions() {
     el.onchange = () => { app.chartOptions[prop] = el.value; saveAndRender(); };
   }
 
+  function syncInputs(id1, id2, prop, isNum, dflt, min, max) {
+    const el1 = document.getElementById(id1);
+    const el2 = document.getElementById(id2);
+    function update(val) {
+      app.chartOptions[prop] = isNum ? Math.max(min, Math.min(max, parseFloat(val) || dflt)) : val;
+      if (el1) el1.value = app.chartOptions[prop];
+      if (el2) el2.value = app.chartOptions[prop];
+      renderChart();
+    }
+    const cur = app.chartOptions[prop] !== undefined ? app.chartOptions[prop] : dflt;
+    if (el1) {
+      el1.value = cur;
+      el1.oninput = () => update(el1.value);
+      el1.onchange = () => { update(el1.value); saveState(); };
+    }
+    if (el2) {
+      el2.value = cur;
+      el2.oninput = () => update(el2.value);
+      el2.onchange = () => { update(el2.value); saveState(); };
+    }
+  }
+
   // ① Chart title
   const cbChartTitle = document.getElementById('opt-show-chart-title');
   const rowChartTitle = document.getElementById('row-chart-title-text');
@@ -1487,7 +1731,8 @@ function initChartOptions() {
     };
   }
   bindInpTxt('opt-chart-title-text', 'chartTitleText');
-  bindInpNum('opt-chart-title-fontsize', 'chartTitleFontSize', 16, 8, 48);
+  syncInputs('opt-chart-title-fontsize', 'opt-charttitle-size', 'chartTitleFontSize', true, 16, 8, 48);
+  syncInputs('opt-chart-title-weight', 'opt-charttitle-weight', 'chartTitleFontWeight', false, '700');
 
   // ② Axis frame (four-side box)
   bindCb('opt-show-bottom-axis', 'showBottomAxis');
@@ -1551,12 +1796,53 @@ function initChartOptions() {
     };
   }
 
-  // ⑧ Typography & Precision
-  bindInpNum('opt-name-fontsize', 'nameFontSize', 11, 8, 36);
-  bindInpNum('opt-energy-fontsize', 'energyFontSize', 13, 8, 36);
+  // ⑧ Typography & Matrix
+  const selFont = document.getElementById('opt-font-family');
+  const rowCustomFont = document.getElementById('row-custom-font');
+  const inpCustomFont = document.getElementById('opt-custom-font');
+  if (selFont) {
+    selFont.value = app.chartOptions.fontFamily || 'Arial, sans-serif';
+    if (rowCustomFont) rowCustomFont.classList.toggle('hidden', selFont.value !== 'custom');
+    selFont.onchange = () => {
+      app.chartOptions.fontFamily = selFont.value;
+      if (rowCustomFont) rowCustomFont.classList.toggle('hidden', selFont.value !== 'custom');
+      saveAndRender();
+    };
+  }
+  if (inpCustomFont) {
+    inpCustomFont.value = app.chartOptions.customFont || '';
+    inpCustomFont.oninput = () => {
+      app.chartOptions.customFont = inpCustomFont.value;
+      renderChart();
+    };
+    inpCustomFont.onchange = () => saveState();
+  }
+
+  // Axis Titles
   bindInpNum('opt-axistitle-fontsize', 'axisTitleFontSize', 14, 8, 36);
+  bindSel('opt-axistitle-weight', 'axisTitleFontWeight', '500');
+
+  // Axis Ticks
   bindInpNum('opt-tick-fontsize', 'axisTickFontSize', 12, 8, 36);
+  bindSel('opt-tick-weight', 'axisTickFontWeight', '400');
+
+  // State Names
+  bindInpNum('opt-name-fontsize', 'nameFontSize', 11, 8, 36);
+  bindSel('opt-name-weight', 'nameFontWeight', '400');
+
+  // Energy Values
+  bindInpNum('opt-energy-fontsize', 'energyFontSize', 13, 8, 36);
+  bindSel('opt-energy-weight', 'energyFontWeight', '600');
+
+  // Legend
   bindInpNum('opt-legend-fontsize', 'legendFontSize', 12, 8, 36);
+  bindSel('opt-legend-weight', 'legendFontWeight', '400');
+
+  // Energy Diff Annotations
+  bindInpNum('opt-ann-fontsize', 'annFontSize', 12, 8, 36);
+  bindSel('opt-ann-weight', 'annFontWeight', '600');
+
+  // Decimals
   const inpDec = document.getElementById('opt-decimals');
   if (inpDec) {
     inpDec.value = (app.chartOptions?.decimals !== undefined) ? app.chartOptions.decimals : 2;
@@ -1772,7 +2058,9 @@ function setupActions() {
     const col = document.getElementById('batch-color').value;
     const th = parseFloat(document.getElementById('batch-thick').value);
     const nSize = parseInt(document.getElementById('batch-name-size').value);
+    const nWeight = document.getElementById('batch-name-weight')?.value;
     const eSize = parseInt(document.getElementById('batch-energy-size').value);
+    const eWeight = document.getElementById('batch-energy-weight')?.value;
     const eBg = document.getElementById('batch-energy-bg')?.value;
     selectedRows.forEach(i => {
       if (i < g.states.length) {
@@ -1783,7 +2071,9 @@ function setupActions() {
         if (col) { s.style.color = col; addRecentColor(col); }
         if (!isNaN(th)) s.style.strokeWidth = th;
         if (!isNaN(nSize) && nSize > 0) s.style.nameFontSize = nSize;
+        if (nWeight) s.style.nameFontWeight = nWeight;
         if (!isNaN(eSize) && eSize > 0) s.style.energyFontSize = eSize;
+        if (eWeight) s.style.energyFontWeight = eWeight;
         if (eBg !== undefined && eBg !== '') s.style.energyBg = eBg;
       }
     });
@@ -1941,11 +2231,16 @@ function renderChart() {
   cH = dims.h;
 
   const co = app.chartOptions || {};
+  const activeFont = getActiveFontFamily();
+  svg.style('font-family', activeFont);
+
   const axThick = co.axisThickness || 1.0;
   const tickDirX = co.tickDirX || 'out';
   const tickDirY = co.tickDirY || 'out';
   const tickFontSize = co.axisTickFontSize || 12;
+  const tickWeight = co.axisTickFontWeight || '400';
   const axisTitleSize = (co.axisTitleFontSize || 14) + 'px';
+  const axisTitleWeight = co.axisTitleFontWeight || '500';
   const tickSize = tickFontSize + 'px';
 
   // Dynamic margin: top margin is compact and only adds necessary space when title is shown
@@ -1999,7 +2294,9 @@ function renderChart() {
       .attr('dominant-baseline', 'middle')
       .attr('font-size', (co.chartTitleFontSize || 16) + 'px')
       .style('font-size', (co.chartTitleFontSize || 16) + 'px')
-      .attr('font-weight', 'bold')
+      .attr('font-weight', co.chartTitleFontWeight || '700')
+      .style('font-weight', co.chartTitleFontWeight || '700')
+      .style('font-family', activeFont)
       .attr('fill', '#000000');
     renderRichText(titleEl, co.chartTitleText.trim());
 
@@ -2053,7 +2350,11 @@ function renderChart() {
       else xAxis.tickSizeInner(0).tickPadding(5); // none
     }
     const xAxG = g.append('g').attr('class', 'axis axis-bottom').attr('transform', `translate(0,${iH})`).call(xAxis);
-    xAxG.selectAll('text').attr('font-size', tickSize).style('font-size', tickSize).style('fill', '#000000');
+    xAxG.selectAll('text')
+      .attr('font-size', tickSize).style('font-size', tickSize)
+      .attr('font-weight', tickWeight).style('font-weight', tickWeight)
+      .style('font-family', activeFont)
+      .style('fill', '#000000');
     xAxG.selectAll('path, line').style('stroke', '#000000').style('stroke-width', axThick + 'px');
     if (co?.showXTicks !== false && tickDirX === 'both') {
       xAxG.selectAll('.tick line').attr('y1', -6).attr('y2', 6);
@@ -2068,7 +2369,11 @@ function renderChart() {
     else if (tickDirY === 'both') yAxis.tickSizeInner(6).tickPadding(8);
     else yAxis.tickSizeInner(0).tickPadding(5); // none
     const yAxG = g.append('g').attr('class', 'axis axis-left').call(yAxis);
-    yAxG.selectAll('text').attr('font-size', tickSize).style('font-size', tickSize).style('fill', '#000000');
+    yAxG.selectAll('text')
+      .attr('font-size', tickSize).style('font-size', tickSize)
+      .attr('font-weight', tickWeight).style('font-weight', tickWeight)
+      .style('font-family', activeFont)
+      .style('fill', '#000000');
     yAxG.selectAll('path, line').style('stroke', '#000000').style('stroke-width', axThick + 'px');
     if (tickDirY === 'both') {
       yAxG.selectAll('.tick line').attr('x1', -6).attr('x2', 6);
@@ -2124,6 +2429,9 @@ function renderChart() {
       .attr('text-anchor', 'middle')
       .attr('font-size', axisTitleSize)
       .style('font-size', axisTitleSize)
+      .attr('font-weight', axisTitleWeight)
+      .style('font-weight', axisTitleWeight)
+      .style('font-family', activeFont)
       .attr('fill', '#000000');
     renderRichText(xTitleEl, xTitle);
 
@@ -2155,6 +2463,9 @@ function renderChart() {
     .attr('text-anchor', 'middle')
     .attr('font-size', axisTitleSize)
     .style('font-size', axisTitleSize)
+    .attr('font-weight', axisTitleWeight)
+    .style('font-weight', axisTitleWeight)
+    .style('font-family', activeFont)
     .attr('fill', '#000000');
   renderRichText(yTitleEl, yTitleStr);
 
@@ -2179,6 +2490,7 @@ function renderGroupChart(g, gr, gi, xS, yS) {
   const r = refE(gr);
   const ss = sorted(gr).map(s => ({ ...s, de: dispE(s.energy, r) }));
   if (!ss.length) return;
+  const activeFont = getActiveFontFamily();
 
   function hw(s) {
     const w = (s.width !== undefined && !isNaN(s.width)) ? s.width : 0.50;
@@ -2261,11 +2573,15 @@ function renderGroupChart(g, gr, gi, xS, yS) {
       .style('cursor', 'move');
 
     const eSize = (s.style?.energyFontSize || app.chartOptions?.energyFontSize || 13) + 'px';
+    const eWeight = s.style?.energyFontWeight || app.chartOptions?.energyFontWeight || '600';
     const eL = eG.append('text').attr('class', 'energy-label')
       .attr('x', 0).attr('y', 0)
       .attr('text-anchor', 'middle')
       .attr('font-size', eSize)
-      .attr('font-weight', '600')
+      .style('font-size', eSize)
+      .attr('font-weight', eWeight)
+      .style('font-weight', eWeight)
+      .style('font-family', activeFont)
       .attr('fill', col)
       .attr('dominant-baseline', 'middle');
     renderRichText(eL, fmtE(s.de));
@@ -2299,6 +2615,7 @@ function renderGroupChart(g, gr, gi, xS, yS) {
     // Name label (only if showName !== false)
     if (s.showName !== false) {
       const nSize = (s.style?.nameFontSize || app.chartOptions?.nameFontSize || 11) + 'px';
+      const nWeight = s.style?.nameFontWeight || app.chartOptions?.nameFontWeight || '400';
       const nG = gL.append('g').attr('class', 'name-label-group')
         .attr('transform', `translate(${cx + lo.name.x}, ${y + 22 + lo.name.y})`)
         .style('cursor', 'move');
@@ -2308,6 +2625,9 @@ function renderGroupChart(g, gr, gi, xS, yS) {
         .attr('text-anchor', 'middle')
         .attr('font-size', nSize)
         .style('font-size', nSize)
+        .attr('font-weight', nWeight)
+        .style('font-weight', nWeight)
+        .style('font-family', activeFont)
         .attr('fill', '#555');
       renderRichText(nL, s.name);
 
@@ -2409,10 +2729,14 @@ function renderAnnOnChart(gL, gr, gi, xS, yS) {
       .attr('transform', `translate(${lx}, ${ly})`)
       .style('cursor', 'move');
 
-    const annSize = (ann.fontSize || 12) + 'px';
+    const annSize = (ann.fontSize || app.chartOptions?.annFontSize || 12) + 'px';
+    const annWeight = ann.fontWeight || app.chartOptions?.annFontWeight || '600';
+    const activeFont = getActiveFontFamily();
     const label = lG.append('text')
       .attr('x', 0).attr('y', 0)
-      .attr('font-size', annSize).attr('font-weight', '600')
+      .attr('font-size', annSize).style('font-size', annSize)
+      .attr('font-weight', annWeight).style('font-weight', annWeight)
+      .style('font-family', activeFont)
       .attr('fill', ann.color || '#1a237e').attr('dominant-baseline', 'middle');
     renderRichText(label, txt);
 
@@ -2551,10 +2875,15 @@ function renderLegend(svg) {
 
     // Text with Rich Text support (sub/superscripts)
     const labelTxt = app.legend.titles?.[g.id] || g.name;
+    const lWeight = app.chartOptions?.legendFontWeight || '400';
+    const activeFont = getActiveFontFamily();
     const labelEl = ig.append('text')
       .attr('x', padX + 28).attr('y', itemY + 1)
       .attr('font-size', lSize)
       .style('font-size', lSize)
+      .attr('font-weight', lWeight)
+      .style('font-weight', lWeight)
+      .style('font-family', activeFont)
       .attr('fill', '#333')
       .attr('dominant-baseline', 'middle');
     renderRichText(labelEl, labelTxt);
@@ -2623,11 +2952,35 @@ function showNodePopup(gi, si, ev) {
       renderChart();
     }, { min: 8, max: 36, step: 1 });
 
+    // Name Font Weight
+    addPSel(t('nameWeight'), [
+      { l: (currentLang === 'zh' ? '- 預設 -' : '- Default -'), v: '' },
+      { l: t('weightNormal'), v: '400' },
+      { l: t('weightMedium'), v: '500' },
+      { l: t('weightSemiBold'), v: '600' },
+      { l: t('weightBold'), v: '700' }
+    ], st.style.nameFontWeight || '', v => {
+      st.style.nameFontWeight = v;
+      renderChart();
+    });
+
     // Energy Font Size
     addPRow(t('energyFontSize'), 'number', st.style.energyFontSize || (app.chartOptions?.energyFontSize || 13), v => {
       st.style.energyFontSize = parseInt(v) || 13;
       renderChart();
     }, { min: 8, max: 36, step: 1 });
+
+    // Energy Font Weight
+    addPSel(t('energyWeight'), [
+      { l: (currentLang === 'zh' ? '- 預設 -' : '- Default -'), v: '' },
+      { l: t('weightNormal'), v: '400' },
+      { l: t('weightMedium'), v: '500' },
+      { l: t('weightSemiBold'), v: '600' },
+      { l: t('weightBold'), v: '700' }
+    ], st.style.energyFontWeight || '', v => {
+      st.style.energyFontWeight = v;
+      renderChart();
+    });
 
     // Energy Background Color
     addPColor(t('energyBg'), st.style.energyBg || 'none', v => {
@@ -2888,12 +3241,13 @@ document.addEventListener('click', e => {
 // ============================================================
 function inlineCSS(el) {
   el.setAttribute('xmlns','http://www.w3.org/2000/svg');
+  const ff = getActiveFontFamily();
   const s = document.createElementNS('http://www.w3.org/2000/svg','style');
   s.textContent = `
-    text { font-family: 'Segoe UI', Arial, sans-serif; }
+    text { font-family: ${ff}; }
     .axis path, .axis line { stroke: #000000; }
-    .axis text { fill: #000000; }
-    .axis-label { fill: #000000; font-weight: 500; }
+    .axis text { fill: #000000; font-family: ${ff}; }
+    .axis-label { fill: #000000; font-family: ${ff}; }
     .grid line { stroke: #e8e8e8; stroke-dasharray: 2,3; }
     .grid path { stroke: none; }
     .conn-path { fill: none !important; }
@@ -2902,8 +3256,8 @@ function inlineCSS(el) {
     .chart-legend-bg { fill: rgba(255,255,255,0.95); stroke: #d0d7de; stroke-width: 1px; rx: 6px; ry: 6px; }
     .energy-label-bg { stroke: #d0d7de; stroke-width: 0.8px; rx: 3px; ry: 3px; }
     .ann-label-bg { stroke: #d0d7de; stroke-width: 0.8px; rx: 3px; ry: 3px; }
-    .legend-item text { fill: #333; }
-    .text-annotation-group text { font-family: 'Segoe UI', Arial, sans-serif; }
+    .legend-item text { fill: #333; font-family: ${ff}; }
+    .text-annotation-group text { font-family: ${ff}; }
   `;
   el.insertBefore(s, el.firstChild);
 }
