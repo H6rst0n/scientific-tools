@@ -436,9 +436,15 @@ class App {
   }
 
   /**
-   * 啟動原子替換/新增筆刷模式
+   * 啟動原子替換/新增筆刷模式 (互斥關閉幾何微調工具)
    */
   activateBrushMode(elem) {
+    if (this.controller.activeTool) {
+      this.controller.activeTool = null;
+    }
+    this.closeAdjustDock();
+    this.controller.clearSelection();
+
     this.controller.isBrushMode = true;
     this.controller.brushElement = elem || this.controller.activeElement;
     document.body.classList.add('brush-mode-active');
@@ -449,11 +455,12 @@ class App {
   /**
    * 退出筆刷模式
    */
-  deactivateBrushMode() {
+  deactivateBrushMode(silent = false) {
+    if (!this.controller.isBrushMode && !document.body.classList.contains('brush-mode-active')) return;
     this.controller.isBrushMode = false;
     document.body.classList.remove('brush-mode-active');
     this.updateUI();
-    this.showToast('已退出筆刷模式');
+    if (!silent) this.showToast('已退出筆刷模式');
   }
 
   /**
@@ -610,6 +617,14 @@ class App {
     // 點擊「調整鍵長」
     if (btnModBond) {
       btnModBond.addEventListener('click', () => {
+        this.deactivateBrushMode(true);
+        if (this.controller.activeTool === 'mod_bond') {
+          this.controller.activeTool = null;
+          this.closeAdjustDock();
+          this.updateUI();
+          this.showToast('已退出鍵長微調模式');
+          return;
+        }
         if (this.controller.selectedSequence.length === 2) {
           this.openBondAdjustDock();
         } else {
@@ -626,6 +641,14 @@ class App {
     // 點擊「調整鍵角」
     if (btnModAngle) {
       btnModAngle.addEventListener('click', () => {
+        this.deactivateBrushMode(true);
+        if (this.controller.activeTool === 'mod_angle') {
+          this.controller.activeTool = null;
+          this.closeAdjustDock();
+          this.updateUI();
+          this.showToast('已退出鍵角微調模式');
+          return;
+        }
         if (this.controller.selectedSequence.length === 3) {
           this.openAngleAdjustDock();
         } else {
@@ -642,6 +665,14 @@ class App {
     // 點擊「調整二面角」
     if (btnModDihedral) {
       btnModDihedral.addEventListener('click', () => {
+        this.deactivateBrushMode(true);
+        if (this.controller.activeTool === 'mod_dihedral') {
+          this.controller.activeTool = null;
+          this.closeAdjustDock();
+          this.updateUI();
+          this.showToast('已退出二面角微調模式');
+          return;
+        }
         if (this.controller.selectedSequence.length === 4) {
           this.openDihedralAdjustDock();
         } else {

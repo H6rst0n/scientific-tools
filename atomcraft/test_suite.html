@@ -183,7 +183,11 @@ H   0.000000  -0.757000  -0.469000
         updateUI: () => {},
         updateStatus: () => {},
         setMeasurementDisplay: () => {},
-        showToast: () => {}
+        showToast: () => {},
+        deactivateBrushMode: function(silent = false) {
+          ctrl.isBrushMode = false;
+          document.body.classList.remove('brush-mode-active');
+        }
       };
       for (let i = 0; i < 6; i++) {
         dummyApp.structure.addAtom('C', i * 1.5, 0, 0);
@@ -539,6 +543,147 @@ END
       // Re-create as single bond
       structTopo.setBondOrder(0, 1, 1);
       assert(structTopo.bonds.length === 1 && structTopo.bonds[0].order === 1, 'New bond created between atoms');
+
+      log('=== 27. Automatic Bond Order Perception & Hydrogen Bond & VSEPR Test ===');
+      // 1. Acetylene (H-C#C-H) bond order perception
+      const sAcetylene = new Structure();
+      sAcetylene.addAtom('C', -0.60, 0, 0);
+      sAcetylene.addAtom('C',  0.60, 0, 0); // d = 1.20 Å
+      sAcetylene.addAtom('H', -1.66, 0, 0);
+      sAcetylene.addAtom('H',  1.66, 0, 0);
+      sAcetylene.detectBonds();
+      const ccBond = sAcetylene.bonds.find(b =>
+        (sAcetylene.atoms[b.a].element === 'C' && sAcetylene.atoms[b.b].element === 'C')
+      );
+      assert(ccBond !== undefined, 'Acetylene C-C bond detected');
+      assert(ccBond.order === 3, `Acetylene C-C bond correctly perceived as Triple Bond (order: 3), got ${ccBond ? ccBond.order : 'none'}`);
+
+      // 2. Carbon dioxide (O=C=O) bond order perception
+      const sCO2 = new Structure();
+      sCO2.addAtom('C', 0, 0, 0);
+      sCO2.addAtom('O', 0, 0, 1.16); // d = 1.16 Å
+      sCO2.addAtom('O', 0, 0, -1.16); // d = 1.16 Å
+      sCO2.detectBonds();
+      assert(sCO2.bonds.length === 2, 'CO2 has 2 C-O bonds');
+      assert(sCO2.bonds[0].order === 2 && sCO2.bonds[1].order === 2, 'CO2 C=O bonds correctly perceived as Double Bonds (order: 2)');
+
+      // 3. Ethylene (H2C=CH2) bond order perception
+      const sEthylene = new Structure();
+      sEthylene.addAtom('C', -0.67, 0, 0);
+      sEthylene.addAtom('C',  0.67, 0, 0); // d = 1.34 Å
+      sEthylene.addAtom('H', -1.23, 0.93, 0);
+      sEthylene.addAtom('H', -1.23, -0.93, 0);
+      sEthylene.addAtom('H',  1.23, 0.93, 0);
+      sEthylene.addAtom('H',  1.23, -0.93, 0);
+      sEthylene.detectBonds();
+      const cDoubleBond = sEthylene.bonds.find(b =>
+        (sEthylene.atoms[b.a].element === 'C' && sEthylene.atoms[b.b].element === 'C')
+      );
+      assert(cDoubleBond !== undefined && cDoubleBond.order === 2, `Ethylene C=C bond perceived as Double Bond (order: 2), got ${cDoubleBond?.order}`);
+
+      // 4. Water dimer hydrogen bond detection
+      const sDimer = new Structure();
+      sDimer.addAtom('O', 0, 0, 0);
+      sDimer.addAtom('H', 0.96, 0, 0);
+      sDimer.addAtom('H', -0.24, 0.93, 0);
+      sDimer.addAtom('O', 2.86, 0, 0); // H(1) ··· O(3) dist = 1.90 Å, angle O-H···O = 180°
+      sDimer.addAtom('H', 3.40, 0.70, 0);
+      sDimer.addAtom('H', 3.40, -0.70, 0);
+      sDimer.detectBonds();
+      const hb = sDimer.bonds.find(b => b.order === 'hb');
+      assert(hb !== undefined, 'Hydrogen bond between water molecules detected');
+      assertNear(hb ? hb.dist : 0, 1.90, 0.05, 'Hydrogen bond distance is approx 1.90 Å');
+
+      // 5. VSEPR Hybridization Upgrade (CO2 bent -> linear relaxation)
+      const sCO2Bent = new Structure();
+      sCO2Bent.addAtom('C', 0, 0, 0);
+      sCO2Bent.addAtom('O', 1.16, 0, 0);
+      sCO2Bent.addAtom('O', -0.75, 0.89, 0); // Intentionally distorted to ~130 degrees
+      sCO2Bent.detectBonds();
+      VSEPR.cleanGeometry(sCO2Bent);
+      const angleCO2 = GeometryAdjuster.getBondAngle(sCO2Bent, 1, 0, 2);
+      assertNear(angleCO2, 180.0, 10.0, `VSEPR relaxed CO2 towards 180° linear geometry, got ${angleCO2.toFixed(1)}°`);
+
+      // 6. VSEPR Hydrogen bond protection test
+      VSEPR.cleanGeometry(sDimer);
+      const hbDistAfter = sDimer.getDistance(hb.a, hb.b);
+      assert(hbDistAfter > 1.6, `Hydrogen bond distance after VSEPR clean preserved as non-covalent (${hbDistAfter.toFixed(2)} Å > 1.6 Å)`);
+
+      log('=== 28. UFF-Clean Engine (Ring Perception, Planarity & Dihedrals) Test ===');
+      // 1. Ring perception on 5-membered ring
+      const sRing5 = new Structure();
+      for (let i = 0; i < 5; i++) {
+        const th = (i * 72 * Math.PI) / 180;
+        sRing5.addAtom('C', 1.4 * Math.cos(th), 1.4 * Math.sin(th), 0);
+      }
+      sRing5.detectBonds();
+      const covNbrs = Array.from({ length: 5 }, () => []);
+      for (const b of sRing5.bonds) {
+        covNbrs[b.a].push(b.b);
+        covNbrs[b.b].push(b.a);
+      }
+      const ringSizeDetected = VSEPR.findSmallestRingForAngle(0, 1, 4, covNbrs);
+      assert(ringSizeDetected === 5, `Smallest ring size detected for 5-ring angle is 5, got ${ringSizeDetected}`);
+      const ringTargetAngle = VSEPR.getTargetAngle(0, 1, 4, sRing5.atoms, covNbrs, new Int32Array(5));
+      assertNear(ringTargetAngle, 108.0, 0.1, `Ring target angle for 5-ring is 108° (actual: ${ringTargetAngle}°)`);
+
+      // 2. Caffeine clean and planarity retention
+      const sCaffeine = PRESETS.caffeine.build();
+      const initialBondsCount = sCaffeine.bonds.length;
+      VSEPR.cleanGeometry(sCaffeine);
+      assert(sCaffeine.bonds.length === initialBondsCount, 'Caffeine bonds count preserved by topology lock');
+      let maxPurineZ = -Infinity, minPurineZ = Infinity;
+      for (let i = 0; i <= 11; i++) {
+        const z = sCaffeine.atoms[i].z;
+        if (z > maxPurineZ) maxPurineZ = z;
+        if (z < minPurineZ) minPurineZ = z;
+      }
+      const purineZSpan = maxPurineZ - minPurineZ;
+      assert(purineZSpan < 0.15, `Caffeine purine ring core remains strictly planar (Z span: ${purineZSpan.toFixed(4)} Å < 0.15 Å)`);
+
+      // 3. Twisted ethylene relaxes towards planar
+      const sEthTwisted = new Structure();
+      sEthTwisted.addAtom('C', -0.67, 0, 0);
+      sEthTwisted.addAtom('C',  0.67, 0, 0); // double bond along X
+      sEthTwisted.addAtom('H', -1.23,  0.93, 0);
+      sEthTwisted.addAtom('H', -1.23, -0.93, 0);
+      const sin45 = Math.sin(Math.PI / 4), cos45 = Math.cos(Math.PI / 4);
+      sEthTwisted.addAtom('H', 1.23,  0.93 * cos45,  0.93 * sin45);
+      sEthTwisted.addAtom('H', 1.23, -0.93 * cos45, -0.93 * sin45);
+      sEthTwisted.detectBonds();
+      VSEPR.cleanGeometry(sEthTwisted);
+      const dihedAfter = GeometryAdjuster.getDihedralAngle(sEthTwisted, 2, 0, 1, 4);
+      const devFromPlanar = Math.min(Math.abs(dihedAfter), Math.abs(Math.abs(dihedAfter) - 180));
+      assert(devFromPlanar < 15.0, `Twisted ethylene relaxed towards planar double bond (deviation: ${devFromPlanar.toFixed(1)}° < 15°)`);
+
+      log('=== 29. Mutual Exclusion between Brush Mode & Bond Tool and Robust Escape Test ===');
+      // 1. 筆刷模式開啟中
+      ctrl.isBrushMode = true;
+      ctrl.brushElement = 'N';
+      assert(ctrl.isBrushMode === true, 'Brush mode initially true');
+
+      // 2. 使用者直接點擊鍵長微調模式 (無按 Esc)
+      ctrl.activeTool = 'mod_bond';
+      // 當 activeTool 被啟動，handleClick 應自動退出筆刷模式並選取原子，絕不替換原子
+      dummyApp.renderer.pickAtom = () => 0;
+      const elemBefore = dummyApp.structure.atoms[0].element;
+      ctrl.handleClick({ clientX: 10, clientY: 10, button: 0 });
+      assert(!ctrl.isBrushMode, 'Brush mode automatically deactivated when activeTool is active');
+      assert(dummyApp.structure.atoms[0].element === elemBefore, 'Atom element was NOT modified by brush during activeTool');
+      assert(ctrl.selectedSequence.includes(0), 'Atom was correctly selected for bond adjustment');
+
+      // 3. 模擬在輸入框獲得焦點時按下 Escape
+      const dummyInput = document.createElement('input');
+      let blurred = false;
+      dummyInput.blur = () => { blurred = true; };
+      ctrl.onKeyDown({ key: 'Escape', code: 'Escape', target: dummyInput, preventDefault: () => {}, stopPropagation: () => {} });
+      assert(blurred, 'Escape from inside input blurred the input');
+      assert(!ctrl.activeTool, 'Escape canceled activeTool');
+
+      // 4. 當處於筆刷模式時按下 Escape，保證 deactivateBrushMode 被呼叫退出
+      ctrl.isBrushMode = true;
+      ctrl.onKeyDown({ key: 'Escape', code: 'Escape', target: document.body, preventDefault: () => {}, stopPropagation: () => {} });
+      assert(!ctrl.isBrushMode, 'Escape cleanly deactivated brush mode');
 
       log(`\n========================================`);
       log(`TEST SUMMARY: ${passed} PASSED, ${failed} FAILED`);

@@ -21,8 +21,15 @@
 
 * **工具入口**：[`atomcraft/index.html`](./atomcraft/index.html)
 * **核心功能亮點**：
-  * **GaussView 風格 VSEPR 掃把幾何整理 🧹**：
-    * 基於價層電子對互斥理論（VSEPR）、元素共價半徑與混成軌域幾何模板（$sp^3$ 四面體、$sp^2$ 平面三角形、$sp$ 直線形、八面體、平面四邊形等），一鍵快速鬆弛並整理分子立體構型。
+  * **GaussView 風格 VSEPR 掃把幾何整理 🧹 (具混成態感知與氫鍵保護)**：
+    * **混成軌域立體數 (Steric Number) 自適應**：依據 $\sigma$ 鍵與 $\pi$ 鍵數自動匹配目標幾何：
+      * $sp$ 混成（如二氧化碳 $\text{O}=\text{C}=\text{O}$、乙炔 $\text{H}-\text{C}\equiv\text{C}-\text{H}$）自動鬆弛為 **$180^\circ$ 直線形**。
+      * $sp^2$ 混成（如乙烯 $\text{H}_2\text{C}=\text{CH}_2$、甲醛、苯環）自動鬆弛為 **$120^\circ$ 平面三角形**。
+      * $sp^3$ 混成自動鬆弛為 **$109.5^\circ$ 正四面體**；水分子為 $104.5^\circ$、氨分子為 $107.0^\circ$。
+    * **非共價氫鍵柔性保護**：VSEPR 整理時自動將氫鍵視為柔性弱作用力（平衡距離約 $1.90\text{ \AA}$），不施加共價強壓，保護超分子幾何完整。
+  * **智慧化學成鍵與鍵級推算 (Bond Order & Hydrogen Bond Perception)**：
+    * **自動鍵級感知**：根據 3D 空間實際鍵長與化學典型閾值（$\text{C}-\text{C}, \text{C}=\text{C}, \text{C}\equiv\text{C}, \text{C}=\text{O}, \text{C}\equiv\text{N}$ 等），結合八隅體與價態防護，載入結構時自動識別並渲染單鍵、雙鍵與三鍵。
+    * **自動氫鍵偵測**：依據 IUPAC 標準幾何準則，自動掃描 $\text{D}-\text{H}\cdots\text{A}$（$\text{D, A} \in \{\text{O, N, F}\}$），滿足 $1.5 \le d \le 2.6\text{ \AA}$ 且夾角 $\ge 115^\circ$ 時自動建立氫鍵，並以專屬亮青色立體渲染。
   * **非阻塞式幾何微調懸浮面板 (Floating Adjust Dock)**：
     * 支援 **鍵長 (Bond Length)**、**鍵角 (Bond Angle)**、**二面角 (Dihedral Angle)** 即時滑桿連續微調。
     * **GaussView 鍵型與成鍵拓樸設定 (Topology Settings)**：在鍵長面板中一鍵切換兩原子成鍵狀態：

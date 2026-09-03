@@ -5,20 +5,54 @@
 
 const VSEPR = {
   /**
-   * 取得理想鍵長 (Å)
+   * 取得理想鍵長 (Å)，支援共價單/雙/三鍵與氫鍵
    */
-  getIdealBondLength(elemA, elemB) {
-    const rA = getElementInfo(elemA).covRadius;
-    const rB = getElementInfo(elemB).covRadius;
-    return Math.max(0.6, rA + rB);
+  getIdealBondLength(elemA, elemB, order = 1) {
+    if (order === 'hb') {
+      return 1.90; // 氫鍵非共價平衡長度約 1.90 Å
+    }
+    const pair = [elemA, elemB].sort().join('-');
+    const ord = typeof order === 'number' ? order : 1;
+
+    if (pair === 'C-C') {
+      if (ord === 3) return 1.20;
+      if (ord === 2) return 1.34;
+      return 1.54;
+    }
+    if (pair === 'C-O') {
+      if (ord === 2) return 1.22;
+      return 1.43;
+    }
+    if (pair === 'C-N') {
+      if (ord === 3) return 1.16;
+      if (ord === 2) return 1.28;
+      return 1.47;
+    }
+    if (pair === 'N-N') {
+      if (ord === 3) return 1.10;
+      if (ord === 2) return 1.25;
+      return 1.45;
+    }
+    if (pair === 'O-O') {
+      if (ord === 2) return 1.21;
+      return 1.48;
+    }
+
+    const infoA = getElementInfo(elemA) || {};
+    const infoB = getElementInfo(elemB) || {};
+    const rA = infoA.covRadius || 0.77;
+    const rB = infoB.covRadius || 0.77;
+    let base = rA + rB;
+    if (ord === 2) base *= 0.89;
+    if (ord === 3) base *= 0.80;
+    return Math.max(0.6, base);
   },
 
   /**
-   * 根據中心原子與配位數判定理想 VSEPR 目標幾何構型
+   * 根據中心原子、配位數與 pi 鍵數判定理想 VSEPR 混成目標幾何構型
    */
-  getTargetGeometry(centerElem, neighborCount) {
-    const info = getElementInfo(centerElem);
-    const sym = info.symbol;
+  getTargetGeometry(centerElem, neighborCount, piBonds = 0) {
+    const sym = centerElem;
 
     if (neighborCount === 1) {
       return { type: 'single', angles: [] };
@@ -28,6 +62,14 @@ const VSEPR = {
       // 判斷直線 (180°) 或是角形 (104.5° ~ 120°)
       if (['Be', 'Hg', 'Zn', 'Cd'].includes(sym)) {
         return { type: 'linear', angle: 180 };
+      }
+      // 碳原子具有 2 個配位且有 2 個以上 pi 鍵 (如 O=C=O, H-C#C-H)：sp 混成，直線形 180°！
+      if (sym === 'C' && piBonds >= 2) {
+        return { type: 'linear', angle: 180 };
+      }
+      // 氮原子具有 2 個配位且有 1 個 pi 鍵 (如 -N=O, -N=N-)：sp2 混成，角形 120°
+      if (sym === 'N' && piBonds >= 1) {
+        return { type: 'bent', angle: 120.0 };
       }
       if (['O', 'S', 'Se'].includes(sym)) {
         return { type: 'bent', angle: 104.5 }; // 水分子型
@@ -40,7 +82,12 @@ const VSEPR = {
       if (['B', 'Al'].includes(sym)) {
         return { type: 'trigonal_planar', angle: 120 };
       }
+      // 碳原子具有 3 個配位且有 pi 鍵 (如乙烯 H2C=CH2, 甲醛 H2C=O, 苯環)：sp2 混成，平面三角形 120°！
+      if (sym === 'C' && piBonds >= 1) {
+        return { type: 'trigonal_planar', angle: 120.0 };
+      }
       if (['N', 'P', 'As'].includes(sym)) {
+        if (piBonds >= 1 || isPlanarN) return { type: 'trigonal_planar', angle: 120.0 }; // 平面醯胺與環中芳香氮
         return { type: 'pyramidal', angle: 107.0 }; // 氨分子型
       }
       return { type: 'trigonal_planar', angle: 120 };
@@ -66,17 +113,85 @@ const VSEPR = {
   },
 
   /**
-   * GaussView 掃把 (Clean 🧹)：快速整理分子幾何
-   * 採用兩階段：1. 幾何投影校正  2. 輕量級彈簧梯度下降 (50 steps)
+   * 搜尋包含相鄰兩鍵路徑 (u - c - w) 的最小環大小 (3 ~ 6 元環)
+   * 若不屬於 3~6 元環則返回 0
+   */
+  findSmallestRingForAngle(c, u, w, covNeighbors) {
+    if (u === w) return 0;
+    // BFS 尋找 u 到 w 且不經過 c 的最短路徑
+    const queue = [[u, 0]];
+    const visited = new Set([c, u]);
+    while (queue.length > 0) {
+      const [curr, depth] = queue.shift();
+      if (depth >= 4) continue; // 超過 4 步代表環大於 6 元 (4 + 2 = 6)
+      for (const nbr of covNeighbors[curr]) {
+        if (nbr === w) {
+          return depth + 3; // 找到長度為 (depth+1) + 2 = depth + 3 的環 (3, 4, 5, 6)
+        }
+        if (!visited.has(nbr)) {
+          visited.add(nbr);
+          queue.push([nbr, depth + 1]);
+        }
+      }
+    }
+    return 0;
+  },
+
+  /**
+   * 取得三原子鍵角 (u - c - w) 之目標幾何角度
+   * 智慧融合環感知 (Ring Perception) 與混成態 (Hybridization)
+   */
+  getTargetAngle(c, u, w, atoms, covNeighbors, piCount) {
+    const ringSize = VSEPR.findSmallestRingForAngle(c, u, w, covNeighbors);
+    if (ringSize === 3) return 60.0;
+    if (ringSize === 4) return 90.0;
+    if (ringSize === 5) return 108.0; // 五元環內角 108° (咪唑、咖啡因、環戊烷)
+    if (ringSize === 6) {
+      const isAromaticOrSp2 = (piCount[c] > 0 || (['C', 'N'].includes(atoms[c].element) && covNeighbors[c].length === 3));
+      return isAromaticOrSp2 ? 120.0 : 109.47; // 六元環：芳香 120°，飽和烷烴 109.5°
+    }
+
+    // 若 u 或 w 屬於 5 元環，但此角度為環外取代基角 (exocyclic)
+    const nbrs = covNeighbors[c];
+    if (nbrs.length === 3) {
+      let hasRing5 = false;
+      for (let i = 0; i < nbrs.length; i++) {
+        for (let j = i + 1; j < nbrs.length; j++) {
+          if (VSEPR.findSmallestRingForAngle(c, nbrs[i], nbrs[j], covNeighbors) === 5) {
+            hasRing5 = true;
+            break;
+          }
+        }
+        if (hasRing5) break;
+      }
+      if (hasRing5) return 126.0; // (360 - 108)/2 = 126°
+    }
+
+    // 檢查 N 是否在環中或鄰近 pi 鍵 (如咖啡因芳香環氮、咪唑、吡咯、醯胺)
+    let isPlanarN = false;
+    if (atoms[c].element === 'N') {
+      const inAnyRing = nbrs.some(uIdx => nbrs.some(wIdx => uIdx !== wIdx && VSEPR.findSmallestRingForAngle(c, uIdx, wIdx, covNeighbors) > 0));
+      const nearPi = nbrs.some(nbr => piCount[nbr] >= 1);
+      if (inAnyRing || nearPi) isPlanarN = true;
+    }
+
+    // 一般非環角度：根據混成軌域計算
+    const geom = VSEPR.getTargetGeometry(atoms[c].element, nbrs.length, piCount[c], isPlanarN);
+    return geom.angle || (geom.type === 'octahedral' ? 90 : 109.47);
+  },
+
+  /**
+   * GaussView 風格輕量分子力場幾何整理 (UFF-Clean 🧹)
+   * 整合：環感知角度 (Ring Perception)、共面性外翻約束 (Planarity/Improper Dihedrals)、
+   * 二面角扭轉 (Torsion)、3D 擾動展開 (3D Symmetry Breaking) 與拓樸安全維持
    */
   cleanGeometry(structure, selectedOnly = false) {
     if (structure.atoms.length === 0) return;
 
-    // 若尚未偵測化學鍵，先以標準容許度偵測
+    // 若尚未偵測化學鍵，先以標準容許度偵測 (包含自動鍵級感知與氫鍵辨識)
     if (!structure.bonds || structure.bonds.length === 0) {
       structure.detectBonds(0.40);
     }
-    // 若結構仍無化學鍵且有 2 個以上原子，使用寬鬆容許度偵測以抓取被拉伸變形的原子
     if (structure.bonds.length === 0 && structure.atoms.length >= 2) {
       structure.detectBonds(1.20);
     }
@@ -85,18 +200,49 @@ const VSEPR = {
     const n = atoms.length;
     const isTarget = i => !selectedOnly || atoms[i].selected;
 
-    // 建立鄰接表
-    const neighbors = Array.from({ length: n }, () => []);
+    // 建立共價鄰接表與 pi 鍵統計 (排除非共價氫鍵)
+    const covNeighbors = Array.from({ length: n }, () => []);
+    const piCount = new Int32Array(n);
     for (const b of structure.bonds) {
-      neighbors[b.a].push(b.b);
-      neighbors[b.b].push(b.a);
+      if (b.order === 'hb') continue;
+      covNeighbors[b.a].push(b.b);
+      covNeighbors[b.b].push(b.a);
+      const ord = typeof b.order === 'number' ? b.order : 1;
+      if (ord > 1) {
+        piCount[b.a] += (ord - 1);
+        piCount[b.b] += (ord - 1);
+      }
     }
 
-    // 彈性鬆弛模擬 (Spring & Repulsion Relaxation)
-    const steps = 60;
+    // 3D 立體對稱破缺 (打破 2D 畫布完全平面的十字形陷阱)
+    let minZ = Infinity, maxZ = -Infinity;
+    for (let i = 0; i < n; i++) {
+      if (atoms[i].z < minZ) minZ = atoms[i].z;
+      if (atoms[i].z > maxZ) maxZ = atoms[i].z;
+    }
+    const isPlanar2D = (maxZ - minZ) < 0.05;
+    if (isPlanar2D && n > 2) {
+      // 若存在 sp3 中心，對終端非環原子 (如 H) 給予極微幅 Z 軸正負交錯擾動 (0.08 Å)
+      for (let i = 0; i < n; i++) {
+        if (covNeighbors[i].length >= 3 && piCount[i] === 0) {
+          for (let p = 0; p < covNeighbors[i].length; p++) {
+            const nbr = covNeighbors[i][p];
+            if (covNeighbors[nbr].length === 1 && !atoms[nbr].fixed) {
+              atoms[nbr].z += (p % 2 === 0 ? 0.08 : -0.08);
+            }
+          }
+        }
+      }
+    }
+
+    // 彈性鬆弛模擬 (Molecular Mechanics Relaxation)
+    const steps = 80;
     const dt = 0.08;
-    const kB = 25.0; // 鍵長彈簧常數
-    const kAngle = 15.0; // 鍵角恢復常數
+    const kB = 25.0; // 共價鍵長彈簧常數
+    const kAngle = 16.0; // 鍵角恢復常數
+    const kOOP = 18.0; // 平面外反轉共面常數
+    const kTorDouble = 25.0; // 雙鍵共面二面角常數
+    const kTorAlkane = 3.5; // 烷烴交叉式二面角常數
     const kRep = 3.0; // 非成鍵排斥力常數
 
     for (let step = 0; step < steps; step++) {
@@ -104,11 +250,13 @@ const VSEPR = {
       const fy = new Float64Array(n);
       const fz = new Float64Array(n);
 
-      // 1. 鍵長約束 (Bond Stretching)
+      // 1. 鍵長約束 (Bond Stretching - 支援多重鍵理想長度與氫鍵柔性引導)
       for (const b of structure.bonds) {
         const i = b.a;
         const j = b.b;
-        const idealR = VSEPR.getIdealBondLength(atoms[i].element, atoms[j].element);
+        const isHB = b.order === 'hb';
+        const idealR = VSEPR.getIdealBondLength(atoms[i].element, atoms[j].element, b.order);
+        const kSpring = isHB ? 2.5 : kB;
 
         let dx = atoms[j].x - atoms[i].x;
         let dy = atoms[j].y - atoms[i].y;
@@ -122,32 +270,19 @@ const VSEPR = {
         }
 
         const delta = dist - idealR;
-        const force = -kB * delta;
+        const force = -kSpring * delta;
         const fx_ij = (dx / dist) * force;
         const fy_ij = (dy / dist) * force;
         const fz_ij = (dz / dist) * force;
 
-        if (isTarget(i)) {
-          fx[i] -= fx_ij;
-          fy[i] -= fy_ij;
-          fz[i] -= fz_ij;
-        }
-        if (isTarget(j)) {
-          fx[j] += fx_ij;
-          fy[j] += fy_ij;
-          fz[j] += fz_ij;
-        }
+        if (isTarget(i)) { fx[i] -= fx_ij; fy[i] -= fy_ij; fz[i] -= fz_ij; }
+        if (isTarget(j)) { fx[j] += fx_ij; fy[j] += fy_ij; fz[j] += fz_ij; }
       }
 
-      // 2. 鍵角約束 (Bond Angles via Target Geometry Repulsion)
+      // 2. 鍵角約束 (Bond Angles - 融合環感知五元環 108°、六元環 120° 與混成態角度)
       for (let c = 0; c < n; c++) {
-        const nbrs = neighbors[c];
+        const nbrs = covNeighbors[c];
         if (nbrs.length < 2) continue;
-
-        const geom = VSEPR.getTargetGeometry(atoms[c].element, nbrs.length);
-        const targetDeg = geom.angle || (geom.type === 'octahedral' ? 90 : 109.47);
-        const targetRad = (targetDeg * Math.PI) / 180;
-        const cosTarget = Math.cos(targetRad);
 
         for (let p = 0; p < nbrs.length; p++) {
           const u = nbrs[p];
@@ -165,29 +300,175 @@ const VSEPR = {
             const d2 = Math.hypot(v2x, v2y, v2z);
             if (d2 < 1e-3) continue;
 
-            const cosTheta = (v1x * v2x + v1y * v2y + v1z * v2z) / (d1 * d2);
-            const deltaCos = cosTheta - cosTarget; // 正值表示夾角過小，需互相推開
+            const targetDeg = VSEPR.getTargetAngle(c, u, w, atoms, covNeighbors, piCount);
+            const targetRad = (targetDeg * Math.PI) / 180;
+            const cosTarget = Math.cos(targetRad);
 
+            const cosTheta = (v1x * v2x + v1y * v2y + v1z * v2z) / (d1 * d2);
+            const deltaCos = cosTheta - cosTarget;
             const fMag = -kAngle * deltaCos;
-            // 對 u 施加垂直於 v1 且朝向/遠離 v2 的力
-            if (isTarget(u)) {
-              fx[u] += (v2x / d2 - cosTheta * (v1x / d1)) * fMag / d1;
-              fy[u] += (v2y / d2 - cosTheta * (v1y / d1)) * fMag / d1;
-              fz[u] += (v2z / d2 - cosTheta * (v1z / d1)) * fMag / d1;
-            }
-            if (isTarget(w)) {
-              fx[w] += (v1x / d1 - cosTheta * (v2x / d2)) * fMag / d2;
-              fy[w] += (v1y / d1 - cosTheta * (v2y / d2)) * fMag / d2;
-              fz[w] += (v1z / d1 - cosTheta * (v2z / d2)) * fMag / d2;
+
+            const f1x = (v2x / d2 - cosTheta * (v1x / d1)) * fMag / d1;
+            const f1y = (v2y / d2 - cosTheta * (v1y / d1)) * fMag / d1;
+            const f1z = (v2z / d2 - cosTheta * (v1z / d1)) * fMag / d1;
+
+            const f2x = (v1x / d1 - cosTheta * (v2x / d2)) * fMag / d2;
+            const f2y = (v1y / d1 - cosTheta * (v2y / d2)) * fMag / d2;
+            const f2z = (v1z / d1 - cosTheta * (v2z / d2)) * fMag / d2;
+
+            if (isTarget(u)) { fx[u] += f1x; fy[u] += f1y; fz[u] += f1z; }
+            if (isTarget(w)) { fx[w] += f2x; fy[w] += f2y; fz[w] += f2z; }
+            if (isTarget(c)) {
+              fx[c] -= (f1x + f2x);
+              fy[c] -= (f1y + f2y);
+              fz[c] -= (f1z + f2z);
             }
           }
         }
       }
 
-      // 3. 非鍵結原子間軟排斥 (Non-bonded Soft Repulsion 避免空間重疊)
+      // 3. 平面外翻約束 (Symmetric Out-of-Plane Constraint)
+      // 對所有 sp2 3 配位中心 (苯環碳、咖啡因環氮/碳、乙烯碳、羰基碳)，將中心原子拉入 3 鄰居所構成的平面
+      for (let c = 0; c < n; c++) {
+        const nbrs = covNeighbors[c];
+        if (nbrs.length !== 3) continue;
+        const elem = atoms[c].element;
+        const inAnyRing = nbrs.some(uIdx => nbrs.some(wIdx => uIdx !== wIdx && VSEPR.findSmallestRingForAngle(c, uIdx, wIdx, covNeighbors) > 0));
+        const isSp2 = (piCount[c] >= 1) || (elem === 'C') || (elem === 'N' && (inAnyRing || nbrs.some(nbr => piCount[nbr] >= 1)));
+        if (!isSp2) continue;
+
+        const [u, v, w] = nbrs;
+        // 3 鄰居構成之平面法向量 n = (rv - ru) x (rw - ru)
+        const ru = [atoms[u].x, atoms[u].y, atoms[u].z];
+        const rv = [atoms[v].x, atoms[v].y, atoms[v].z];
+        const rw = [atoms[w].x, atoms[w].y, atoms[w].z];
+
+        const vu = [rv[0] - ru[0], rv[1] - ru[1], rv[2] - ru[2]];
+        const vw = [rw[0] - ru[0], rw[1] - ru[1], rw[2] - ru[2]];
+
+        const nx = vu[1] * vw[2] - vu[2] * vw[1];
+        const ny = vu[2] * vw[0] - vu[0] * vw[2];
+        const nz = vu[0] * vw[1] - vu[1] * vw[0];
+        const nLen = Math.hypot(nx, ny, nz);
+        if (nLen < 1e-4) continue;
+
+        const unx = nx / nLen, uny = ny / nLen, unz = nz / nLen;
+        // 中心原子偏離 3 鄰居平面的距離 h = (rc - ru) . un
+        const rc = [atoms[c].x, atoms[c].y, atoms[c].z];
+        const h = (rc[0] - ru[0]) * unx + (rc[1] - ru[1]) * uny + (rc[2] - ru[2]) * unz;
+
+        if (Math.abs(h) > 1e-4) {
+          const fOOP = -kOOP * h;
+          const fcx = unx * fOOP;
+          const fcy = uny * fOOP;
+          const fcz = unz * fOOP;
+
+          if (isTarget(c)) { fx[c] += fcx; fy[c] += fcy; fz[c] += fcz; }
+          // 3 鄰居平分反作用力，保持動量守恆
+          const fnx = -fcx / 3.0, fny = -fcy / 3.0, fnz = -fcz / 3.0;
+          if (isTarget(u)) { fx[u] += fnx; fy[u] += fny; fz[u] += fnz; }
+          if (isTarget(v)) { fx[v] += fnx; fy[v] += fny; fz[v] += fnz; }
+          if (isTarget(w)) { fx[w] += fnx; fy[w] += fny; fz[w] += fnz; }
+        }
+      }
+
+      // 4. 二面角扭轉約束 (Dihedral Torsion)
+      // 雙鍵 (order === 2)：約束為 0° 或 180° 共面
+      // 烷烴單鍵 (sp3-sp3)：約束為 60°/180°/300° 交叉式鋸齒構型
+      for (const b of structure.bonds) {
+        if (b.order === 'hb') continue;
+        const j = b.a;
+        const k = b.b;
+        const nbrsJ = covNeighbors[j].filter(x => x !== k);
+        const nbrsK = covNeighbors[k].filter(x => x !== j);
+        if (nbrsJ.length === 0 || nbrsK.length === 0) continue;
+
+        const isDouble = (b.order === 2);
+        const isAlkane = (b.order === 1 && covNeighbors[j].length === 4 && covNeighbors[k].length === 4 && piCount[j] === 0 && piCount[k] === 0);
+        if (!isDouble && !isAlkane) continue;
+
+        const u0 = nbrsJ[0];
+        const w0 = nbrsK[0];
+
+        const b1 = [atoms[j].x - atoms[u0].x, atoms[j].y - atoms[u0].y, atoms[j].z - atoms[u0].z];
+        const b2 = [atoms[k].x - atoms[j].x, atoms[k].y - atoms[j].y, atoms[k].z - atoms[j].z];
+        const b3 = [atoms[w0].x - atoms[k].x, atoms[w0].y - atoms[k].y, atoms[w0].z - atoms[k].z];
+
+        const lenB2 = Math.hypot(...b2);
+        if (lenB2 < 1e-3) continue;
+        const ub2 = [b2[0]/lenB2, b2[1]/lenB2, b2[2]/lenB2];
+
+        const n1 = [
+          b1[1] * b2[2] - b1[2] * b2[1],
+          b1[2] * b2[0] - b1[0] * b2[2],
+          b1[0] * b2[1] - b1[1] * b2[0]
+        ];
+        const n2 = [
+          b2[1] * b3[2] - b2[2] * b3[1],
+          b2[2] * b3[0] - b2[0] * b3[2],
+          b2[0] * b3[1] - b2[1] * b3[0]
+        ];
+
+        const lenN1 = Math.hypot(...n1);
+        const lenN2 = Math.hypot(...n2);
+        if (lenN1 < 1e-4 || lenN2 < 1e-4) continue;
+
+        const un1 = [n1[0]/lenN1, n1[1]/lenN1, n1[2]/lenN1];
+        const un2 = [n2[0]/lenN2, n2[1]/lenN2, n2[2]/lenN2];
+
+        const dotN = un1[0]*un2[0] + un1[1]*un2[1] + un1[2]*un2[2];
+        const cosPhi = Math.max(-1, Math.min(1, dotN));
+
+        const cx = un1[1] * un2[2] - un1[2] * un2[1];
+        const cy = un1[2] * un2[0] - un1[0] * un2[2];
+        const cz = un1[0] * un2[1] - un1[1] * un2[0];
+        const sinPhi = (cx * ub2[0] + cy * ub2[1] + cz * ub2[2]);
+
+        const phi = Math.atan2(sinPhi, cosPhi);
+        const torque = isDouble ? (kTorDouble * Math.sin(2 * phi)) : (kTorAlkane * Math.sin(3 * phi));
+        if (Math.abs(torque) < 1e-5) continue;
+
+        // 對 k 端的鄰居施加純切向力矩 -torque * (ub2 x r_kw)
+        for (const w of nbrsK) {
+          const rkw = [atoms[w].x - atoms[k].x, atoms[w].y - atoms[k].y, atoms[w].z - atoms[k].z];
+          const tw = [
+            ub2[1] * rkw[2] - ub2[2] * rkw[1],
+            ub2[2] * rkw[0] - ub2[0] * rkw[2],
+            ub2[0] * rkw[1] - ub2[1] * rkw[0]
+          ];
+          const tLen = Math.hypot(...tw);
+          if (tLen < 1e-3) continue;
+          const fw = -torque / tLen;
+          if (isTarget(w)) {
+            fx[w] += tw[0] * fw;
+            fy[w] += tw[1] * fw;
+            fz[w] += tw[2] * fw;
+          }
+        }
+
+        // 對 j 端的鄰居施加反向切向力矩 +torque * (ub2 x r_ju)
+        for (const u of nbrsJ) {
+          const rju = [atoms[u].x - atoms[j].x, atoms[u].y - atoms[j].y, atoms[u].z - atoms[j].z];
+          const tu = [
+            ub2[1] * rju[2] - ub2[2] * rju[1],
+            ub2[2] * rju[0] - ub2[0] * rju[2],
+            ub2[0] * rju[1] - ub2[1] * rju[0]
+          ];
+          const tLen = Math.hypot(...tu);
+          if (tLen < 1e-3) continue;
+          const fu = torque / tLen;
+          if (isTarget(u)) {
+            fx[u] += tu[0] * fu;
+            fy[u] += tu[1] * fu;
+            fz[u] += tu[2] * fu;
+          }
+        }
+      }
+
+      // 5. 非鍵結原子間軟排斥 (Non-bonded Soft Repulsion 避免空間重疊)
       for (let i = 0; i < n; i++) {
         for (let j = i + 1; j < n; j++) {
-          if (neighbors[i].includes(j)) continue; // 忽略直接成鍵者
+          if (covNeighbors[i].includes(j)) continue;
           let dx = atoms[j].x - atoms[i].x;
           let dy = atoms[j].y - atoms[i].y;
           let dz = atoms[j].z - atoms[i].z;
@@ -200,21 +481,16 @@ const VSEPR = {
             const rfy = (dy / dist) * repForce;
             const rfz = (dz / dist) * repForce;
 
-            if (isTarget(i)) {
-              fx[i] -= rfx; fy[i] -= rfy; fz[i] -= rfz;
-            }
-            if (isTarget(j)) {
-              fx[j] += rfx; fy[j] += rfy; fz[j] += rfz;
-            }
+            if (isTarget(i)) { fx[i] -= rfx; fy[i] -= rfy; fz[i] -= rfz; }
+            if (isTarget(j)) { fx[j] += rfx; fy[j] += rfy; fz[j] += rfz; }
           }
         }
       }
 
       // 更新座標（阻尼前進）
-      const damping = Math.exp(-step / 35.0);
+      const damping = Math.exp(-step / 50.0);
       for (let i = 0; i < n; i++) {
         if (!isTarget(i) || atoms[i].fixed) continue;
-        // 限制最大單步位移以防爆炸
         const moveDist = Math.hypot(fx[i], fy[i], fz[i]) * dt * damping;
         const maxStep = 0.25;
         const scale = moveDist > maxStep ? maxStep / moveDist : 1.0;
@@ -226,7 +502,7 @@ const VSEPR = {
     }
 
     structure.syncFractionalFromCartesian();
-    structure.detectBonds();
+    structure.updateBondDistances();
   },
 
   /**

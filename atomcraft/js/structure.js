@@ -362,7 +362,214 @@ class Structure {
       }
     }
     this.bonds = bonds;
-    return bonds;
+
+    // 自動進行鍵級推算 (Bond Order Perception)
+    this.perceiveBondOrders();
+
+    // 自動偵測氫鍵 (Hydrogen Bond Detection)
+    this.detectHydrogenBonds();
+
+    return this.bonds;
+  }
+
+  /**
+   * 智慧鍵級推算演算法 (Automatic Bond Order Perception)
+   * 根據 3D 空間實際鍵長、成對元素特性與標準化學價態，自動判定單鍵 (1)、雙鍵 (2)、三鍵 (3)
+   */
+  perceiveBondOrders() {
+    if (!this.bonds || this.bonds.length === 0) return;
+
+    // 1. 初步依鍵長判定成鍵級數
+    for (const bond of this.bonds) {
+      if (bond.order === 'hb') continue; // 氫鍵跳過
+
+      const atomA = this.atoms[bond.a];
+      const atomB = this.atoms[bond.b];
+      if (!atomA || !atomB) continue;
+
+      const symA = atomA.element;
+      const symB = atomB.element;
+      const pair = [symA, symB].sort().join('-');
+      const d = bond.dist;
+
+      let order = 1;
+
+      if (pair === 'C-C') {
+        if (d <= 1.25) order = 3;
+        else if (d <= 1.42) order = 2;
+        else order = 1;
+      } else if (pair === 'C-O') {
+        if (d <= 1.26) order = 2;
+        else order = 1;
+      } else if (pair === 'C-N') {
+        if (d <= 1.19) order = 3;
+        else if (d <= 1.35) order = 2;
+        else order = 1;
+      } else if (pair === 'N-N') {
+        if (d <= 1.15) order = 3;
+        else if (d <= 1.30) order = 2;
+        else order = 1;
+      } else if (pair === 'N-O') {
+        if (d <= 1.25) order = 2;
+        else order = 1;
+      } else if (pair === 'O-O') {
+        if (d <= 1.26) order = 2;
+        else order = 1;
+      } else if (pair === 'O-S') {
+        if (d <= 1.50) order = 2;
+        else order = 1;
+      } else if (pair === 'O-P') {
+        if (d <= 1.52) order = 2;
+        else order = 1;
+      } else if (pair === 'C-S') {
+        if (d <= 1.66) order = 2;
+        else order = 1;
+      } else {
+        // 通用元素回退判定：共價半徑和比值
+        const infoA = getElementInfo(symA);
+        const infoB = getElementInfo(symB);
+        const rSum = (infoA ? infoA.covRadius : 0.77) + (infoB ? infoB.covRadius : 0.77);
+        if (rSum > 0) {
+          const ratio = d / rSum;
+          if (ratio <= 0.82) order = 3;
+          else if (ratio <= 0.91) order = 2;
+          else order = 1;
+        }
+      }
+
+      bond.order = order;
+    }
+
+    // 2. 八隅體與最大化學價態防護 (Valence Saturation Check)
+    const maxValences = {
+      'H': 1, 'He': 0, 'Li': 1, 'Be': 2, 'B': 3,
+      'C': 4, 'N': 4, 'O': 2, 'F': 1, 'Ne': 0,
+      'Na': 1, 'Mg': 2, 'Al': 3, 'Si': 4, 'P': 5,
+      'S': 6, 'Cl': 1, 'Br': 1, 'I': 1
+    };
+
+    const n = this.atoms.length;
+    for (let iter = 0; iter < 3; iter++) {
+      let changed = false;
+      for (let i = 0; i < n; i++) {
+        const elem = this.atoms[i].element;
+        const maxV = maxValences[elem];
+        if (maxV === undefined) continue;
+
+        const incidentBonds = [];
+        let totalValence = 0;
+        for (const b of this.bonds) {
+          if (b.order === 'hb') continue;
+          if (b.a === i || b.b === i) {
+            incidentBonds.push(b);
+            totalValence += (typeof b.order === 'number' ? b.order : 1);
+          }
+        }
+
+        if (totalValence > maxV) {
+          incidentBonds.sort((b1, b2) => b2.dist - b1.dist);
+          for (const b of incidentBonds) {
+            if (b.order > 1) {
+              b.order -= 1;
+              totalValence -= 1;
+              changed = true;
+              if (totalValence <= maxV) break;
+            }
+          }
+        }
+      }
+      if (!changed) break;
+    }
+  }
+
+  /**
+   * 智慧氫鍵偵測演算法 (Hydrogen Bond Detector)
+   * 依據 IUPAC 幾何標準：供體 D (O, N, F) - 氫 H ··· 受體 A (O, N, F)
+   * 判定條件：
+   * 1. 距離：1.5 Å <= d(H···A) <= 2.6 Å
+   * 2. 角度：∠(D-H···A) >= 115°
+   * 3. 排除 1-2 (共價鍵本身) 或 1-3 (同一個供體上之其他原子)
+   */
+  detectHydrogenBonds() {
+    const electronegative = new Set(['O', 'N', 'F']);
+    const n = this.atoms.length;
+    if (n < 3) return;
+
+    // 先建立共價鄰接關係以快速查找 D-H
+    const covNeighbors = Array.from({ length: n }, () => new Set());
+    for (const b of this.bonds) {
+      if (b.order !== 'hb') {
+        covNeighbors[b.a].add(b.b);
+        covNeighbors[b.b].add(b.a);
+      }
+    }
+
+    const newHbBonds = [];
+
+    // 尋找所有與供體 D 相連的 H
+    for (let hIdx = 0; hIdx < n; hIdx++) {
+      const atomH = this.atoms[hIdx];
+      if (atomH.element !== 'H') continue;
+
+      let dIdx = -1;
+      for (const nbr of covNeighbors[hIdx]) {
+        if (electronegative.has(this.atoms[nbr].element)) {
+          dIdx = nbr;
+          break;
+        }
+      }
+      if (dIdx === -1) continue;
+      const atomD = this.atoms[dIdx];
+
+      // 尋找潛在受體 A
+      for (let aIdx = 0; aIdx < n; aIdx++) {
+        if (aIdx === hIdx || aIdx === dIdx) continue;
+        const atomA = this.atoms[aIdx];
+        if (!electronegative.has(atomA.element)) continue;
+
+        // 排除 1-3 鍵 (若 A 也是與 D 相連的共價鄰居，不構成氫鍵)
+        if (covNeighbors[dIdx].has(aIdx)) continue;
+
+        const dx = atomA.x - atomH.x;
+        const dy = atomA.y - atomH.y;
+        const dz = atomA.z - atomH.z;
+        const distHA = Math.hypot(dx, dy, dz);
+
+        if (distHA >= 1.5 && distHA <= 2.6) {
+          const vHD = [atomD.x - atomH.x, atomD.y - atomH.y, atomD.z - atomH.z];
+          const vHA = [dx, dy, dz];
+
+          const lenHD = Math.hypot(...vHD);
+          const lenHA = distHA;
+          if (lenHD < 1e-4 || lenHA < 1e-4) continue;
+
+          const dot = vHD[0] * vHA[0] + vHD[1] * vHA[1] + vHD[2] * vHA[2];
+          const cosAngle = dot / (lenHD * lenHA);
+          const angleDeg = Math.acos(Math.max(-1, Math.min(1, cosAngle))) * (180 / Math.PI);
+
+          if (angleDeg >= 115) {
+            const aMin = Math.min(hIdx, aIdx);
+            const aMax = Math.max(hIdx, aIdx);
+            const alreadyExists = this.bonds.some(b => (b.a === aMin && b.b === aMax) || (b.a === aMax && b.b === aMin));
+            const inNewList = newHbBonds.some(b => b.a === aMin && b.b === aMax);
+
+            if (!alreadyExists && !inNewList) {
+              newHbBonds.push({
+                a: aMin,
+                b: aMax,
+                dist: distHA,
+                order: 'hb',
+                offset: [0, 0, 0]
+              });
+            }
+          }
+        }
+      }
+    }
+
+    if (newHbBonds.length > 0) {
+      this.bonds.push(...newHbBonds);
+    }
   }
 
   /**

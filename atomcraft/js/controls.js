@@ -234,6 +234,15 @@ class InteractionController {
    * GaussView 風格核心選取與量測邏輯 (1 -> 2 -> 3 -> 4 -> 5 循環) 與替換/新增筆刷
    */
   handleClick(e) {
+    // 互斥安全防護：若當前已啟動幾何微調工具，強制退出筆刷模式，避免誤改原子
+    if (this.activeTool && this.isBrushMode) {
+      if (this.app && this.app.deactivateBrushMode) {
+        this.app.deactivateBrushMode(true);
+      } else {
+        this.isBrushMode = false;
+      }
+    }
+
     const pickedIdx = this.renderer.pickAtom(e.clientX, e.clientY, this.structure);
 
     // 【替換/新增筆刷模式】：點中原子替換，點擊空白處直接在視野平面新增原子！
@@ -440,8 +449,16 @@ class InteractionController {
   }
 
   onKeyDown(e) {
-    // 忽略在文字輸入框內的輸入
-    if (e.target && ['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+    const isEscape = (e.key === 'Escape' || e.code === 'Escape');
+
+    // 忽略在文字輸入框內的輸入 (若按 Escape 則強制 blur 輸入框並繼續向下執行全域取消)
+    if (e.target && ['INPUT', 'TEXTAREA'].includes(e.target.tagName)) {
+      if (isEscape) {
+        if (e.target.blur) e.target.blur();
+      } else {
+        return;
+      }
+    }
 
     // 1. 全域 Ctrl + Z (復原) - 支援 Windows 中文輸入法 KeyZ
     if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'z' || e.code === 'KeyZ')) {
@@ -497,33 +514,70 @@ class InteractionController {
       return;
     }
 
-    // 6. Escape: 退出微調面板、關閉外觀面板、退出筆刷模式、或取消所有選取
-    if (e.key === 'Escape' || e.code === 'Escape') {
+    // 6. Escape: 全面退出視窗、退出微調面板、關閉外觀面板、退出筆刷模式、或取消所有選取
+    if (isEscape) {
+      if (e.preventDefault) e.preventDefault();
+      if (e.stopPropagation) e.stopPropagation();
+
+      // (1) 優先關閉開啟中的模態視窗 (元素週期表、快捷鍵說明、匯出等)
+      const modalPtable = document.getElementById('modal-ptable');
+      if (modalPtable && modalPtable.classList.contains('show')) {
+        modalPtable.classList.remove('show');
+        return;
+      }
+      const modalShortcuts = document.getElementById('modal-shortcuts');
+      if (modalShortcuts && modalShortcuts.classList.contains('show')) {
+        modalShortcuts.classList.remove('show');
+        return;
+      }
+      const modalExport = document.getElementById('modal-export');
+      if (modalExport && modalExport.classList.contains('show')) {
+        modalExport.classList.remove('show');
+        return;
+      }
+
+      // (2) 關閉外觀色彩懸浮面版
       const appDock = document.getElementById('appearance-dock');
       if (appDock && appDock.style.display !== 'none') {
         appDock.style.display = 'none';
         return;
       }
+
+      // (3) 關閉幾何微調滑桿面版
       if (this.app.isAdjustDockOpen) {
         this.app.closeAdjustDock();
         return;
       }
+
+      // (4) 徹底退出筆刷模式與幾何微調模式 (兩者同步解除，絕不殘留)
+      let stateChanged = false;
+      if (this.isBrushMode || document.body.classList.contains('brush-mode-active')) {
+        if (this.app && this.app.deactivateBrushMode) {
+          this.app.deactivateBrushMode(false);
+        } else {
+          this.isBrushMode = false;
+        }
+        stateChanged = true;
+      }
       if (this.activeTool) {
         this.activeTool = null;
         this.app.showToast('已取消幾何微調模式');
-        return;
+        stateChanged = true;
       }
-      if (this.isBrushMode) {
-        this.isBrushMode = false;
+      if (stateChanged) {
         this.app.updateUI();
-        this.app.showToast('已退出原子替換筆刷模式');
         return;
       }
-      this.clearSelection();
-      this.renderer.update(this.structure);
-      this.app.setMeasurementDisplay('');
-      this.app.updateUI();
-      return;
+
+      // (5) 取消所有選取的原子
+      if (this.selectedSequence.length > 0 || this.structure.atoms.some(a => a.selected)) {
+        this.clearSelection();
+        this.renderer.update(this.structure);
+        this.app.setMeasurementDisplay('');
+        this.app.updateUI();
+        this.app.showToast('已取消選取');
+        return;
+      }
     }
 
     // 7. H / Shift + H: 加去氫
