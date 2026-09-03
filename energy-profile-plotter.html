@@ -236,6 +236,17 @@ input[type="color"].cell-color { width: 26px; height: 24px; padding: 0; border: 
 .text-annotation-group text { font-family: 'Segoe UI', Arial, sans-serif; cursor: move; user-select: none; }
 .text-annotation-group:hover text { opacity: 0.75; }
 
+/* ====== Plot Area Drag Handles & Edges ====== */
+.plot-edge-hit {
+  transition: opacity 0.15s ease;
+}
+.plot-edge-hit:hover {
+  stroke: #2563eb;
+  stroke-width: 2px;
+  stroke-dasharray: 4,4;
+  fill: rgba(37, 99, 235, 0.08);
+}
+
 /* ====== Color Palette & Swatches ====== */
 .palette-swatches { display: flex; flex-wrap: wrap; gap: 4px; padding: 3px 0 6px; }
 .color-swatch {
@@ -494,6 +505,19 @@ input[type="color"].cell-color { width: 26px; height: 24px; padding: 0; border: 
       <div class="opt-row">
         <label><span id="lbl-axis-thickness">軸線粗細 (px)：</span> <input type="number" id="opt-axis-thickness" class="opt-inp" min="0.5" max="6" step="0.5" value="1"></label>
       </div>
+      <div class="opt-row" style="margin-top:6px; display:flex; flex-direction:column; gap:4px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; padding:6px 8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-weight:600; font-size:11px; color:#475569;" id="lbl-plot-margins-title">圖表顯示範圍與留白 (Margins)</span>
+          <button type="button" class="btn-panel btn-sm" id="btn-reset-plot-margins" style="font-size:10px; padding:1px 6px;" title="重設邊界為自動計算">↺ 自適應</button>
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px; font-size:11px;">
+          <label style="display:flex; align-items:center; gap:2px;"><span id="lbl-margin-top" style="color:#64748b; width:28px;">上：</span><input type="number" id="opt-margin-top" class="opt-inp" min="5" max="300" placeholder="自動" style="width:100%; text-align:center;"></label>
+          <label style="display:flex; align-items:center; gap:2px;"><span id="lbl-margin-bottom" style="color:#64748b; width:28px;">下：</span><input type="number" id="opt-margin-bottom" class="opt-inp" min="5" max="300" placeholder="自動" style="width:100%; text-align:center;"></label>
+          <label style="display:flex; align-items:center; gap:2px;"><span id="lbl-margin-left" style="color:#64748b; width:28px;">左：</span><input type="number" id="opt-margin-left" class="opt-inp" min="5" max="400" placeholder="自動" style="width:100%; text-align:center;"></label>
+          <label style="display:flex; align-items:center; gap:2px;"><span id="lbl-margin-right" style="color:#64748b; width:28px;">右：</span><input type="number" id="opt-margin-right" class="opt-inp" min="5" max="300" placeholder="自動" style="width:100%; text-align:center;"></label>
+        </div>
+        <div style="font-size:10px; color:#94a3b8; line-height:1.2;" id="hint-plot-margins">💡 可直接用滑鼠拖曳圖表四邊或四角調整範圍</div>
+      </div>
 
       <!-- ③ Tick 方向 -->
       <div class="opt-subhead" id="lbl-tick-dir-head">Tick 方向 (Tick Direction)</div>
@@ -576,11 +600,16 @@ input[type="color"].cell-color { width: 26px; height: 24px; padding: 0; border: 
           </select>
         </label>
       </div>
-      <div class="opt-row opt-indent hidden" id="row-custom-font" style="margin-bottom:6px;">
-        <label style="flex:1; display:flex; align-items:center; gap:4px;">
+      <div class="opt-row opt-indent hidden" id="row-custom-font" style="margin-bottom:6px; flex-direction:column; align-items:stretch; gap:4px;">
+        <div style="display:flex; align-items:center; gap:4px;">
           <span id="lbl-custom-font" style="white-space:nowrap;">自訂字型：</span>
-          <input type="text" id="opt-custom-font" class="opt-txt" placeholder="例如: STIX Two Text, Computer Modern" style="flex:1;">
-        </label>
+          <input type="text" id="opt-custom-font" class="opt-txt" placeholder="例如: STIX Two Text, Palatino, 微軟正黑體" style="flex:1;">
+        </div>
+        <div style="display:flex; gap:4px; margin-top:2px;">
+          <button type="button" class="btn-panel btn-sm" id="btn-load-font-file" style="font-size:10px; padding:2px 6px; flex:1.2; justify-content:center;">📂 載入本機字型檔 (.ttf/.otf)</button>
+          <button type="button" class="btn-panel btn-sm" id="btn-scan-local-fonts" style="font-size:10px; padding:2px 6px; flex:0.8; justify-content:center;" title="嘗試透過瀏覽器 Local Font Access API 取得本機已安裝字型">🔍 偵測系統字體</button>
+          <input type="file" id="inp-font-file" accept=".ttf,.otf,.woff,.woff2" style="display:none;">
+        </div>
       </div>
 
       <!-- 統一文字規格矩陣 (項目 / 字級 / 粗細) -->
@@ -742,6 +771,9 @@ const LANG = {
     typographyHead: '字型與排版設定 (Typography)',
     fontFamily: '全域字型',
     customFont: '自訂字型',
+    btnLoadFontFile: '📂 載入本機字型檔 (.ttf/.otf)',
+    btnScanLocalFonts: '🔍 偵測系統字體',
+    legendResizeHint: '拖曳調整圖例大小，雙擊恢復自動大小',
     thTypoItem: '文字項目',
     thTypoSize: '字級',
     thTypoWeight: '粗細',
@@ -803,6 +835,18 @@ const LANG = {
     yAxisTitleText: 'Y 標題：',
     optShowXTicks: '顯示 X 軸刻度數值',
     displayOptsHead: '其他顯示選項',
+    plotMarginsTitle: '圖表顯示範圍與留白 (Margins)',
+    btnResetPlotMargins: '↺ 自適應',
+    marginTop: '上：', marginBottom: '下：', marginLeft: '左：', marginRight: '右：',
+    hintPlotMargins: '💡 可直接用滑鼠拖曳圖表四邊或四角調整範圍',
+    dragBorderLeft: '拖曳調整圖表左邊界（顯示範圍），雙擊重設',
+    dragBorderRight: '拖曳調整圖表右邊界（顯示範圍），雙擊重設',
+    dragBorderTop: '拖曳調整圖表上邊界（顯示範圍），雙擊重設',
+    dragBorderBottom: '拖曳調整圖表下邊界（顯示範圍），雙擊重設',
+    dragCorner: '拖曳調整圖表顯示範圍，雙擊重設',
+    dragXTitle: '拖曳調整 X 軸標題位置，雙擊重設',
+    dragYTitle: '拖曳調整 Y 軸標題位置，雙擊重設',
+    dragChartTitle: '拖曳調整圖表標題位置，雙擊重設',
   },
   en: {
     title: '⚛ Energy Profile Plotter',
@@ -825,6 +869,9 @@ const LANG = {
     typographyHead: 'Typography & Fonts',
     fontFamily: 'Global Font',
     customFont: 'Custom Font',
+    btnLoadFontFile: '📂 Load Font File (.ttf/.otf)',
+    btnScanLocalFonts: '🔍 Detect System Fonts',
+    legendResizeHint: 'Drag to resize legend box, double-click to reset',
     thTypoItem: 'Element',
     thTypoSize: 'Size',
     thTypoWeight: 'Weight',
@@ -886,6 +933,18 @@ const LANG = {
     yAxisTitleText: 'Y Title:',
     optShowXTicks: 'Show X Tick Values',
     displayOptsHead: 'Other Display Options',
+    plotMarginsTitle: 'Plot Area Margins',
+    btnResetPlotMargins: '↺ Auto Fit',
+    marginTop: 'Top:', marginBottom: 'Bottom:', marginLeft: 'Left:', marginRight: 'Right:',
+    hintPlotMargins: '💡 Drag chart 4 borders or corners to adjust plot area',
+    dragBorderLeft: 'Drag to adjust left plot border, double-click to reset',
+    dragBorderRight: 'Drag to adjust right plot border, double-click to reset',
+    dragBorderTop: 'Drag to adjust top plot border, double-click to reset',
+    dragBorderBottom: 'Drag to adjust bottom plot border, double-click to reset',
+    dragCorner: 'Drag corner to resize plot area, double-click to reset',
+    dragXTitle: 'Drag to move X title, double-click to reset',
+    dragYTitle: 'Drag to move Y title, double-click to reset',
+    dragChartTitle: 'Drag to move chart title, double-click to reset',
   }
 };
 function t(key) { return LANG[currentLang][key] || LANG['en'][key] || key; }
@@ -1303,7 +1362,9 @@ function defaultApp() {
       tickDirX: 'out', tickDirY: 'out',
       /* Chart title */
       showChartTitle: false, chartTitleText: '',
-      xTitleOffset: { x: 0, y: 0 }, yTitleOffset: { x: 0, y: 0 }, chartTitleOffset: { x: 0, y: 0 }
+      xTitleOffset: { x: 0, y: 0 }, yTitleOffset: { x: 0, y: 0 }, chartTitleOffset: { x: 0, y: 0 },
+      /* Chart display range / plot margins (null = auto) */
+      plotMargins: { top: null, bottom: null, left: null, right: null }
     },
     legend: { visible: true, x: 80, y: 40, titles: {} },
     textAnnotations: [],
@@ -1401,6 +1462,13 @@ function applyLang() {
   setTxt('lbl-show-top-axis', t('showTopAxis'));
   setTxt('lbl-show-right-axis', t('showRightAxis'));
   setTxt('lbl-axis-thickness', t('axisThickness'));
+  setTxt('lbl-plot-margins-title', t('plotMarginsTitle'));
+  setTxt('btn-reset-plot-margins', t('btnResetPlotMargins'));
+  setTxt('lbl-margin-top', t('marginTop'));
+  setTxt('lbl-margin-bottom', t('marginBottom'));
+  setTxt('lbl-margin-left', t('marginLeft'));
+  setTxt('lbl-margin-right', t('marginRight'));
+  setTxt('hint-plot-margins', t('hintPlotMargins'));
 
   /* ③ Tick direction */
   setTxt('lbl-tick-dir-head', t('tickDirHead'));
@@ -1446,6 +1514,8 @@ function applyLang() {
   setTxt('lbl-typography-head', t('typographyHead'));
   setTxt('lbl-font-family', t('fontFamily') + '：');
   setTxt('lbl-custom-font', t('customFont') + '：');
+  setTxt('btn-load-font-file', t('btnLoadFontFile'));
+  setTxt('btn-scan-local-fonts', t('btnScanLocalFonts'));
   setTxt('th-typo-item', t('thTypoItem'));
   setTxt('th-typo-size', t('thTypoSize'));
   setTxt('th-typo-weight', t('thTypoWeight'));
@@ -1657,6 +1727,11 @@ function initChartOptions() {
   if (app.chartOptions.legendFontWeight === undefined) app.chartOptions.legendFontWeight = '400';
   if (app.chartOptions.annFontSize === undefined) app.chartOptions.annFontSize = 12;
   if (app.chartOptions.annFontWeight === undefined) app.chartOptions.annFontWeight = '600';
+  if (!app.chartOptions.plotMargins) {
+    app.chartOptions.plotMargins = { top: null, bottom: null, left: null, right: null };
+  }
+  delete app.chartOptions.axisOffset;
+  delete app.chartOptions.tickLabelOffset;
   
   const toggle = document.getElementById('chart-options-toggle');
   const body = document.getElementById('chart-options-body');
@@ -1741,6 +1816,39 @@ function initChartOptions() {
   bindCb('opt-show-right-axis', 'showRightAxis');
   bindInpNum('opt-axis-thickness', 'axisThickness', 1.0, 0.5, 6);
 
+  const inpMarginTop = document.getElementById('opt-margin-top');
+  const inpMarginBottom = document.getElementById('opt-margin-bottom');
+  const inpMarginLeft = document.getElementById('opt-margin-left');
+  const inpMarginRight = document.getElementById('opt-margin-right');
+  const btnResetMargins = document.getElementById('btn-reset-plot-margins');
+
+  function bindMarginInp(el, side) {
+    if (!el) return;
+    el.oninput = () => {
+      if (!app.chartOptions.plotMargins) app.chartOptions.plotMargins = {};
+      const val = el.value.trim();
+      app.chartOptions.plotMargins[side] = val === '' ? null : Math.max(5, Math.min(500, parseFloat(val) || 0));
+      renderChart();
+    };
+    el.onchange = () => saveState();
+  }
+  bindMarginInp(inpMarginTop, 'top');
+  bindMarginInp(inpMarginBottom, 'bottom');
+  bindMarginInp(inpMarginLeft, 'left');
+  bindMarginInp(inpMarginRight, 'right');
+
+  if (btnResetMargins) {
+    btnResetMargins.onclick = () => {
+      app.chartOptions.plotMargins = { top: null, bottom: null, left: null, right: null };
+      if (inpMarginTop) inpMarginTop.value = '';
+      if (inpMarginBottom) inpMarginBottom.value = '';
+      if (inpMarginLeft) inpMarginLeft.value = '';
+      if (inpMarginRight) inpMarginRight.value = '';
+      saveAndRender();
+      showToast(currentLang === 'zh' ? '已重設圖表邊界為自適應' : 'Reset margins to auto-fit');
+    };
+  }
+
   // ③ Tick direction
   bindSel('opt-tick-dir-x', 'tickDirX', 'out');
   bindSel('opt-tick-dir-y', 'tickDirY', 'out');
@@ -1816,6 +1924,84 @@ function initChartOptions() {
       renderChart();
     };
     inpCustomFont.onchange = () => saveState();
+  }
+
+  const btnLoadFont = document.getElementById('btn-load-font-file');
+  const btnScanFonts = document.getElementById('btn-scan-local-fonts');
+  const inpFontFile = document.getElementById('inp-font-file');
+
+  if (btnLoadFont && inpFontFile) {
+    btnLoadFont.onclick = () => inpFontFile.click();
+    inpFontFile.onchange = () => {
+      const file = inpFontFile.files[0];
+      if (!file) return;
+      const fontName = file.name.replace(/\.[^/.]+$/, '').trim();
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const buffer = e.target.result;
+          const fontFace = new FontFace(fontName, buffer);
+          await fontFace.load();
+          document.fonts.add(fontFace);
+
+          let optExists = false;
+          for (let i = 0; i < selFont.options.length; i++) {
+            if (selFont.options[i].value === fontName) { optExists = true; break; }
+          }
+          if (!optExists) {
+            const opt = new Option(`★ ${fontName} (${currentLang === 'zh' ? '已載入' : 'Loaded'})`, fontName);
+            selFont.insertBefore(opt, selFont.querySelector('option[value="custom"]'));
+          }
+          selFont.value = fontName;
+          app.chartOptions.fontFamily = fontName;
+          if (rowCustomFont) rowCustomFont.classList.add('hidden');
+          saveAndRender();
+          showToast(currentLang === 'zh' ? `已成功載入字型：${fontName}` : `Loaded font: ${fontName}`);
+        } catch(err) {
+          console.error(err);
+          alert(currentLang === 'zh' ? `載入字型失敗：${err.message}` : `Failed to load font: ${err.message}`);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    };
+  }
+
+  if (btnScanFonts) {
+    btnScanFonts.onclick = async () => {
+      if ('queryLocalFonts' in window) {
+        try {
+          const availableFonts = await window.queryLocalFonts();
+          const fontSet = new Set();
+          availableFonts.forEach(f => { if (f.family) fontSet.add(f.family); });
+          const sortedFamilies = Array.from(fontSet).sort();
+          if (sortedFamilies.length > 0) {
+            let optGroup = selFont.querySelector('optgroup[data-sysfonts="1"]');
+            if (!optGroup) {
+              optGroup = document.createElement('optgroup');
+              optGroup.setAttribute('data-sysfonts', '1');
+              optGroup.label = currentLang === 'zh' ? '── 本機系統字體 ──' : '── System Fonts ──';
+              selFont.insertBefore(optGroup, selFont.querySelector('option[value="custom"]'));
+            }
+            optGroup.innerHTML = '';
+            sortedFamilies.forEach(fam => {
+              optGroup.appendChild(new Option(fam, fam));
+            });
+            showToast(currentLang === 'zh' ? `已偵測到 ${sortedFamilies.length} 個系統字體！` : `Detected ${sortedFamilies.length} system fonts!`);
+          }
+        } catch (err) {
+          console.warn(err);
+          alert(currentLang === 'zh' 
+            ? `讀取系統字體受阻：${err.message}\n\n【原因說明】：\n瀏覽器為了保護使用者隱私（防止惡意網站探測字型清單作為指紋追蹤），標準安全策略限制非 HTTPS / 本地檔案 (file://) 存取系統字體目錄。\n\n💡【直接使用電腦字體的兩種方式】：\n1. 直接在上方「自訂字型」輸入您電腦裡安裝的字體名稱（如 STIX Two Text、Palatino、微軟正黑體 等），瀏覽器就會直接使用！\n2. 點擊「📂 載入本機字型檔」按鈕，直接選取 .ttf 或 .otf 檔案即可！`
+            : `System font access restricted: ${err.message}\n\nBrowser security restricts font listing for file:// URLs.\n\nTips:\n1. Type the font name directly into Custom Font field.\n2. Or click "Load Font File" to load .ttf/.otf directly!`
+          );
+        }
+      } else {
+        alert(currentLang === 'zh'
+          ? `您的瀏覽器環境未開放自動枚舉系統字體 API（通常限制需在 HTTPS 或 Localhost 環境）。\n\n💡【直接使用電腦字體的兩種方式】：\n1. 直接在上方「自訂字型」輸入您電腦已安裝的字型名稱（例如 STIX Two Text、Palatino、Cambria 等），只要系統有安裝就會直接套用！\n2. 點擊「📂 載入本機字型檔」直接選取 .ttf / .otf 檔案載入！`
+          : `Local Font Access API is not supported in this browser context.\n\nTips:\n1. Type font name directly in Custom Font field.\n2. Click "Load Font File" to load .ttf/.otf file directly!`
+        );
+      }
+    };
   }
 
   // Axis Titles
@@ -2243,30 +2429,37 @@ function renderChart() {
   const axisTitleWeight = co.axisTitleFontWeight || '500';
   const tickSize = tickFontSize + 'px';
 
-  // Dynamic margin: top margin is compact and only adds necessary space when title is shown
+  // Dynamic margin calculation: auto margins tailored to font sizes so labels never collide
   const hasChartTitle = Boolean(co.showChartTitle && co.chartTitleText && co.chartTitleText.trim());
-  const CHART_TITLE_MARGIN = hasChartTitle ? ((co.chartTitleFontSize || 16) + 12) : 0;
-
-  // Bottom margin calculation: tightly fitted based on whether ticks and/or title are visible
+  const chartTitleSize = co.chartTitleFontSize || 16;
+  const axisTitleFontSize = co.axisTitleFontSize || 14;
   const showXTicks = co.showBottomAxis !== false && co.showXTicks !== false;
   const showXTitle = co.showXTitle !== false;
-  let bottomSpace = 16;
-  if (showXTicks && showXTitle) {
-    bottomSpace = 44 + Math.max(0, tickFontSize - 12);
-  } else if (showXTicks) {
-    bottomSpace = 26 + Math.max(0, tickFontSize - 12);
-  } else if (showXTitle) {
-    bottomSpace = 32;
-  }
 
-  const leftSpace = Math.max(MARGIN.left, (co.axisTitleFontSize || 14) + tickFontSize * 2 + 16);
+  const autoTop = hasChartTitle ? (chartTitleSize + 24) : 22;
+  const autoBottom = 16 + (showXTicks ? (tickFontSize + 14) : 0) + (showXTitle ? (axisTitleFontSize + 16) : 0);
+  const autoLeft = Math.max(65, axisTitleFontSize * 1.3 + tickFontSize * 2.5 + 16);
+  const autoRight = 35;
 
+  const autoMargin = { top: autoTop, right: autoRight, bottom: autoBottom, left: autoLeft };
+
+  const pm = co.plotMargins || {};
   const margin = {
-    top: MARGIN.top + CHART_TITLE_MARGIN,
-    right: MARGIN.right,
-    bottom: bottomSpace,
-    left: leftSpace
+    top: (pm.top !== undefined && pm.top !== null) ? pm.top : autoMargin.top,
+    right: (pm.right !== undefined && pm.right !== null) ? pm.right : autoMargin.right,
+    bottom: (pm.bottom !== undefined && pm.bottom !== null) ? pm.bottom : autoMargin.bottom,
+    left: (pm.left !== undefined && pm.left !== null) ? pm.left : autoMargin.left
   };
+
+  // Sync with left panel inputs if not currently focused
+  const inpMT = document.getElementById('opt-margin-top');
+  const inpMB = document.getElementById('opt-margin-bottom');
+  const inpML = document.getElementById('opt-margin-left');
+  const inpMR = document.getElementById('opt-margin-right');
+  if (inpMT && document.activeElement !== inpMT) inpMT.value = (pm.top !== undefined && pm.top !== null) ? pm.top : '';
+  if (inpMB && document.activeElement !== inpMB) inpMB.value = (pm.bottom !== undefined && pm.bottom !== null) ? pm.bottom : '';
+  if (inpML && document.activeElement !== inpML) inpML.value = (pm.left !== undefined && pm.left !== null) ? pm.left : '';
+  if (inpMR && document.activeElement !== inpMR) inpMR.value = (pm.right !== undefined && pm.right !== null) ? pm.right : '';
 
   svg.attr('viewBox', `0 0 ${cW} ${cH}`)
      .attr('preserveAspectRatio', 'xMidYMid meet');
@@ -2349,12 +2542,16 @@ function renderChart() {
       else if (tickDirX === 'both') xAxis.tickSizeInner(6).tickPadding(8);
       else xAxis.tickSizeInner(0).tickPadding(5); // none
     }
-    const xAxG = g.append('g').attr('class', 'axis axis-bottom').attr('transform', `translate(0,${iH})`).call(xAxis);
+    const xAxG = g.append('g').attr('class', 'axis axis-bottom')
+      .attr('transform', `translate(0, ${iH})`)
+      .call(xAxis);
+
     xAxG.selectAll('text')
       .attr('font-size', tickSize).style('font-size', tickSize)
       .attr('font-weight', tickWeight).style('font-weight', tickWeight)
       .style('font-family', activeFont)
       .style('fill', '#000000');
+
     xAxG.selectAll('path, line').style('stroke', '#000000').style('stroke-width', axThick + 'px');
     if (co?.showXTicks !== false && tickDirX === 'both') {
       xAxG.selectAll('.tick line').attr('y1', -6).attr('y2', 6);
@@ -2368,12 +2565,16 @@ function renderChart() {
     else if (tickDirY === 'out') yAxis.tickSizeInner(6).tickPadding(8);
     else if (tickDirY === 'both') yAxis.tickSizeInner(6).tickPadding(8);
     else yAxis.tickSizeInner(0).tickPadding(5); // none
-    const yAxG = g.append('g').attr('class', 'axis axis-left').call(yAxis);
+
+    const yAxG = g.append('g').attr('class', 'axis axis-left')
+      .call(yAxis);
+
     yAxG.selectAll('text')
       .attr('font-size', tickSize).style('font-size', tickSize)
       .attr('font-weight', tickWeight).style('font-weight', tickWeight)
       .style('font-family', activeFont)
       .style('fill', '#000000');
+
     yAxG.selectAll('path, line').style('stroke', '#000000').style('stroke-width', axThick + 'px');
     if (tickDirY === 'both') {
       yAxG.selectAll('.tick line').attr('x1', -6).attr('x2', 6);
@@ -2387,7 +2588,10 @@ function renderChart() {
     else if (tickDirX === 'out') topAxis.tickSizeInner(6);
     else if (tickDirX === 'both') topAxis.tickSizeInner(6);
     else topAxis.tickSizeInner(0);
-    const topG = g.append('g').attr('class', 'axis axis-top').call(topAxis);
+
+    const topG = g.append('g').attr('class', 'axis axis-top')
+      .call(topAxis);
+
     topG.selectAll('path, line').style('stroke', '#000000').style('stroke-width', axThick + 'px');
     if (tickDirX === 'both') {
       topG.selectAll('.tick line').attr('y1', -6).attr('y2', 6);
@@ -2401,12 +2605,177 @@ function renderChart() {
     else if (tickDirY === 'out') rightAxis.tickSizeInner(6);
     else if (tickDirY === 'both') rightAxis.tickSizeInner(6);
     else rightAxis.tickSizeInner(0);
-    const rightG = g.append('g').attr('class', 'axis axis-right').attr('transform', `translate(${iW},0)`).call(rightAxis);
+
+    const rightG = g.append('g').attr('class', 'axis axis-right')
+      .attr('transform', `translate(${iW}, 0)`)
+      .call(rightAxis);
+
     rightG.selectAll('path, line').style('stroke', '#000000').style('stroke-width', axThick + 'px');
     if (tickDirY === 'both') {
       rightG.selectAll('.tick line').attr('x1', -6).attr('x2', 6);
     }
   }
+
+  // -------- Plot Area Resize Handles (4 borders & 4 corners) --------
+  const handlesG = svg.append('g').attr('class', 'plot-box-handles');
+
+  const boxL = margin.left;
+  const boxR = margin.left + iW;
+  const boxT = margin.top;
+  const boxB = margin.top + iH;
+
+  function initDragController(hitEl, dragType) {
+    hitEl.on('pointerdown', function(ev) {
+      if (ev.button !== 0) return; // only left mouse button
+      ev.preventDefault();
+      ev.stopPropagation();
+
+      const svgNode = document.getElementById('chart-svg');
+
+      function getSvgPt(e) {
+        const pt = svgNode.createSVGPoint();
+        pt.x = e.clientX;
+        pt.y = e.clientY;
+        const ctm = svgNode.getScreenCTM();
+        if (ctm) return pt.matrixTransform(ctm.inverse());
+        const [mx, my] = d3.pointer(e, svgNode);
+        return { x: mx, y: my };
+      }
+
+      const startPt = getSvgPt(ev);
+      const startLeft = margin.left;
+      const startRight = margin.right;
+      const startTop = margin.top;
+      const startBottom = margin.bottom;
+
+      document.body.style.userSelect = 'none';
+
+      function onPointerMove(e) {
+        e.preventDefault();
+        const curPt = getSvgPt(e);
+        const dx = curPt.x - startPt.x;
+        const dy = curPt.y - startPt.y;
+
+        if (!app.chartOptions.plotMargins) app.chartOptions.plotMargins = {};
+
+        const minW = 80;
+        const minH = 60;
+
+        if (dragType === 'left' || dragType === 'tl' || dragType === 'bl') {
+          const newL = Math.max(15, Math.min(cW - startRight - minW, startLeft + dx));
+          app.chartOptions.plotMargins.left = Math.round(newL);
+        }
+        if (dragType === 'right' || dragType === 'tr' || dragType === 'br') {
+          const newR = Math.max(15, Math.min(cW - startLeft - minW, startRight - dx));
+          app.chartOptions.plotMargins.right = Math.round(newR);
+        }
+        if (dragType === 'top' || dragType === 'tl' || dragType === 'tr') {
+          const newT = Math.max(10, Math.min(cH - startBottom - minH, startTop + dy));
+          app.chartOptions.plotMargins.top = Math.round(newT);
+        }
+        if (dragType === 'bottom' || dragType === 'bl' || dragType === 'br') {
+          const newB = Math.max(15, Math.min(cH - startTop - minH, startBottom - dy));
+          app.chartOptions.plotMargins.bottom = Math.round(newB);
+        }
+
+        renderChart();
+      }
+
+      function onPointerUp(e) {
+        document.body.style.userSelect = '';
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+        saveState();
+      }
+
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerUp);
+    });
+
+    hitEl.on('dblclick', function(ev) {
+      ev.stopPropagation();
+      if (dragType === 'left' || dragType === 'right' || dragType === 'top' || dragType === 'bottom') {
+        if (app.chartOptions.plotMargins) delete app.chartOptions.plotMargins[dragType];
+      } else {
+        app.chartOptions.plotMargins = { top: null, bottom: null, left: null, right: null };
+      }
+      saveAndRender();
+    });
+  }
+
+  // 1. Left border (18px wide hit rect over left axis)
+  const leftHit = handlesG.append('rect')
+    .attr('class', 'plot-edge-hit')
+    .attr('x', boxL - 9).attr('y', boxT)
+    .attr('width', 18).attr('height', iH)
+    .attr('fill', 'transparent')
+    .attr('pointer-events', 'all')
+    .style('cursor', 'ew-resize')
+    .attr('title', t('dragBorderLeft'));
+  initDragController(leftHit, 'left');
+
+  // 2. Right border (18px wide hit rect over right axis)
+  const rightHit = handlesG.append('rect')
+    .attr('class', 'plot-edge-hit')
+    .attr('x', boxR - 9).attr('y', boxT)
+    .attr('width', 18).attr('height', iH)
+    .attr('fill', 'transparent')
+    .attr('pointer-events', 'all')
+    .style('cursor', 'ew-resize')
+    .attr('title', t('dragBorderRight'));
+  initDragController(rightHit, 'right');
+
+  // 3. Top border (18px wide hit rect over top axis)
+  const topHit = handlesG.append('rect')
+    .attr('class', 'plot-edge-hit')
+    .attr('x', boxL).attr('y', boxT - 9)
+    .attr('width', iW).attr('height', 18)
+    .attr('fill', 'transparent')
+    .attr('pointer-events', 'all')
+    .style('cursor', 'ns-resize')
+    .attr('title', t('dragBorderTop'));
+  initDragController(topHit, 'top');
+
+  // 4. Bottom border (18px wide hit rect over bottom axis)
+  const bottomHit = handlesG.append('rect')
+    .attr('class', 'plot-edge-hit')
+    .attr('x', boxL).attr('y', boxB - 9)
+    .attr('width', iW).attr('height', 18)
+    .attr('fill', 'transparent')
+    .attr('pointer-events', 'all')
+    .style('cursor', 'ns-resize')
+    .attr('title', t('dragBorderBottom'));
+  initDragController(bottomHit, 'bottom');
+
+  // 5. Four Corner Handles (Visible squares + 22px hit targets)
+  const corners = [
+    { type: 'tl', x: boxL, y: boxT, cursor: 'nwse-resize' },
+    { type: 'tr', x: boxR, y: boxT, cursor: 'nesw-resize' },
+    { type: 'bl', x: boxL, y: boxB, cursor: 'nesw-resize' },
+    { type: 'br', x: boxR, y: boxB, cursor: 'nwse-resize' }
+  ];
+
+  corners.forEach(cn => {
+    const cg = handlesG.append('g').attr('transform', `translate(${cn.x}, ${cn.y})`)
+      .style('cursor', cn.cursor)
+      .attr('title', t('dragCorner'));
+
+    cg.append('rect')
+      .attr('x', -4.5).attr('y', -4.5)
+      .attr('width', 9).attr('height', 9)
+      .attr('fill', '#ffffff')
+      .attr('stroke', '#2563eb')
+      .attr('stroke-width', 1.5)
+      .attr('rx', 1.5);
+
+    const cornerHit = cg.append('rect')
+      .attr('x', -11).attr('y', -11)
+      .attr('width', 22).attr('height', 22)
+      .attr('fill', 'transparent')
+      .attr('pointer-events', 'all');
+
+    initDragController(cornerHit, cn.type);
+  });
 
   // X-axis title (Draggable with Mouse)
   if (co?.showXTitle !== false) {
@@ -2422,7 +2791,8 @@ function renderChart() {
 
     const xTitleG = g.append('g').attr('class', 'axis-title-group x-title-group')
       .attr('transform', `translate(${baseX + ox}, ${baseYOffset + oy})`)
-      .style('cursor', 'move');
+      .style('cursor', 'move')
+      .attr('title', t('dragXTitle'));
 
     const xTitleEl = xTitleG.append('text').attr('class', 'axis-label')
       .attr('x', 0).attr('y', 0)
@@ -2441,6 +2811,12 @@ function renderChart() {
       app.chartOptions.xTitleOffset.y += ev.dy;
       d3.select(this).attr('transform', `translate(${baseX + app.chartOptions.xTitleOffset.x}, ${baseYOffset + app.chartOptions.xTitleOffset.y})`);
     }).on('end', () => saveState()));
+
+    xTitleG.on('dblclick', function(ev) {
+      ev.stopPropagation();
+      app.chartOptions.xTitleOffset = { x: 0, y: 0 };
+      saveAndRender();
+    });
   }
 
   // Y-axis title (Draggable with Mouse)
@@ -2456,7 +2832,8 @@ function renderChart() {
 
   const yTitleG = g.append('g').attr('class', 'axis-title-group y-title-group')
     .attr('transform', `translate(${yox}, ${yoy}) rotate(-90)`)
-    .style('cursor', 'move');
+    .style('cursor', 'move')
+    .attr('title', t('dragYTitle'));
 
   const yTitleEl = yTitleG.append('text').attr('class', 'axis-label')
     .attr('x', baseYX).attr('y', baseYY)
@@ -2475,6 +2852,12 @@ function renderChart() {
     app.chartOptions.yTitleOffset.y += ev.dy;
     d3.select(this).attr('transform', `translate(${app.chartOptions.yTitleOffset.x}, ${app.chartOptions.yTitleOffset.y}) rotate(-90)`);
   }).on('end', () => saveState()));
+
+  yTitleG.on('dblclick', function(ev) {
+    ev.stopPropagation();
+    app.chartOptions.yTitleOffset = { x: 0, y: 0 };
+    saveAndRender();
+  });
 
   // Render groups
   app.groups.forEach((gr, gi) => { if (gr.visible) renderGroupChart(g, gr, gi, xS, yS); });
@@ -2813,8 +3196,11 @@ function renderLegend(svg) {
   const lG = svg.append('g').attr('class', 'chart-legend')
     .attr('transform', `translate(${lx}, ${ly})`);
 
-  // Drag behavior
+  // Drag behavior for moving legend (ignored on resize handle)
   lG.call(d3.drag()
+    .filter(function(ev) {
+      return !ev.target.closest('.legend-resize-handle');
+    })
     .on('drag', function(ev) {
       app.legend.x = (app.legend.x !== undefined ? app.legend.x : lx) + ev.dx;
       app.legend.y = (app.legend.y !== undefined ? app.legend.y : ly) + ev.dy;
@@ -2825,31 +3211,25 @@ function renderLegend(svg) {
 
   const numLSize = parseInt(app.chartOptions?.legendFontSize) || 12;
   const lSize = numLSize + 'px';
-  const itemH = Math.max(22, numLSize + 10);
-  const padX = 14, padY = 8;
-  let maxTextW = 60;
-
-  visibleGroups.forEach(g => {
-    const txt = app.legend.titles?.[g.id] || g.name;
-    maxTextW = Math.max(maxTextW, txt.length * (numLSize * 0.68) + 48);
-  });
-
-  const boxW = maxTextW + padX * 2;
-  const boxH = visibleGroups.length * itemH + padY * 2;
+  const itemH = Math.max(18, numLSize + 6);
+  const padX = 10, padY = 6;
+  const swatchLen = 16;
+  const textStartX = padX + swatchLen + 6;
 
   // Background box
-  lG.append('rect')
+  const bgRect = lG.append('rect')
     .attr('class', 'chart-legend-bg')
-    .attr('width', boxW).attr('height', boxH)
     .attr('fill', 'rgba(255, 255, 255, 0.95)')
     .attr('stroke', '#d0d7de')
     .attr('stroke-width', 1)
-    .attr('rx', 6).attr('ry', 6);
+    .attr('rx', 5).attr('ry', 5);
+
+  const itemsG = lG.append('g').attr('class', 'legend-items-container');
 
   // Items
   visibleGroups.forEach((g, idx) => {
     const itemY = padY + idx * itemH + itemH / 2;
-    const ig = lG.append('g').attr('class', 'legend-item')
+    const ig = itemsG.append('g').attr('class', 'legend-item')
       .attr('title', '雙擊修改圖例名稱 / Double-click to edit')
       .on('dblclick', function(ev) {
         ev.stopPropagation();
@@ -2865,12 +3245,12 @@ function renderLegend(svg) {
     // Swatch line
     ig.append('line')
       .attr('x1', padX).attr('y1', itemY)
-      .attr('x2', padX + 20).attr('y2', itemY)
+      .attr('x2', padX + swatchLen).attr('y2', itemY)
       .attr('stroke', g.color).attr('stroke-width', 3).attr('stroke-linecap', 'round');
 
     // Dot on swatch
     ig.append('circle')
-      .attr('cx', padX + 10).attr('cy', itemY)
+      .attr('cx', padX + swatchLen / 2).attr('cy', itemY)
       .attr('r', 3).attr('fill', g.color).attr('stroke', '#fff').attr('stroke-width', 1);
 
     // Text with Rich Text support (sub/superscripts)
@@ -2878,7 +3258,7 @@ function renderLegend(svg) {
     const lWeight = app.chartOptions?.legendFontWeight || '400';
     const activeFont = getActiveFontFamily();
     const labelEl = ig.append('text')
-      .attr('x', padX + 28).attr('y', itemY + 1)
+      .attr('x', textStartX).attr('y', itemY + 1)
       .attr('font-size', lSize)
       .style('font-size', lSize)
       .attr('font-weight', lWeight)
@@ -2887,6 +3267,78 @@ function renderLegend(svg) {
       .attr('fill', '#333')
       .attr('dominant-baseline', 'middle');
     renderRichText(labelEl, labelTxt);
+  });
+
+  // Calculate tight automatic size based on actual rendered text width
+  let maxTextRight = 0;
+  itemsG.selectAll('.legend-item text').each(function() {
+    try {
+      const bb = this.getBBox();
+      const right = textStartX + bb.width;
+      if (right > maxTextRight) maxTextRight = right;
+    } catch(e) {}
+  });
+
+  if (maxTextRight === 0) {
+    visibleGroups.forEach(g => {
+      const txt = app.legend.titles?.[g.id] || g.name;
+      maxTextRight = Math.max(maxTextRight, textStartX + txt.length * (numLSize * 0.65));
+    });
+  }
+
+  const autoW = Math.max(50, Math.round(maxTextRight + padX));
+  const autoH = Math.max(22, Math.round(padY * 2 + visibleGroups.length * itemH));
+
+  const boxW = (app.legend.customWidth && app.legend.customWidth > 30) ? app.legend.customWidth : autoW;
+  const boxH = (app.legend.customHeight && app.legend.customHeight > 16) ? app.legend.customHeight : autoH;
+
+  bgRect.attr('width', boxW).attr('height', boxH);
+
+  // Resize Handle (bottom-right corner)
+  const handleG = lG.append('g').attr('class', 'legend-resize-handle')
+    .attr('transform', `translate(${boxW}, ${boxH})`)
+    .style('cursor', 'se-resize')
+    .attr('title', t('legendResizeHint'));
+
+  // Grip lines
+  handleG.append('path')
+    .attr('d', 'M -9 -2 L -2 -9 M -6 -2 L -2 -6 M -3 -2 L -2 -3')
+    .attr('stroke', '#8c959f')
+    .attr('stroke-width', 1.2)
+    .attr('stroke-linecap', 'round');
+
+  // Hit area
+  handleG.append('rect')
+    .attr('x', -12).attr('y', -12)
+    .attr('width', 14).attr('height', 14)
+    .attr('fill', 'transparent');
+
+  // Drag logic for resizing
+  let startW = boxW, startH = boxH;
+  handleG.call(d3.drag()
+    .on('start', function(ev) {
+      startW = (app.legend.customWidth && app.legend.customWidth > 30) ? app.legend.customWidth : autoW;
+      startH = (app.legend.customHeight && app.legend.customHeight > 16) ? app.legend.customHeight : autoH;
+    })
+    .on('drag', function(ev) {
+      startW = Math.max(40, startW + ev.dx);
+      startH = Math.max(20, startH + ev.dy);
+      app.legend.customWidth = Math.round(startW);
+      app.legend.customHeight = Math.round(startH);
+      bgRect.attr('width', app.legend.customWidth).attr('height', app.legend.customHeight);
+      handleG.attr('transform', `translate(${app.legend.customWidth}, ${app.legend.customHeight})`);
+    })
+    .on('end', function() {
+      saveState();
+    })
+  );
+
+  // Double-click on handle resets to auto size
+  handleG.on('dblclick', function(ev) {
+    ev.stopPropagation();
+    delete app.legend.customWidth;
+    delete app.legend.customHeight;
+    saveAndRender();
   });
 }
 
@@ -3258,6 +3710,8 @@ function inlineCSS(el) {
     .ann-label-bg { stroke: #d0d7de; stroke-width: 0.8px; rx: 3px; ry: 3px; }
     .legend-item text { fill: #333; font-family: ${ff}; }
     .text-annotation-group text { font-family: ${ff}; }
+    .legend-resize-handle { display: none !important; }
+    .plot-box-handles { display: none !important; }
   `;
   el.insertBefore(s, el.firstChild);
 }
@@ -3575,12 +4029,14 @@ function init() {
   document.getElementById('btn-lang').onclick = toggleLang;
   applyLang();
   renderGroups(); renderTable(); renderAnnotationUI();
-  requestAnimationFrame(()=>renderChart());
+  renderChart();
 }
 
-document.addEventListener('DOMContentLoaded', init);
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
 </script>
 </body>
-</html>
-
 </html>
