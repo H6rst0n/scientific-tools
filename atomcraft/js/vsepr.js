@@ -51,7 +51,7 @@ const VSEPR = {
   /**
    * 根據中心原子、配位數與 pi 鍵數判定理想 VSEPR 混成目標幾何構型
    */
-  getTargetGeometry(centerElem, neighborCount, piBonds = 0) {
+  getTargetGeometry(centerElem, neighborCount, piBonds = 0, isPlanarN = false) {
     const sym = centerElem;
 
     if (neighborCount === 1) {
@@ -525,16 +525,29 @@ const VSEPR = {
   },
 
   /**
-   * 自動加氫 (Add Hydrogens)：根據元素典型價態與幾何補足氫原子
+   * 自動加氫 (Add Hydrogens)：根據元素典型化學價態與鍵級補足氫原子
    */
   addHydrogens(structure, selectedOnly = false) {
     structure.detectBonds();
     const originalAtoms = [...structure.atoms];
     const n = originalAtoms.length;
 
-    // 建立成鍵計數
+    const standardValences = {
+      'H': 1, 'He': 0, 'Li': 1, 'Be': 2, 'B': 3,
+      'C': 4, 'N': 3, 'O': 2, 'F': 1, 'Ne': 0,
+      'Na': 1, 'Mg': 2, 'Al': 3, 'Si': 4, 'P': 3,
+      'S': 2, 'Cl': 1, 'Ar': 0, 'K': 1, 'Ca': 2,
+      'Br': 1, 'I': 1, 'Ge': 4, 'As': 3, 'Se': 2
+    };
+
+    // 建立各原子之已用共價鍵級總和 (Sum of incident bond orders)
+    const currentValences = new Int32Array(n);
     const neighbors = Array.from({ length: n }, () => []);
     for (const b of structure.bonds) {
+      if (b.order === 'hb') continue;
+      const ord = (typeof b.order === 'number') ? b.order : 1;
+      currentValences[b.a] += ord;
+      currentValences[b.b] += ord;
       neighbors[b.a].push(b.b);
       neighbors[b.b].push(b.a);
     }
@@ -546,11 +559,11 @@ const VSEPR = {
       if (selectedOnly && !atom.selected) continue;
       if (atom.element === 'H') continue;
 
-      const info = getElementInfo(atom.element);
-      const targetValence = info.valence || 4;
-      const currentBonds = neighbors[i].length;
-      const hNeeded = targetValence - currentBonds;
+      const sym = atom.element;
+      const targetValence = standardValences[sym] !== undefined ? standardValences[sym] : (getElementInfo(sym).valence || 4);
 
+      // 核心修復：需補氫數量 = 標準價態 - 當前已形成的總鍵級
+      const hNeeded = targetValence - currentValences[i];
       if (hNeeded <= 0) continue;
 
       const bondDist = VSEPR.getIdealBondLength(atom.element, 'H');
@@ -581,12 +594,12 @@ const VSEPR = {
           newDirs.push([Math.sin(half), Math.cos(half), 0]);
           newDirs.push([-Math.sin(half), Math.cos(half), 0]);
         } else if (hNeeded === 3) {
-          // 氨分子三角錐
+          // 氨分子三角錐 (107°)
           newDirs.push([0, 0.96, 0.28]);
           newDirs.push([0.83, -0.48, 0.28]);
           newDirs.push([-0.83, -0.48, 0.28]);
-        } else if (hNeeded === 4) {
-          // 甲烷正四面體
+        } else if (hNeeded >= 4) {
+          // 甲烷正四面體 (109.5°)
           const s = 1.0 / Math.sqrt(3);
           newDirs.push([s, s, s]);
           newDirs.push([-s, -s, s]);
@@ -597,7 +610,6 @@ const VSEPR = {
         // 已有 1 個連鍵
         const v = existingVectors[0];
         const p1 = VSEPR.getPerpendicular(v);
-        // 外積取得 p2
         const p2 = [
           v[1] * p1[2] - v[2] * p1[1],
           v[2] * p1[0] - v[0] * p1[2],
@@ -605,8 +617,24 @@ const VSEPR = {
         ];
 
         if (hNeeded === 1) {
-          // 例如鹵素或直線/角形
-          newDirs.push([-v[0], -v[1], -v[2]]);
+          // 若為醇羥基 O-H 或硫醇 S-H，保持 ~104.5° 彎曲幾何，亞胺 N 保持 ~120°，其餘情況（炔烴、直線）為 180°
+          if (['O', 'S'].includes(atom.element)) {
+            const angle = (104.5 * Math.PI) / 180;
+            newDirs.push([
+              Math.cos(angle) * v[0] + Math.sin(angle) * p1[0],
+              Math.cos(angle) * v[1] + Math.sin(angle) * p1[1],
+              Math.cos(angle) * v[2] + Math.sin(angle) * p1[2]
+            ]);
+          } else if (['N'].includes(atom.element)) {
+            const angle = (120 * Math.PI) / 180;
+            newDirs.push([
+              Math.cos(angle) * v[0] + Math.sin(angle) * p1[0],
+              Math.cos(angle) * v[1] + Math.sin(angle) * p1[1],
+              Math.cos(angle) * v[2] + Math.sin(angle) * p1[2]
+            ]);
+          } else {
+            newDirs.push([-v[0], -v[1], -v[2]]);
+          }
         } else if (hNeeded === 2) {
           // 例如甲醛類或二級胺 (120°)
           const angle = (120 * Math.PI) / 180;
@@ -622,9 +650,9 @@ const VSEPR = {
             cosA * v[1] - sinA * p1[1],
             cosA * v[2] - sinA * p1[2]
           ]);
-        } else if (hNeeded === 3) {
-          // 甲基型 (四面體對稱延伸)
-          const cosTet = -1 / 3; // cos(109.47°)
+        } else if (hNeeded >= 3) {
+          // 甲基型 (四面體對稱延伸 109.47°)
+          const cosTet = -1 / 3;
           const sinTet = Math.sqrt(1 - cosTet * cosTet);
           for (let k = 0; k < 3; k++) {
             const phi = (k * 2 * Math.PI) / 3;
@@ -767,26 +795,38 @@ const VSEPR = {
     const atom = structure.atoms[atomIndex];
     const elemInfo = getElementInfo(atom.element);
 
+    const standardValences = {
+      'H': 1, 'He': 0, 'Li': 1, 'Be': 2, 'B': 3,
+      'C': 4, 'N': 3, 'O': 2, 'F': 1, 'Ne': 0,
+      'Na': 1, 'Mg': 2, 'Al': 3, 'Si': 4, 'P': 3,
+      'S': 2, 'Cl': 1, 'Ar': 0, 'K': 1, 'Ca': 2,
+      'Br': 1, 'I': 1, 'Ge': 4, 'As': 3, 'Se': 2
+    };
+
     // 3. 判定目標價態 / 配位數 (Target Valence / Coordination)
-    let targetValence = elemInfo.valence || 4;
+    let targetValence = standardValences[atom.element] !== undefined ? standardValences[atom.element] : (elemInfo.valence || 4);
     if (hybridMode === 'sp3') targetValence = 4;
     else if (hybridMode === 'sp2') targetValence = 3;
     else if (hybridMode === 'sp') targetValence = 2;
     else if (hybridMode === 'octahedral') targetValence = 6;
     else if (hybridMode === 'sq_planar') targetValence = 4;
 
-    // 計算當前連接的重原子數量 (重原子不清除)
+    // 計算當前連接的重原子成鍵總鍵級 (Sum of bond orders with heavy atoms)
+    let currentValence = 0;
     const currentHeavy = [];
     for (const b of structure.bonds) {
+      if (b.order === 'hb') continue;
       let nbr = -1;
       if (b.a === atomIndex) nbr = b.b;
       else if (b.b === atomIndex) nbr = b.a;
       if (nbr !== -1 && structure.atoms[nbr].element !== 'H') {
         currentHeavy.push(structure.atoms[nbr]);
+        const ord = (typeof b.order === 'number') ? b.order : 1;
+        currentValence += ord;
       }
     }
 
-    const hNeeded = targetValence - currentHeavy.length;
+    const hNeeded = targetValence - currentValence;
     if (hNeeded <= 0) {
       structure.syncFractionalFromCartesian();
       structure.detectBonds();
@@ -839,7 +879,23 @@ const VSEPR = {
       ];
 
       if (hNeeded === 1) {
-        newDirs.push([-v[0], -v[1], -v[2]]);
+        if (['O', 'S'].includes(atom.element)) {
+          const angle = (104.5 * Math.PI) / 180;
+          newDirs.push([
+            Math.cos(angle) * v[0] + Math.sin(angle) * p1[0],
+            Math.cos(angle) * v[1] + Math.sin(angle) * p1[1],
+            Math.cos(angle) * v[2] + Math.sin(angle) * p1[2]
+          ]);
+        } else if (['N'].includes(atom.element)) {
+          const angle = (120 * Math.PI) / 180;
+          newDirs.push([
+            Math.cos(angle) * v[0] + Math.sin(angle) * p1[0],
+            Math.cos(angle) * v[1] + Math.sin(angle) * p1[1],
+            Math.cos(angle) * v[2] + Math.sin(angle) * p1[2]
+          ]);
+        } else {
+          newDirs.push([-v[0], -v[1], -v[2]]);
+        }
       } else if (hNeeded === 2) {
         const angle = (120 * Math.PI) / 180;
         const cosA = Math.cos(angle);

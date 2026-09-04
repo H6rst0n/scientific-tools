@@ -263,13 +263,13 @@ H   0.000000  -0.757000  -0.469000
 
       log('=== 13. Ring Molecule Bond Adjustment Safety Test ===');
       const ringCaff = PRESETS.caffeine.build();
-      const origCaffPos0 = [ringCaff.atoms[0].x, ringCaff.atoms[0].y, ringCaff.atoms[0].z];
+      const origCaffPos6 = [ringCaff.atoms[6].x, ringCaff.atoms[6].y, ringCaff.atoms[6].z];
       // 在咖啡因環狀分子中連續快速調整鍵長
       for (let step = 0; step < 10; step++) {
-        GeometryAdjuster.setBondLength(ringCaff, 0, 1, 1.40 + step * 0.05);
+        GeometryAdjuster.setBondLength(ringCaff, 6, 7, 1.35 + step * 0.05);
       }
-      assert(isFinite(ringCaff.atoms[0].x) && isFinite(ringCaff.atoms[1].x), 'Coordinates remain finite numbers');
-      assertNear(ringCaff.atoms[0].x, origCaffPos0[0], 1e-4, 'Fixed atom idx0 was not drifted or moved');
+      assert(isFinite(ringCaff.atoms[6].x) && isFinite(ringCaff.atoms[7].x), 'Coordinates remain finite numbers');
+      assertNear(ringCaff.atoms[6].x, origCaffPos6[0], 1e-4, 'Fixed atom idx6 was not drifted or moved');
       const caffMax = Math.max(...ringCaff.atoms.map(a => Math.hypot(a.x, a.y, a.z)));
       assert(caffMax < 25.0, `Molecule did not explode into infinity (max radius: ${caffMax.toFixed(2)} Å)`);
 
@@ -627,14 +627,29 @@ END
       const ringTargetAngle = VSEPR.getTargetAngle(0, 1, 4, sRing5.atoms, covNbrs, new Int32Array(5));
       assertNear(ringTargetAngle, 108.0, 0.1, `Ring target angle for 5-ring is 108° (actual: ${ringTargetAngle}°)`);
 
-      // 2. Caffeine clean and planarity retention
+      // 2. Caffeine clean, planarity retention, and perfect valence check
       const sCaffeine = PRESETS.caffeine.build();
+      // 嚴格檢驗咖啡因所有 24 個原子的鍵級與化學價態完全符合標準八隅體！
+      let allValencesCorrect = true;
+      for (let i = 0; i < sCaffeine.atoms.length; i++) {
+        const a = sCaffeine.atoms[i];
+        const inc = sCaffeine.bonds.filter(b => b.a === i || b.b === i);
+        const totV = inc.reduce((acc, b) => acc + (typeof b.order === 'number' ? b.order : 1), 0);
+        const expectedV = a.element === 'C' ? 4 : (a.element === 'N' ? 3 : (a.element === 'O' ? 2 : 1));
+        if (totV !== expectedV) {
+          allValencesCorrect = false;
+          log(`[FAIL] Caffeine atom #${i} (${a.element}) has valence ${totV}, expected ${expectedV}`);
+        }
+      }
+      assert(allValencesCorrect, 'All 24 atoms in Caffeine have exact target valences (C=4, N=3, O=2, H=1, no C with 3 bonds, no N with 2 bonds)');
+
       const initialBondsCount = sCaffeine.bonds.length;
       VSEPR.cleanGeometry(sCaffeine);
       assert(sCaffeine.bonds.length === initialBondsCount, 'Caffeine bonds count preserved by topology lock');
       let maxPurineZ = -Infinity, minPurineZ = Infinity;
-      for (let i = 0; i <= 11; i++) {
-        const z = sCaffeine.atoms[i].z;
+      const purineCoreIndices = [2, 3, 4, 5, 6, 7, 8, 9, 10]; // 嘌呤稠環骨架原子
+      for (const idx of purineCoreIndices) {
+        const z = sCaffeine.atoms[idx].z;
         if (z > maxPurineZ) maxPurineZ = z;
         if (z < minPurineZ) minPurineZ = z;
       }
@@ -684,6 +699,71 @@ END
       ctrl.isBrushMode = true;
       ctrl.onKeyDown({ key: 'Escape', code: 'Escape', target: document.body, preventDefault: () => {}, stopPropagation: () => {} });
       assert(!ctrl.isBrushMode, 'Escape cleanly deactivated brush mode');
+
+      log('=== 30. Advanced Bond Order Perception & Valence-Aware Hydrogen Addition Test ===');
+      // 1. 苯環 Kekule 交替單雙鍵與精準加氫驗證 (Benzene C6 -> C6H6)
+      const sBenzeneBare = new Structure();
+      const rC = 1.397;
+      for (let i = 0; i < 6; i++) {
+        const theta = (i * 60 * Math.PI) / 180;
+        sBenzeneBare.addAtom('C', rC * Math.cos(theta), rC * Math.sin(theta), 0);
+      }
+      sBenzeneBare.detectBonds();
+      const doubleCount = sBenzeneBare.bonds.filter(b => b.order === 2).length;
+      const singleCount = sBenzeneBare.bonds.filter(b => b.order === 1).length;
+      assert(doubleCount === 3 && singleCount === 3, `Benzene ring has 3 double and 3 single bonds (Kekule), got ${doubleCount} double and ${singleCount} single`);
+
+      // 執行加氫：6 個碳應剛好各加 1 顆氫，總共 12 顆原子 (C6H6)
+      VSEPR.addHydrogens(sBenzeneBare);
+      assert(sBenzeneBare.atoms.length === 12, `Benzene auto-hydrogenation resulted in exactly 12 atoms (C6H6), got ${sBenzeneBare.atoms.length}`);
+      const hCount = sBenzeneBare.atoms.filter(a => a.element === 'H').length;
+      assert(hCount === 6, `Exactly 6 Hydrogens added to benzene, got ${hCount}`);
+
+      // 再次執行加氫：已有飽和價態，應不再添加任何氫 (Idempotency)
+      VSEPR.addHydrogens(sBenzeneBare);
+      assert(sBenzeneBare.atoms.length === 12, `Second addHydrogens on C6H6 did not add redundant hydrogens, got ${sBenzeneBare.atoms.length}`);
+
+      // 2. 羰基甲醛 C=O 骨架加氫驗證 (Formaldehyde C=O -> H2C=O)
+      const sFormaldehyde = new Structure();
+      sFormaldehyde.addAtom('C', 0, 0, 0);
+      sFormaldehyde.addAtom('O', 0, 1.21, 0); // d = 1.21 Å, 羰基雙鍵
+      sFormaldehyde.detectBonds();
+      assert(sFormaldehyde.bonds[0].order === 2, `C=O bond correctly perceived as double bond (order: 2), got ${sFormaldehyde.bonds[0].order}`);
+
+      VSEPR.addHydrogens(sFormaldehyde);
+      // 碳應補 2 顆氫形成甲醛 H2C=O，羰基氧絕不可補氫！
+      const formH = sFormaldehyde.atoms.filter(a => a.element === 'H').length;
+      assert(formH === 2, `Formaldehyde added exactly 2 Hydrogens to Carbon, got ${formH}`);
+      const formO_neighbors = sFormaldehyde.bonds.filter(b => b.a === 1 || b.b === 1).length;
+      assert(formO_neighbors === 1, `Carbonyl Oxygen has no attached Hydrogens (still 1 bond to C), got ${formO_neighbors}`);
+
+      // 3. 炔烴 C#C 骨架加氫驗證 (Acetylene C#C -> HC#CH)
+      const sAcet = new Structure();
+      sAcet.addAtom('C', 0, 0, 0);
+      sAcet.addAtom('C', 1.20, 0, 0); // d = 1.20 Å, 碳碳三鍵
+      sAcet.detectBonds();
+      assert(sAcet.bonds[0].order === 3, `C#C bond perceived as triple bond (order: 3)`);
+      VSEPR.addHydrogens(sAcet);
+      assert(sAcet.atoms.length === 4, `Acetylene added exactly 2 Hydrogens (HC#CH), got ${sAcet.atoms.length}`);
+      VSEPR.addHydrogens(sAcet);
+      assert(sAcet.atoms.length === 4, `Second addHydrogens on HC#CH did not add extra hydrogens`);
+
+      // 4. 局部補氫 saturateAtom on C=O 驗證
+      const sKetone = new Structure();
+      sKetone.addAtom('C', 0, 0, 0);
+      sKetone.addAtom('O', 0, 1.21, 0);
+      sKetone.detectBonds();
+      VSEPR.saturateAtom(sKetone, 0); // 對碳進行局部補氫
+      assert(sKetone.atoms.length === 4, `saturateAtom on C=O carbon added exactly 2 Hydrogens (H2C=O), got ${sKetone.atoms.length}`);
+
+      // 5. 咖啡因自動加氫驗證 (Caffeine Hydrogenation Idempotency & Re-hydrogenation)
+      const caffTest = PRESETS.caffeine.build();
+      VSEPR.addHydrogens(caffTest);
+      assert(caffTest.atoms.length === 24, `Fully saturated Caffeine has 0 extra hydrogens added, got ${caffTest.atoms.length}`);
+      VSEPR.removeHydrogens(caffTest);
+      assert(caffTest.atoms.length === 14, `Caffeine bare skeleton has 14 heavy atoms after removeHydrogens, got ${caffTest.atoms.length}`);
+      VSEPR.addHydrogens(caffTest);
+      assert(caffTest.atoms.length === 24, `Re-hydrogenation on bare Caffeine skeleton restored exactly 10 hydrogens (24 total atoms), got ${caffTest.atoms.length}`);
 
       log(`\n========================================`);
       log(`TEST SUMMARY: ${passed} PASSED, ${failed} FAILED`);

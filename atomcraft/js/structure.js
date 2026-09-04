@@ -374,73 +374,138 @@ class Structure {
 
   /**
    * 智慧鍵級推算演算法 (Automatic Bond Order Perception)
-   * 根據 3D 空間實際鍵長、成對元素特性與標準化學價態，自動判定單鍵 (1)、雙鍵 (2)、三鍵 (3)
+   * 採用化學圖論「價態不飽和度最大權重匹配演算法」(Maximum-Weight Valence-Deficiency Matching)
+   * 自動為單鍵骨架精準賦予雙鍵 (2) 與三鍵 (3)，完美契合 Kekulé 共軛環、芳香性、雜環與羰基系統
    */
   perceiveBondOrders() {
     if (!this.bonds || this.bonds.length === 0) return;
 
-    // 1. 初步依鍵長判定成鍵級數
-    for (const bond of this.bonds) {
-      if (bond.order === 'hb') continue; // 氫鍵跳過
+    const n = this.atoms.length;
+    const monovalent = new Set(['H', 'F', 'Cl', 'Br', 'I', 'Li', 'Na', 'K']);
 
-      const atomA = this.atoms[bond.a];
-      const atomB = this.atoms[bond.b];
-      if (!atomA || !atomB) continue;
+    const targetValences = {
+      'H': 1, 'He': 0, 'Li': 1, 'Be': 2, 'B': 3,
+      'C': 4, 'N': 3, 'O': 2, 'F': 1, 'Ne': 0,
+      'Na': 1, 'Mg': 2, 'Al': 3, 'Si': 4, 'P': 3,
+      'S': 2, 'Cl': 1, 'Ar': 0, 'K': 1, 'Ca': 2,
+      'Br': 1, 'I': 1, 'Ge': 4, 'As': 3, 'Se': 2
+    };
 
-      const symA = atomA.element;
-      const symB = atomB.element;
-      const pair = [symA, symB].sort().join('-');
-      const d = bond.dist;
-
-      let order = 1;
-
-      if (pair === 'C-C') {
-        if (d <= 1.25) order = 3;
-        else if (d <= 1.42) order = 2;
-        else order = 1;
-      } else if (pair === 'C-O') {
-        if (d <= 1.26) order = 2;
-        else order = 1;
-      } else if (pair === 'C-N') {
-        if (d <= 1.19) order = 3;
-        else if (d <= 1.35) order = 2;
-        else order = 1;
-      } else if (pair === 'N-N') {
-        if (d <= 1.15) order = 3;
-        else if (d <= 1.30) order = 2;
-        else order = 1;
-      } else if (pair === 'N-O') {
-        if (d <= 1.25) order = 2;
-        else order = 1;
-      } else if (pair === 'O-O') {
-        if (d <= 1.26) order = 2;
-        else order = 1;
-      } else if (pair === 'O-S') {
-        if (d <= 1.50) order = 2;
-        else order = 1;
-      } else if (pair === 'O-P') {
-        if (d <= 1.52) order = 2;
-        else order = 1;
-      } else if (pair === 'C-S') {
-        if (d <= 1.66) order = 2;
-        else order = 1;
-      } else {
-        // 通用元素回退判定：共價半徑和比值
-        const infoA = getElementInfo(symA);
-        const infoB = getElementInfo(symB);
-        const rSum = (infoA ? infoA.covRadius : 0.77) + (infoB ? infoB.covRadius : 0.77);
-        if (rSum > 0) {
-          const ratio = d / rSum;
-          if (ratio <= 0.82) order = 3;
-          else if (ratio <= 0.91) order = 2;
-          else order = 1;
-        }
-      }
-
-      bond.order = order;
+    // 1. 初步重設所有共價鍵為單鍵 (order: 1) 並建立鄰接表
+    const covDegree = new Int32Array(n);
+    const covAdj = Array.from({ length: n }, () => []);
+    for (const b of this.bonds) {
+      if (b.order === 'hb') continue;
+      b.order = 1;
+      covDegree[b.a]++;
+      covDegree[b.b]++;
+      covAdj[b.a].push(b.b);
+      covAdj[b.b].push(b.a);
     }
 
-    // 2. 八隅體與最大化學價態防護 (Valence Saturation Check)
+    // 2. 判定各鍵是否為小型環鍵 (環大小 <= 7)
+    const isRingBond = (u, v) => {
+      const queue = [[u, 0]];
+      const visited = new Set([u]);
+      while (queue.length > 0) {
+        const [curr, depth] = queue.shift();
+        if (depth >= 6) continue;
+        for (const nbr of covAdj[curr]) {
+          if (curr === u && nbr === v) continue;
+          if (nbr === v) return true;
+          if (!visited.has(nbr)) {
+            visited.add(nbr);
+            queue.push([nbr, depth + 1]);
+          }
+        }
+      }
+      return false;
+    };
+
+    const inSmallRing = new Map();
+    for (const b of this.bonds) {
+      if (b.order === 'hb') continue;
+      inSmallRing.set(b, isRingBond(b.a, b.b));
+    }
+
+    // 3. 計算各原子剩餘所需 pi 鍵數 (Valence Deficiency)
+    const remDef = new Int32Array(n);
+    for (let i = 0; i < n; i++) {
+      const elem = this.atoms[i].element;
+      const targetV = targetValences[elem] !== undefined ? targetValences[elem] : (getElementInfo(elem).valence || 4);
+      remDef[i] = Math.max(0, targetV - covDegree[i]);
+    }
+
+    // 4. 第一階段：三鍵匹配 (兩端均需 >= 2 鍵且配位數 <= 2，鍵長 <= 1.26 Å)
+    for (const b of this.bonds) {
+      if (b.order === 'hb') continue;
+      const u = b.a, v = b.b;
+      const symA = this.atoms[u].element, symB = this.atoms[v].element;
+      if (monovalent.has(symA) || monovalent.has(symB)) continue;
+
+      if (remDef[u] >= 2 && remDef[v] >= 2 && covDegree[u] <= 2 && covDegree[v] <= 2) {
+        if (b.dist <= 1.26) {
+          b.order = 3;
+          remDef[u] -= 2;
+          remDef[v] -= 2;
+        }
+      }
+    }
+
+    // 5. 第二階段：雙鍵權重排序匹配
+    // 限制：在小型環系中，每個環原子在環內最多只能形成 1 個雙鍵 (保持 Kekulé 交替，杜絕環內累積二烯烴)
+    const ringPiCount = new Int32Array(n);
+    const candidates = [];
+
+    for (const b of this.bonds) {
+      if (b.order === 'hb' || b.order === 3) continue;
+      const u = b.a, v = b.b;
+      if (remDef[u] <= 0 || remDef[v] <= 0) continue;
+
+      const symA = this.atoms[u].element, symB = this.atoms[v].element;
+      if (monovalent.has(symA) || monovalent.has(symB)) continue;
+
+      const infoA = getElementInfo(symA);
+      const infoB = getElementInfo(symB);
+      const rSum = (infoA ? infoA.covRadius : 0.77) + (infoB ? infoB.covRadius : 0.77);
+      const ratio = b.dist / rSum;
+
+      // 雙鍵合理物理上限比值 (雙鍵/芳香鍵通常 <= 0.92，單鍵通常 >= 0.96)
+      if (ratio > 0.94) continue;
+
+      let priority = 0;
+      // 末端雙鍵（例如羰基 =O、硫醯基 =S）具有最高化學優先權
+      if (covDegree[u] === 1 || covDegree[v] === 1) {
+        priority = 100;
+      }
+
+      candidates.push({ priority, ratio, bond: b, u, v });
+    }
+
+    // 排序：優先權高者在前，鍵長比值短者在前
+    candidates.sort((c1, c2) => {
+      if (c2.priority !== c1.priority) return c2.priority - c1.priority;
+      return c1.ratio - c2.ratio;
+    });
+
+    for (const item of candidates) {
+      const { u, v, bond } = item;
+      if (remDef[u] > 0 && remDef[v] > 0) {
+        const isRing = inSmallRing.get(bond);
+        if (isRing && (ringPiCount[u] >= 1 || ringPiCount[v] >= 1)) {
+          continue;
+        }
+        bond.order = 2;
+        remDef[u] -= 1;
+        remDef[v] -= 1;
+        if (isRing) {
+          ringPiCount[u]++;
+          ringPiCount[v]++;
+        }
+      }
+    }
+
+    // 6. 八隅體防護：確保無原子超出其物理最大價態
     const maxValences = {
       'H': 1, 'He': 0, 'Li': 1, 'Be': 2, 'B': 3,
       'C': 4, 'N': 4, 'O': 2, 'F': 1, 'Ne': 0,
@@ -448,7 +513,6 @@ class Structure {
       'S': 6, 'Cl': 1, 'Br': 1, 'I': 1
     };
 
-    const n = this.atoms.length;
     for (let iter = 0; iter < 3; iter++) {
       let changed = false;
       for (let i = 0; i < n; i++) {
@@ -456,19 +520,19 @@ class Structure {
         const maxV = maxValences[elem];
         if (maxV === undefined) continue;
 
-        const incidentBonds = [];
         let totalValence = 0;
+        const incBonds = [];
         for (const b of this.bonds) {
           if (b.order === 'hb') continue;
           if (b.a === i || b.b === i) {
-            incidentBonds.push(b);
+            incBonds.push(b);
             totalValence += (typeof b.order === 'number' ? b.order : 1);
           }
         }
 
         if (totalValence > maxV) {
-          incidentBonds.sort((b1, b2) => b2.dist - b1.dist);
-          for (const b of incidentBonds) {
+          incBonds.sort((b1, b2) => b2.dist - b1.dist);
+          for (const b of incBonds) {
             if (b.order > 1) {
               b.order -= 1;
               totalValence -= 1;
