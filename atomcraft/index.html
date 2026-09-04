@@ -130,15 +130,33 @@
       <button class="btn-exit-brush" id="btn-exit-brush" title="退出替換/新增筆刷模式 (Esc)">✕ 結束筆刷 (Esc)</button>
     </div>
 
-    <!-- 右側週期性系統與晶胞工具面板 (可平滑摺疊收合至右側) -->
-    <div class="floating-panel" id="crystal-panel">
-      <!-- 展開/收合標籤切換按鈕 -->
-      <button class="crystal-collapse-btn" id="btn-toggle-crystal-panel" title="收合/展開週期性工具">▶</button>
-      <div class="panel-header">
-        <span>🧊 週期性晶胞工具</span>
-        <label style="font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 3px;">
-          <input type="checkbox" id="check-cell-box" checked onchange="window.app.renderer.showCellBox=this.checked; window.app.renderer.update(window.app.structure);"> 晶格框
-        </label>
+    <!-- 右側週期性系統與晶胞工具面板 (預設收合至右側邊緣，點擊左側突出標籤可展開) -->
+    <div class="crystal-panel collapsed" id="crystal-panel">
+      <!-- 展開/收合標籤切換按鈕 (抽屜式突出拉籤) -->
+      <button class="crystal-collapse-btn" id="btn-toggle-crystal-panel" title="展開週期性晶胞工具">
+        <span>◀</span><span class="collapse-label">晶胞</span>
+      </button>
+
+      <!-- 獨立內部滾動容器 (確保外層突出標籤不被裁切，且底部保留充裕留白) -->
+      <div class="crystal-panel-content" id="crystal-panel-content">
+        <div class="panel-header">
+          <span>🧊 週期性晶胞工具</span>
+          <label style="font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 3px;">
+            <input type="checkbox" id="check-cell-box" checked onchange="window.app.renderer.showCellBox=this.checked; window.app.renderer.update(window.app.structure);"> 晶格框
+          </label>
+        </div>
+
+      <!-- 晶胞幾何參數嚴格守恆展示區 (Lattice Fidelity HUD) -->
+      <div id="crystal-lattice-info" style="background: rgba(0, 0, 0, 0.25); border: 1px solid var(--border); border-radius: 6px; padding: 8px; margin-bottom: 10px; font-size: 11px;">
+        <div style="font-weight: 600; color: var(--primary); margin-bottom: 4px; display: flex; justify-content: space-between;">
+          <span>晶格幾何參數</span>
+          <span id="crystal-cell-status" style="font-size: 10px; color: var(--text-dim);">非晶胞</span>
+        </div>
+        <div id="crystal-cell-details" style="line-height: 1.5; color: var(--text-muted); font-family: monospace;">
+          非週期性分子系統<br>
+          （孤立分子無晶胞幾何參數）<br>
+          -
+        </div>
       </div>
 
       <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 8px;">視覺擴胞 (GPU 零負擔預覽)：</div>
@@ -172,18 +190,47 @@
 
       <div class="tool-separator" style="width: 100%; height: 1px; margin: 10px 0;"></div>
 
-      <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 6px;">表面模型與真空層：</div>
+      <!-- 非對稱真空層控制區 (Asymmetric Vacuum Controls) -->
+      <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 6px;">非對稱真空層厚度調整：</div>
+      <div class="panel-row" style="margin-bottom: 6px;">
+        <span>真空方向:</span>
+        <select id="select-vacuum-axis" class="form-select" style="padding: 2px 6px; font-size: 11px; height: 24px; flex: 1;">
+          <option value="z" selected>Z 軸 (表面標準)</option>
+          <option value="y">Y 軸</option>
+          <option value="x">X 軸</option>
+        </select>
+      </div>
+
+      <!-- 當前真空厚度即時診斷資訊 -->
+      <div id="vacuum-analysis-info" style="background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border); border-radius: 4px; padding: 6px; margin-bottom: 6px; font-size: 10px; color: var(--text-muted); line-height: 1.4;">
+        材料厚度: <span id="vac-slab-thick">-</span> Å<br>
+        當前下方: <span id="vac-current-bottom">-</span> Å | 上方: <span id="vac-current-top">-</span> Å<br>
+        總真空: <span id="vac-current-total">-</span> Å (晶格: <span id="vac-current-cell-len">-</span> Å)
+      </div>
+
       <div class="panel-row">
-        <span>Z 真空厚度:</span>
-        <input type="number" id="input-vacuum-thick" class="input-num" value="15" min="0" step="1">
+        <span>上方真空:</span>
+        <input type="number" id="input-vacuum-top" class="input-num" value="15.0" min="0" step="0.5">
         <span>Å</span>
       </div>
-      <button class="btn-block" onclick="window.app.pushHistory(); Crystal.adjustVacuum(window.app.structure, document.getElementById('input-vacuum-thick').value); window.app.renderer.update(window.app.structure); window.app.updateUI(); window.app.showToast('已調整真空層');">
-        ☁️ 設定真空層 (Vacuum)
+      <div class="panel-row">
+        <span>下方真空:</span>
+        <input type="number" id="input-vacuum-bottom" class="input-num" value="0.0" min="0" step="0.5">
+        <span>Å</span>
+      </div>
+
+      <div style="display: flex; gap: 4px; margin-top: 4px; margin-bottom: 6px;">
+        <button class="btn-block" id="btn-vac-center" style="margin: 0; font-size: 11px; padding: 4px 2px;" title="將上方與下方真空厚度設為均等">⚖️ 居中對稱</button>
+        <button class="btn-block" id="btn-vac-bottom-align" style="margin: 0; font-size: 11px; padding: 4px 2px;" title="將材料貼齊底端 (下方真空設為 0)">⬇️ 底端貼齊</button>
+      </div>
+
+      <button class="btn-block" id="btn-apply-vacuum">
+        ☁️ 套用真空層 (Apply Vacuum)
       </button>
-      <button class="btn-block" onclick="document.getElementById('modal-cleaver').classList.add('show')" style="margin-top: 6px;">
-        🔪 密勒指數表面切割 (Cleaver)
+      <button class="btn-block" id="btn-open-cleaver" style="margin-top: 6px;">
+        🔪 密勒指數表面切割 (MS Cleaver)
       </button>
+      </div>
     </div>
 
     <!-- 視角快速對齊控制 (View Gizmo Controls) -->
@@ -331,48 +378,99 @@
     </div>
   </div>
 
-  <!-- ================= 7. 表面切割彈窗 (Surface Cleaver Modal) ================= -->
+  <!-- ================= 7. 表面切割彈窗 (Materials Studio Surface Cleaver Modal) ================= -->
   <div class="modal-overlay" id="modal-cleaver">
-    <div class="modal-card" style="width: 480px;">
+    <div class="modal-card" style="width: 520px;">
       <div class="modal-header">
-        <h3>🔪 密勒指數表面切割 (Miller Surface Cleaver)</h3>
+        <h3>🔪 密勒指數表面切割 (Materials Studio Surface Cleaver)</h3>
         <button class="modal-close" onclick="document.getElementById('modal-cleaver').classList.remove('show')">&times;</button>
       </div>
-      <div class="modal-body">
+      <div class="modal-body" style="gap: 14px;">
+        <!-- 1. 密勒指數 (h, k, l) 與快捷預設按鈕 -->
         <div class="form-group">
           <label>密勒指數 (Miller Indices h, k, l)</label>
           <div style="display: flex; gap: 8px;">
-            <input type="number" id="cleave-h" class="form-input" value="0" style="text-align: center;">
-            <input type="number" id="cleave-k" class="form-input" value="0" style="text-align: center;">
-            <input type="number" id="cleave-l" class="form-input" value="1" style="text-align: center;">
+            <input type="number" id="cleave-h" class="form-input" value="0" style="text-align: center; font-weight: 700;">
+            <input type="number" id="cleave-k" class="form-input" value="0" style="text-align: center; font-weight: 700;">
+            <input type="number" id="cleave-l" class="form-input" value="1" style="text-align: center; font-weight: 700;">
+          </div>
+          <div style="display: flex; gap: 6px; margin-top: 6px;">
+            <button type="button" class="btn-preset-hkl" data-hkl="0,0,1" style="flex: 1; padding: 4px; font-size: 11px; background: var(--bg-card); border: 1px solid var(--border); color: #fff; border-radius: 4px; cursor: pointer;">(0 0 1)</button>
+            <button type="button" class="btn-preset-hkl" data-hkl="1,0,0" style="flex: 1; padding: 4px; font-size: 11px; background: var(--bg-card); border: 1px solid var(--border); color: #fff; border-radius: 4px; cursor: pointer;">(1 0 0)</button>
+            <button type="button" class="btn-preset-hkl" data-hkl="1,1,0" style="flex: 1; padding: 4px; font-size: 11px; background: var(--bg-card); border: 1px solid var(--border); color: #fff; border-radius: 4px; cursor: pointer;">(1 1 0)</button>
+            <button type="button" class="btn-preset-hkl" data-hkl="1,1,1" style="flex: 1; padding: 4px; font-size: 11px; background: var(--bg-card); border: 1px solid var(--border); color: #fff; border-radius: 4px; cursor: pointer;">(1 1 1)</button>
           </div>
         </div>
-        <div class="form-group">
-          <label>Slab 切片重複層數 (Layers / Multiplier)</label>
-          <input type="number" id="cleave-layers" class="form-input" value="3" min="1" max="10">
+
+        <!-- 2. 幾何解析診斷視窗 (倒易空間晶面間距 d_hkl 與面內基底向量 U, V) -->
+        <div id="cleave-calc-box" style="background: rgba(0, 0, 0, 0.35); border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-size: 11px; line-height: 1.6; font-family: monospace;">
+          <div style="color: var(--text-dim); margin-bottom: 2px;">MS 晶體學解析幾何參數：</div>
+          <div>晶面間距 d_hkl: <span id="cleave-val-dhkl" style="color: var(--primary); font-weight: 700;">-</span></div>
+          <div>面內基向量 u: <span id="cleave-val-u" style="color: #38bdf8;">-</span></div>
+          <div>面內基向量 v: <span id="cleave-val-v" style="color: #38bdf8;">-</span></div>
         </div>
+
+        <!-- 3. 厚度設定 (按重複層數 or 按目標厚度 Å) -->
         <div class="form-group">
-          <label>真空層厚度 (Vacuum Thickness in Å)</label>
-          <input type="number" id="cleave-vacuum" class="form-input" value="15.0" min="0" step="1">
+          <label>Slab 厚度規格 (Thickness Specification)</label>
+          <div style="display: flex; gap: 14px; font-size: 12px; margin-bottom: 6px;">
+            <label style="cursor: pointer; display: flex; align-items: center; gap: 4px;">
+              <input type="radio" name="cleave-thick-mode" value="layers" checked>
+              重複層數 (Layers)
+            </label>
+            <label style="cursor: pointer; display: flex; align-items: center; gap: 4px;">
+              <input type="radio" name="cleave-thick-mode" value="thickness">
+              目標厚度 (Target Thickness Å)
+            </label>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <input type="number" id="cleave-layers" class="form-input" value="3" min="1" max="50" style="flex: 1;">
+            <input type="number" id="cleave-target-thickness" class="form-input" value="10.0" min="0.1" step="0.5" style="flex: 1; display: none;">
+            <span id="cleave-thickness-hint" style="font-size: 11px; color: var(--text-dim); min-width: 120px;">≈ 0.00 Å</span>
+          </div>
+        </div>
+
+        <!-- 4. 表面終端截面平移 (Fractional Shift / Termination) -->
+        <div class="form-group">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <label>表面終端平移 (Fractional Shift / Termination)</label>
+            <span id="cleave-shift-val" style="font-size: 12px; color: var(--primary); font-weight: 700; font-family: monospace;">0.00</span>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <input type="range" id="cleave-shift-slider" min="0" max="1" step="0.02" value="0" style="flex: 1;">
+            <input type="number" id="cleave-shift-input" class="form-input" min="0" max="1" step="0.01" value="0.00" style="width: 70px; text-align: center;">
+          </div>
+          <div style="font-size: 10px; color: var(--text-dim);">沿表面法向微調截面起點 (0.00 ~ 1.00 × d_hkl)，切換頂部/底部化學終端暴露原子層。</div>
+        </div>
+
+        <!-- 5. 獨立非對稱頂底真空層 (Top / Bottom Vacuum) -->
+        <div class="form-group">
+          <label>Slab 真空層厚度 (Vacuum Thickness)</label>
+          <div style="display: flex; gap: 8px;">
+            <div style="flex: 1;">
+              <div style="font-size: 10px; color: var(--text-dim); margin-bottom: 2px;">材料上方真空 (Top Vacuum)</div>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <input type="number" id="cleave-vac-top" class="form-input" value="15.0" min="0" step="0.5" style="width: 100%;">
+                <span style="font-size: 11px;">Å</span>
+              </div>
+            </div>
+            <div style="flex: 1;">
+              <div style="font-size: 10px; color: var(--text-dim); margin-bottom: 2px;">材料下方真空 (Bottom Vacuum)</div>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <input type="number" id="cleave-vac-bottom" class="form-input" value="0.0" min="0" step="0.5" style="width: 100%;">
+                <span style="font-size: 11px;">Å</span>
+              </div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 6px; margin-top: 6px;">
+            <button type="button" id="btn-cleave-vac-center" style="flex: 1; padding: 4px 6px; font-size: 11px; background: var(--bg-card); border: 1px solid var(--border); color: #fff; border-radius: 4px; cursor: pointer;">⚖️ 置中對稱 (均分 15 Å)</button>
+            <button type="button" id="btn-cleave-vac-bottom" style="flex: 1; padding: 4px 6px; font-size: 11px; background: var(--bg-card); border: 1px solid var(--border); color: #fff; border-radius: 4px; cursor: pointer;">⬇️ 底端貼齊 (上方 15 Å, 下方 0 Å)</button>
+          </div>
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn-header" onclick="document.getElementById('modal-cleaver').classList.remove('show')">取消</button>
-        <button class="btn-header primary" onclick="
-          window.app.pushHistory();
-          const h = parseInt(document.getElementById('cleave-h').value, 10);
-          const k = parseInt(document.getElementById('cleave-k').value, 10);
-          const l = parseInt(document.getElementById('cleave-l').value, 10);
-          const layers = parseInt(document.getElementById('cleave-layers').value, 10);
-          const vac = parseFloat(document.getElementById('cleave-vacuum').value);
-          if (Crystal.cleaveSurface(window.app.structure, h, k, l, layers, vac)) {
-            window.app.renderer.resetCamera(window.app.structure);
-            window.app.renderer.update(window.app.structure);
-            window.app.updateUI();
-            window.app.showToast(`已生成 (${h} ${k} ${l}) 表面 Slab 模型`);
-          }
-          document.getElementById('modal-cleaver').classList.remove('show');
-        ">🔪 生成表面 Slab</button>
+        <button class="btn-header primary" id="btn-execute-cleave">🔪 生成表面 Slab</button>
       </div>
     </div>
   </div>

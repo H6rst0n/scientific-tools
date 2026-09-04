@@ -91,8 +91,9 @@ class MoleculeRenderer {
       this.container.appendChild(this.renderer.domElement);
     }
 
-    // 4. 軌道控制器
+    // 4. 軌道控制器 (已全面解鎖極限位，支援 GaussView/MS 等級無死角 3D 自由旋轉)
     this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.unconstrainedRotation = true;
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
     this.controls.rotateSpeed = 0.8;
@@ -591,6 +592,7 @@ class MoleculeRenderer {
     this.controls.target.set(center[0], center[1], center[2]);
     const camDist = maxDist * 2.8;
     this.camera.position.set(center[0], center[1], center[2] + camDist);
+    this.camera.up.set(0, 1, 0);
     this.camera.lookAt(center[0], center[1], center[2]);
 
     if (this.isOrthographic) {
@@ -615,9 +617,16 @@ class MoleculeRenderer {
     const dist = this.camera.position.distanceTo(new THREE.Vector3(...center)) || 30;
 
     this.controls.target.set(...center);
-    if (axis === 'x') this.camera.position.set(center[0] + dist, center[1], center[2]);
-    else if (axis === 'y') this.camera.position.set(center[0], center[1] + dist, center[2]);
-    else if (axis === 'z') this.camera.position.set(center[0], center[1], center[2] + dist);
+    if (axis === 'x') {
+      this.camera.position.set(center[0] + dist, center[1], center[2]);
+      this.camera.up.set(0, 1, 0);
+    } else if (axis === 'y') {
+      this.camera.position.set(center[0], center[1] + dist, center[2]);
+      this.camera.up.set(0, 0, -1);
+    } else if (axis === 'z') {
+      this.camera.position.set(center[0], center[1], center[2] + dist);
+      this.camera.up.set(0, 1, 0);
+    }
 
     this.camera.lookAt(...center);
     this.controls.update();

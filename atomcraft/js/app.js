@@ -135,8 +135,15 @@ class App {
     // 6. 綁定外觀與色彩自訂面板
     this.bindAppearanceModal();
 
-    // 7. 載入初始範例
-    this.loadPreset('caffeine');
+    // 7. 預設啟動為空白畫布 (依使用者需求：初始無預載分子，提供乾淨操作畫布)
+    this.structure = new Structure();
+    this.renderer.update(this.structure);
+    this.updateUI();
+
+    // 8. 啟動時提示建議使用全螢幕 (F11)，5 秒後自動消失
+    setTimeout(() => {
+      this.showToast('💡 建議使用全螢幕 (F11) 以獲得最佳操作體驗', 5000);
+    }, 600);
 
     console.log('AtomCraft 3D (GaussView Full Edition) initialized.');
   }
@@ -541,8 +548,10 @@ class App {
       btnToggleCrystal.addEventListener('click', () => {
         crystalPanel.classList.toggle('collapsed');
         const isCollapsed = crystalPanel.classList.contains('collapsed');
-        btnToggleCrystal.textContent = isCollapsed ? '◀' : '▶';
-        btnToggleCrystal.title = isCollapsed ? '展開週期性工具' : '收合週期性工具';
+        btnToggleCrystal.innerHTML = isCollapsed
+          ? '<span>◀</span><span class="collapse-label">晶胞</span>'
+          : '<span>▶</span><span class="collapse-label">收合</span>';
+        btnToggleCrystal.title = isCollapsed ? '展開週期性晶胞工具' : '收合週期性晶胞工具';
       });
     }
 
@@ -585,6 +594,9 @@ class App {
         }
       });
     }
+
+    // 7b. 綁定週期性晶格守恆資訊、非對稱真空層與 MS 表面切割
+    this.bindCrystalAndCleaver();
 
     // 8. 檔案選取上傳 input
     const fileInput = document.getElementById('file-input');
@@ -1107,11 +1119,8 @@ class App {
       }
     }
 
-    // 4. 更新週期性面板透明度
-    const crystalPanel = document.getElementById('crystal-panel');
-    if (crystalPanel) {
-      crystalPanel.style.opacity = this.structure.cell ? '1' : '0.45';
-    }
+    // 4. 更新週期性面板晶格參數與真空層狀態
+    this.updateCrystalPanelInfo();
 
     // 5. 若外觀懸浮面板開啟中，即時同步更新選取與元素資訊
     if (this.updateAppearanceDock) {
@@ -1367,6 +1376,310 @@ class App {
   }
 
   /**
+   * 即時更新週期性晶胞工具面板資訊 (包含嚴格守恆晶格幾何與非對稱真空層即時診斷)
+   */
+  updateCrystalPanelInfo() {
+    const detailsEl = document.getElementById('crystal-cell-details');
+    const statusEl = document.getElementById('crystal-cell-status');
+    const crystalPanel = document.getElementById('crystal-panel');
+    const vacSlabThick = document.getElementById('vac-slab-thick');
+    const vacBot = document.getElementById('vac-current-bottom');
+    const vacTop = document.getElementById('vac-current-top');
+    const vacTotal = document.getElementById('vac-current-total');
+    const vacCellLen = document.getElementById('vac-current-cell-len');
+
+    if (!detailsEl) return;
+
+    if (this.structure && this.structure.cell) {
+      if (crystalPanel) crystalPanel.style.opacity = '1';
+      const p = this.structure.getCellParameters();
+      detailsEl.innerHTML = `a=${p.a.toFixed(3)} b=${p.b.toFixed(3)} c=${p.c.toFixed(3)} Å<br>` +
+                            `α=${p.alpha.toFixed(1)}° β=${p.beta.toFixed(1)}° γ=${p.gamma.toFixed(1)}°<br>` +
+                            `V=${p.volume.toFixed(2)} Å³`;
+      if (statusEl) statusEl.textContent = '三維週期性';
+
+      const axisSelect = document.getElementById('select-vacuum-axis');
+      const axis = axisSelect ? axisSelect.value : 'z';
+      const vacAnalysis = Crystal.analyzeVacuum(this.structure, axis);
+      if (vacAnalysis) {
+        if (vacSlabThick) vacSlabThick.textContent = vacAnalysis.slabThickness.toFixed(2);
+        if (vacBot) vacBot.textContent = vacAnalysis.bottomVacuum.toFixed(2);
+        if (vacTop) vacTop.textContent = vacAnalysis.topVacuum.toFixed(2);
+        if (vacTotal) vacTotal.textContent = vacAnalysis.totalVacuum.toFixed(2);
+        if (vacCellLen) vacCellLen.textContent = vacAnalysis.cellLength.toFixed(2);
+      }
+    } else {
+      if (crystalPanel) crystalPanel.style.opacity = '0.45';
+      detailsEl.innerHTML = `非週期性分子系統<br>（孤立分子無晶胞幾何參數）<br>-`;
+      if (statusEl) statusEl.textContent = '非晶胞';
+      if (vacSlabThick) vacSlabThick.textContent = '-';
+      if (vacBot) vacBot.textContent = '-';
+      if (vacTop) vacTop.textContent = '-';
+      if (vacTotal) vacTotal.textContent = '-';
+      if (vacCellLen) vacCellLen.textContent = '-';
+    }
+  }
+
+  /**
+   * 綁定週期性晶胞面板真空層與表面切割操作
+   */
+  bindCrystalAndCleaver() {
+    // 1. 真空層軸向切換時即時更新分析數據
+    const selectVacAxis = document.getElementById('select-vacuum-axis');
+    if (selectVacAxis) {
+      selectVacAxis.addEventListener('change', () => {
+        this.updateCrystalPanelInfo();
+      });
+    }
+
+    // 2. 真空層「居中對稱」按鈕
+    const btnVacCenter = document.getElementById('btn-vac-center');
+    if (btnVacCenter) {
+      btnVacCenter.addEventListener('click', () => {
+        const topInput = document.getElementById('input-vacuum-top');
+        const botInput = document.getElementById('input-vacuum-bottom');
+        if (topInput && botInput) {
+          const val = parseFloat(topInput.value) || 15.0;
+          botInput.value = val;
+        }
+      });
+    }
+
+    // 3. 真空層「底端貼齊」按鈕
+    const btnVacBottomAlign = document.getElementById('btn-vac-bottom-align');
+    if (btnVacBottomAlign) {
+      btnVacBottomAlign.addEventListener('click', () => {
+        const botInput = document.getElementById('input-vacuum-bottom');
+        if (botInput) {
+          botInput.value = 0.0;
+        }
+      });
+    }
+
+    // 4. 「套用真空層」按鈕
+    const btnApplyVacuum = document.getElementById('btn-apply-vacuum');
+    if (btnApplyVacuum) {
+      btnApplyVacuum.addEventListener('click', () => {
+        if (!this.structure || !this.structure.cell) {
+          this.showToast('當前系統無晶胞，無法調整真空層');
+          return;
+        }
+        const axis = document.getElementById('select-vacuum-axis')?.value || 'z';
+        const topVacuum = parseFloat(document.getElementById('input-vacuum-top')?.value) || 0.0;
+        const bottomVacuum = parseFloat(document.getElementById('input-vacuum-bottom')?.value) || 0.0;
+
+        this.pushHistory();
+        if (Crystal.adjustVacuum(this.structure, { axis, topVacuum, bottomVacuum })) {
+          this.renderer.update(this.structure);
+          this.updateUI();
+          this.showToast(`已調整 ${axis.toUpperCase()} 軸真空層 (上: ${topVacuum} Å, 下: ${bottomVacuum} Å)`);
+        }
+      });
+    }
+
+    // 5. 開啟 MS 表面切割彈窗按鈕
+    const btnOpenCleaver = document.getElementById('btn-open-cleaver');
+    if (btnOpenCleaver) {
+      btnOpenCleaver.addEventListener('click', () => {
+        this.openCleaverModal();
+      });
+    }
+
+    // 6. 表面切割彈窗事件綁定
+    this.bindCleaverModalEvents();
+  }
+
+  /**
+   * 開啟 Materials Studio 密勒指數表面切割彈窗
+   */
+  openCleaverModal() {
+    if (!this.structure || !this.structure.cell) {
+      this.showToast('表面切割需要週期性塊材晶體 (Bulk) 結構！');
+      return;
+    }
+    const modal = document.getElementById('modal-cleaver');
+    if (modal) {
+      modal.classList.add('show');
+      this.updateCleaveInfo();
+    }
+  }
+
+  /**
+   * 即時計算並更新表面切割之幾何資訊 (d_hkl、面內基向量、層數與厚度換算)
+   */
+  updateCleaveInfo() {
+    if (!this.structure || !this.structure.cell) return;
+    const h = parseInt(document.getElementById('cleave-h')?.value, 10) || 0;
+    const k = parseInt(document.getElementById('cleave-k')?.value, 10) || 0;
+    const l = parseInt(document.getElementById('cleave-l')?.value, 10) || 0;
+
+    const dhklEl = document.getElementById('cleave-val-dhkl');
+    const uEl = document.getElementById('cleave-val-u');
+    const vEl = document.getElementById('cleave-val-v');
+    const hintEl = document.getElementById('cleave-thickness-hint');
+
+    if (h === 0 && k === 0 && l === 0) {
+      if (dhklEl) dhklEl.textContent = '無效 (0, 0, 0)';
+      if (uEl) uEl.textContent = '-';
+      if (vEl) vEl.textContent = '-';
+      if (hintEl) hintEl.textContent = '-';
+      return;
+    }
+
+    const planeInfo = Crystal.calculatePlaneSpacing(this.structure.cell, h, k, l);
+    if (!planeInfo) {
+      if (dhklEl) dhklEl.textContent = '計算失敗 (晶格退化)';
+      return;
+    }
+
+    if (dhklEl) dhklEl.textContent = `${planeInfo.d_hkl.toFixed(3)} Å`;
+    if (uEl) uEl.textContent = `[${planeInfo.uBasis.join(', ')}]`;
+    if (vEl) vEl.textContent = `[${planeInfo.vBasis.join(', ')}]`;
+
+    // 更新厚度提示
+    const mode = document.querySelector('input[name="cleave-thick-mode"]:checked')?.value || 'layers';
+    if (mode === 'layers') {
+      const layers = parseInt(document.getElementById('cleave-layers')?.value, 10) || 1;
+      const approxThick = layers * planeInfo.d_hkl;
+      if (hintEl) hintEl.textContent = `≈ ${approxThick.toFixed(2)} Å`;
+    } else {
+      const targetThick = parseFloat(document.getElementById('cleave-target-thickness')?.value) || 10.0;
+      const approxLayers = Math.max(1, Math.ceil(targetThick / planeInfo.d_hkl));
+      if (hintEl) hintEl.textContent = `≈ ${approxLayers} 層 (${(approxLayers * planeInfo.d_hkl).toFixed(2)} Å)`;
+    }
+  }
+
+  /**
+   * 綁定 Materials Studio 表面切割彈窗之各項互動控制
+   */
+  bindCleaverModalEvents() {
+    // 快捷晶面按鈕 (001, 100, 110, 111)
+    document.querySelectorAll('.btn-preset-hkl').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const parts = btn.dataset.hkl.split(',').map(Number);
+        const hInput = document.getElementById('cleave-h');
+        const kInput = document.getElementById('cleave-k');
+        const lInput = document.getElementById('cleave-l');
+        if (hInput) hInput.value = parts[0];
+        if (kInput) kInput.value = parts[1];
+        if (lInput) lInput.value = parts[2];
+        this.updateCleaveInfo();
+      });
+    });
+
+    // h, k, l input change
+    ['cleave-h', 'cleave-k', 'cleave-l'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.addEventListener('input', () => this.updateCleaveInfo());
+      }
+    });
+
+    // 厚度模式切換
+    document.querySelectorAll('input[name="cleave-thick-mode"]').forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        const layersInput = document.getElementById('cleave-layers');
+        const thickInput = document.getElementById('cleave-target-thickness');
+        if (e.target.value === 'layers') {
+          if (layersInput) layersInput.style.display = '';
+          if (thickInput) thickInput.style.display = 'none';
+        } else {
+          if (layersInput) layersInput.style.display = 'none';
+          if (thickInput) thickInput.style.display = '';
+        }
+        this.updateCleaveInfo();
+      });
+    });
+
+    const layersInput = document.getElementById('cleave-layers');
+    if (layersInput) {
+      layersInput.addEventListener('input', () => this.updateCleaveInfo());
+    }
+    const thickInput = document.getElementById('cleave-target-thickness');
+    if (thickInput) {
+      thickInput.addEventListener('input', () => this.updateCleaveInfo());
+    }
+
+    // 截面平移 (Shift) 滑桿與數字雙向同步
+    const shiftSlider = document.getElementById('cleave-shift-slider');
+    const shiftInput = document.getElementById('cleave-shift-input');
+    const shiftValSpan = document.getElementById('cleave-shift-val');
+
+    if (shiftSlider && shiftInput) {
+      shiftSlider.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value) || 0;
+        shiftInput.value = val.toFixed(2);
+        if (shiftValSpan) shiftValSpan.textContent = val.toFixed(2);
+      });
+      shiftInput.addEventListener('input', (e) => {
+        let val = parseFloat(e.target.value) || 0;
+        val = Math.max(0, Math.min(1, val));
+        shiftSlider.value = val;
+        if (shiftValSpan) shiftValSpan.textContent = val.toFixed(2);
+      });
+    }
+
+    // 真空快捷按鈕
+    const btnCleaveVacCenter = document.getElementById('btn-cleave-vac-center');
+    if (btnCleaveVacCenter) {
+      btnCleaveVacCenter.addEventListener('click', () => {
+        const topEl = document.getElementById('cleave-vac-top');
+        const botEl = document.getElementById('cleave-vac-bottom');
+        if (topEl && botEl) {
+          topEl.value = 7.5;
+          botEl.value = 7.5;
+        }
+      });
+    }
+
+    const btnCleaveVacBottom = document.getElementById('btn-cleave-vac-bottom');
+    if (btnCleaveVacBottom) {
+      btnCleaveVacBottom.addEventListener('click', () => {
+        const topEl = document.getElementById('cleave-vac-top');
+        const botEl = document.getElementById('cleave-vac-bottom');
+        if (topEl && botEl) {
+          topEl.value = 15.0;
+          botEl.value = 0.0;
+        }
+      });
+    }
+
+    // 執行切面生成
+    const btnExecCleave = document.getElementById('btn-execute-cleave');
+    if (btnExecCleave) {
+      btnExecCleave.addEventListener('click', () => {
+        const h = parseInt(document.getElementById('cleave-h')?.value, 10) || 0;
+        const k = parseInt(document.getElementById('cleave-k')?.value, 10) || 0;
+        const l = parseInt(document.getElementById('cleave-l')?.value, 10) || 0;
+        const mode = document.querySelector('input[name="cleave-thick-mode"]:checked')?.value || 'layers';
+        const layers = parseInt(document.getElementById('cleave-layers')?.value, 10) || 3;
+        const thickness = parseFloat(document.getElementById('cleave-target-thickness')?.value) || 0;
+        const shift = parseFloat(document.getElementById('cleave-shift-slider')?.value) || 0;
+        const topVacuum = parseFloat(document.getElementById('cleave-vac-top')?.value) ?? 15.0;
+        const bottomVacuum = parseFloat(document.getElementById('cleave-vac-bottom')?.value) ?? 0.0;
+
+        this.pushHistory();
+        const success = Crystal.cleaveSurface(this.structure, {
+          h, k, l,
+          layers: mode === 'layers' ? layers : undefined,
+          thickness: mode === 'thickness' ? thickness : undefined,
+          shift,
+          topVacuum,
+          bottomVacuum
+        });
+
+        if (success) {
+          this.renderer.resetCamera(this.structure);
+          this.renderer.update(this.structure);
+          this.updateUI();
+          this.showToast(`已生成 (${h} ${k} ${l}) Materials Studio 表面 Slab 模型`);
+          document.getElementById('modal-cleaver')?.classList.remove('show');
+        }
+      });
+    }
+  }
+
+  /**
    * 輕量 Toast 提示訊息
    */
   showToast(msg, duration = 2500) {
@@ -1377,7 +1690,7 @@ class App {
       toast.className = 'toast-notification';
       document.body.appendChild(toast);
     }
-    toast.textContent = msg;
+    toast.innerHTML = msg;
     toast.classList.add('show');
     clearTimeout(this.toastTimer);
     this.toastTimer = setTimeout(() => {

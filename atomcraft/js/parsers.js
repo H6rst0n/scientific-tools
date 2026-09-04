@@ -554,6 +554,7 @@ const Parsers = {
     }
 
     structure.setCellParameters(a, b, c, alpha, beta, gamma, [true, true, true]);
+    structure.syncCartesianFromFractional();
     structure.detectBonds();
     return structure;
   },

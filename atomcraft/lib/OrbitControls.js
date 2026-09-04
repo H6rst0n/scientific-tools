@@ -46,6 +46,8 @@
 			this.minAzimuthAngle = - Infinity; // radians
 
 			this.maxAzimuthAngle = Infinity; // radians
+
+			this.unconstrainedRotation = true; // GaussView/Materials Studio 無角度限位 3D 自由旋轉
 			// Set to true to enable damping (inertia)
 			// If damping is enabled, you must call controls.update() in your animation loop
 
@@ -147,6 +149,77 @@
 				const lastQuaternion = new THREE.Quaternion();
 				const twoPI = 2 * Math.PI;
 				return function update() {
+
+					if ( scope.unconstrainedRotation ) {
+
+						const position = scope.object.position;
+						offset.copy( position ).sub( scope.target );
+
+						if ( scope.autoRotate && state === STATE.NONE ) {
+							rotateLeft( getAutoRotationAngle() );
+						}
+
+						let dTheta = 0;
+						let dPhi = 0;
+
+						if ( scope.enableDamping ) {
+							dTheta = sphericalDelta.theta * scope.dampingFactor;
+							dPhi = sphericalDelta.phi * scope.dampingFactor;
+							sphericalDelta.theta *= 1 - scope.dampingFactor;
+							sphericalDelta.phi *= 1 - scope.dampingFactor;
+						} else {
+							dTheta = sphericalDelta.theta;
+							dPhi = sphericalDelta.phi;
+							sphericalDelta.set( 0, 0, 0 );
+						}
+
+						if ( Math.abs( dTheta ) > 1e-7 || Math.abs( dPhi ) > 1e-7 ) {
+							scope.object.updateMatrixWorld();
+							const camRight = new THREE.Vector3().setFromMatrixColumn( scope.object.matrixWorld, 0 ).normalize();
+							const camUp = new THREE.Vector3().setFromMatrixColumn( scope.object.matrixWorld, 1 ).normalize();
+
+							// 水平繞 camUp 旋轉，垂直繞 camRight 旋轉 (零奇異點、完全無限位)
+							const qYaw = new THREE.Quaternion().setFromAxisAngle( camUp, dTheta );
+							const qPitch = new THREE.Quaternion().setFromAxisAngle( camRight, dPhi );
+							const qRot = new THREE.Quaternion().multiplyQuaternions( qPitch, qYaw );
+
+							offset.applyQuaternion( qRot );
+							scope.object.up.applyQuaternion( qRot );
+						}
+
+						if ( scale !== 1 ) {
+							offset.multiplyScalar( scale );
+						}
+
+						const currentDist = offset.length();
+						const clampedDist = Math.max( scope.minDistance, Math.min( scope.maxDistance, currentDist ) );
+						if ( clampedDist !== currentDist && currentDist > 0 ) {
+							offset.multiplyScalar( clampedDist / currentDist );
+						}
+
+						if ( scope.enableDamping === true ) {
+							scope.target.addScaledVector( panOffset, scope.dampingFactor );
+							panOffset.multiplyScalar( 1 - scope.dampingFactor );
+						} else {
+							scope.target.add( panOffset );
+							panOffset.set( 0, 0, 0 );
+						}
+
+						position.copy( scope.target ).add( offset );
+						scope.object.lookAt( scope.target );
+
+						scale = 1;
+
+						if ( zoomChanged || lastPosition.distanceToSquared( scope.object.position ) > EPS || 8 * ( 1 - lastQuaternion.dot( scope.object.quaternion ) ) > EPS ) {
+							scope.dispatchEvent( _changeEvent );
+							lastPosition.copy( scope.object.position );
+							lastQuaternion.copy( scope.object.quaternion );
+							zoomChanged = false;
+							return true;
+						}
+
+						return false;
+					}
 
 					const position = scope.object.position;
 					offset.copy( position ).sub( scope.target ); // rotate offset to "y-axis-is-up" space

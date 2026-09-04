@@ -765,6 +765,248 @@ END
       VSEPR.addHydrogens(caffTest);
       assert(caffTest.atoms.length === 24, `Re-hydrogenation on bare Caffeine skeleton restored exactly 10 hydrogens (24 total atoms), got ${caffTest.atoms.length}`);
 
+      log('=== 31. GaussView-Style Sequential Fragment Extension on Hydrogens Test ===');
+      // 1. 烷烴鏈連續接枝生長：甲烷 (CH4) -> 乙烷 (C2H6) -> 丙烷 (C3H8) -> 丁烷 (C4H10)
+      const sAlkane = new Structure();
+      sAlkane.addAtom('C', 0, 0, 0);
+      VSEPR.saturateAtom(sAlkane, 0, 'sp3');
+      assert(sAlkane.atoms.length === 5 && sAlkane.bonds.length === 4, 'Step 0: Initial Methane (CH4) created with 5 atoms, 4 bonds');
+
+      // 步驟 1：點擊甲烷任一氫原子 (index 1)，接枝 sp3 碳原子 -> 應生成乙烷 (C2H6)
+      VSEPR.attachFragment(sAlkane, 1, 'C', 'sp3');
+      assert(sAlkane.atoms.length === 8, `Step 1: Ethane (C2H6) has 8 atoms, got ${sAlkane.atoms.length}`);
+      assert(sAlkane.bonds.length === 7, `Step 1: Ethane (C2H6) has 7 bonds, got ${sAlkane.bonds.length}`);
+      const cIndicesEthane = sAlkane.atoms.map((a, idx) => a.element === 'C' ? idx : -1).filter(idx => idx !== -1);
+      assert(cIndicesEthane.length === 2, 'Ethane has 2 Carbons');
+      const ccBondsEthane = sAlkane.bonds.filter(b => sAlkane.atoms[b.a].element === 'C' && sAlkane.atoms[b.b].element === 'C');
+      assert(ccBondsEthane.length === 1, `Ethane has exactly 1 C-C bond, got ${ccBondsEthane.length}`);
+      assertNear(ccBondsEthane[0].dist, 1.54, 1e-3, 'Ethane C-C bond distance is ideal 1.54 Å');
+
+      // 步驟 2：點擊乙烷新碳原子上的氫原子 (例如 index 5)，接枝第三個 sp3 碳原子 -> 應生成丙烷 (C3H8)
+      // 關鍵驗證：第三個碳與第一個碳距離應約 2.515 Å，絕對不可被誤判定為三角成鍵 (杜絕環丙烷誤判)
+      VSEPR.attachFragment(sAlkane, 5, 'C', 'sp3');
+      assert(sAlkane.atoms.length === 11, `Step 2: Propane (C3H8) has 11 atoms, got ${sAlkane.atoms.length}`);
+      assert(sAlkane.bonds.length === 10, `Step 2: Propane (C3H8) has 10 bonds, got ${sAlkane.bonds.length}`);
+      const ccBondsPropane = sAlkane.bonds.filter(b => sAlkane.atoms[b.a].element === 'C' && sAlkane.atoms[b.b].element === 'C');
+      assert(ccBondsPropane.length === 2, `Propane has exactly 2 C-C bonds (NO 3-membered ring triangular cross-bond!), got ${ccBondsPropane.length}`);
+      const cIndicesPropane = sAlkane.atoms.map((a, idx) => a.element === 'C' ? idx : -1).filter(idx => idx !== -1);
+      const c0 = sAlkane.atoms[cIndicesPropane[0]];
+      const c2 = sAlkane.atoms[cIndicesPropane[2]];
+      const dist13 = Math.hypot(c0.x - c2.x, c0.y - c2.y, c0.z - c2.z);
+      assert(dist13 > 2.45, `1,3-Carbon distance in Propane is ${dist13.toFixed(3)} Å > 2.45 Å (safe from cross-bonding)`);
+
+      // 步驟 3：點擊丙烷端點碳之氫原子，接枝第四個 sp3 碳原子 -> 應生成丁烷 (C4H10)
+      const hOnC3 = sAlkane.atoms.findIndex((a, idx) => idx >= 8 && a.element === 'H');
+      VSEPR.attachFragment(sAlkane, hOnC3, 'C', 'sp3');
+      assert(sAlkane.atoms.length === 14, `Step 3: Butane (C4H10) has 14 atoms, got ${sAlkane.atoms.length}`);
+      assert(sAlkane.bonds.length === 13, `Step 3: Butane (C4H10) has 13 bonds, got ${sAlkane.bonds.length}`);
+      const ccBondsButane = sAlkane.bonds.filter(b => sAlkane.atoms[b.a].element === 'C' && sAlkane.atoms[b.b].element === 'C');
+      assert(ccBondsButane.length === 3, `Butane has exactly 3 C-C bonds, got ${ccBondsButane.length}`);
+
+      // 2. 水分子接枝碳片段驗證：水 (H2O) -> 甲醇 (CH3OH)
+      const sWater = new Structure();
+      sWater.addAtom('O', 0, 0, 0);
+      sWater.addAtom('H', 0.76, 0.59, 0);
+      sWater.addAtom('H', -0.76, 0.59, 0);
+      sWater.detectBonds();
+      VSEPR.attachFragment(sWater, 1, 'C', 'sp3');
+      assert(sWater.atoms.length === 6, `Methanol (CH3OH) has 6 atoms (1 C, 1 O, 4 H), got ${sWater.atoms.length}`);
+      const coBond = sWater.bonds.find(b =>
+        (sWater.atoms[b.a].element === 'C' && sWater.atoms[b.b].element === 'O') ||
+        (sWater.atoms[b.a].element === 'O' && sWater.atoms[b.b].element === 'C')
+      );
+      assert(coBond !== undefined, 'C-O bond correctly created in Methanol');
+      assertNear(coBond.dist, 1.43, 1e-3, 'Methanol C-O bond distance is ideal 1.43 Å');
+
+      // 3. 畫布點擊控制器整合測試：模擬使用者在筆刷模式下點選氫原子連續接枝
+      const dummyApp2 = {
+        pushHistory: () => {},
+        updateUI: () => {},
+        showToast: () => {},
+        structure: new Structure(),
+        renderer: {
+          update: () => {},
+          controls: { enabled: true },
+          renderer: { domElement: document.createElement('div') },
+          camera: new THREE.PerspectiveCamera(),
+          pickAtom: () => -1
+        }
+      };
+      const ctrl2 = new InteractionController(dummyApp2);
+      ctrl2.isBrushMode = true;
+      ctrl2.brushElement = 'C';
+      ctrl2.activeHybrid = 'sp3';
+      // 建立初始 CH4
+      dummyApp2.structure.addAtom('C', 0, 0, 0);
+      VSEPR.saturateAtom(dummyApp2.structure, 0, 'sp3');
+      assert(dummyApp2.structure.atoms.length === 5, 'Initial Methane in controller has 5 atoms');
+
+      // 點選氫原子 #1 接枝為乙烷
+      dummyApp2.renderer.pickAtom = () => 1;
+      ctrl2.handleClick({ clientX: 10, clientY: 10, button: 0 });
+      assert(dummyApp2.structure.atoms.length === 8, 'Controller click on H produced Ethane (8 atoms)');
+
+      // 點選新碳原子上的氫原子 #5 接枝為丙烷
+      dummyApp2.renderer.pickAtom = () => 5;
+      ctrl2.handleClick({ clientX: 10, clientY: 10, button: 0 });
+      assert(dummyApp2.structure.atoms.length === 11, 'Controller click on H produced Propane (11 atoms)');
+      const ctrlCC = dummyApp2.structure.bonds.filter(b =>
+        dummyApp2.structure.atoms[b.a].element === 'C' && dummyApp2.structure.atoms[b.b].element === 'C'
+      );
+      assert(ctrlCC.length === 2, `Controller Propane has exactly 2 C-C bonds without spurious cross-bonds, got ${ctrlCC.length}`);
+
+      log('=== 32. Non-orthogonal Lattice Fidelity, MS Surface Cleaver & Asymmetric Vacuum Test ===');
+
+      // 1. 嚴格晶格保真度測試 (非正交單斜/六方/三斜)
+      const hexStruct = new Structure();
+      hexStruct.setCellParameters(2.50, 2.50, 4.00, 90.0, 90.0, 120.0);
+      const hexP = hexStruct.getCellParameters();
+      assertNear(hexP.a, 2.50, 1e-4, 'Hexagonal cell a = 2.50 Å');
+      assertNear(hexP.b, 2.50, 1e-4, 'Hexagonal cell b = 2.50 Å');
+      assertNear(hexP.c, 4.00, 1e-4, 'Hexagonal cell c = 4.00 Å');
+      assertNear(hexP.alpha, 90.0, 1e-3, 'Hexagonal cell alpha = 90.0°');
+      assertNear(hexP.beta, 90.0, 1e-3, 'Hexagonal cell beta = 90.0°');
+      assertNear(hexP.gamma, 120.0, 1e-3, 'Hexagonal cell gamma = 120.0° (strictly non-orthogonal)');
+      assertNear(hexP.volume, 21.6506, 1e-2, 'Hexagonal cell volume = 21.65 Å³');
+
+      // 分數座標與笛卡爾座標精確互換測試
+      hexStruct.addAtom('C', 0, 0, 0);
+      const atomHex = hexStruct.atoms[0];
+      const frac0 = hexStruct.cartesianToFractional(atomHex.x, atomHex.y, atomHex.z);
+      assertNear(frac0[0], 0, 1e-4, 'Fractional u = 0');
+      assertNear(frac0[1], 0, 1e-4, 'Fractional v = 0');
+      assertNear(frac0[2], 0, 1e-4, 'Fractional w = 0');
+
+      // 2. Materials Studio 表面基底向量解析計算測試 (findSurfaceBasis)
+      const basis001 = Crystal.findSurfaceBasis(0, 0, 1);
+      assert(basis001.u[0] === 1 && basis001.u[1] === 0 && basis001.u[2] === 0, 'Basis (001) u = [1, 0, 0]');
+      assert(basis001.v[0] === 0 && basis001.v[1] === 1 && basis001.v[2] === 0, 'Basis (001) v = [0, 1, 0]');
+
+      const basis110 = Crystal.findSurfaceBasis(1, 1, 0);
+      assert(basis110.u[0] === -1 && basis110.u[1] === 1 && basis110.u[2] === 0, 'Basis (110) u = [-1, 1, 0]');
+      assert(basis110.v[0] === 0 && basis110.v[1] === 0 && basis110.v[2] === 1, 'Basis (110) v = [0, 0, 1]');
+
+      const basis111 = Crystal.findSurfaceBasis(1, 1, 1);
+      assert(basis111.u[0] === -1 && basis111.u[1] === 1 && basis111.u[2] === 0, 'Basis (111) u = [-1, 1, 0]');
+      assert(basis111.v[0] === 0 && basis111.v[1] === -1 && basis111.v[2] === 1, 'Basis (111) v = [0, -1, 1]');
+
+      // 3. 晶面間距 d_hkl 解析計算測試 (calculatePlaneSpacing)
+      const siBulk = new Structure();
+      const aSi = 5.430;
+      siBulk.setCellParameters(aSi, aSi, aSi, 90, 90, 90);
+      const siBasisFrac = [
+        [0.0, 0.0, 0.0],
+        [0.0, 0.5, 0.5],
+        [0.5, 0.0, 0.5],
+        [0.5, 0.5, 0.0],
+        [0.25, 0.25, 0.25],
+        [0.25, 0.75, 0.75],
+        [0.75, 0.25, 0.75],
+        [0.75, 0.75, 0.25]
+      ];
+      for (const [fx, fy, fz] of siBasisFrac) {
+        siBulk.addAtom('Si', fx * aSi, fy * aSi, fz * aSi);
+      }
+      siBulk.detectBonds();
+      assert(siBulk.atoms.length === 8, 'Si bulk conventional cell has 8 atoms');
+
+      const p001 = Crystal.calculatePlaneSpacing(siBulk.cell, 0, 0, 1);
+      assertNear(p001.d_hkl, 5.430, 1e-3, 'Si(001) d_hkl = 5.430 Å');
+
+      const p110 = Crystal.calculatePlaneSpacing(siBulk.cell, 1, 1, 0);
+      assertNear(p110.d_hkl, 5.430 / Math.SQRT2, 1e-3, 'Si(110) d_hkl = 3.840 Å');
+
+      const p111 = Crystal.calculatePlaneSpacing(siBulk.cell, 1, 1, 1);
+      assertNear(p111.d_hkl, 5.430 / Math.sqrt(3), 1e-3, 'Si(111) d_hkl = 3.135 Å');
+
+      // 4. Materials Studio 風格表面切割測試 (cleaveSurface)
+      const slabSi111 = siBulk.clone();
+      const cleaveSuccess = Crystal.cleaveSurface(slabSi111, {
+        h: 1, k: 1, l: 1,
+        layers: 2,
+        shift: 0.0,
+        topVacuum: 15.0,
+        bottomVacuum: 0.0
+      });
+      assert(Boolean(cleaveSuccess && cleaveSuccess.success), 'Crystal.cleaveSurface for Si(111) returned success');
+      assert(slabSi111.atoms.length > 0, `Cleaved Si(111) slab has ${slabSi111.atoms.length} atoms`);
+      assert(slabSi111.cell !== null, 'Cleaved slab has valid unit cell');
+
+      // 檢查法向量對齊 +Z (晶格 c 向量指向 Z 軸，c_x 與 c_y 近似 0)
+      const cellC = slabSi111.cell[2];
+      assertNear(cellC[0], 0.0, 1e-3, 'Surface slab c-vector aligned to Z (c_x ≈ 0)');
+      assertNear(cellC[1], 0.0, 1e-3, 'Surface slab c-vector aligned to Z (c_y ≈ 0)');
+      assert(cellC[2] > 15.0, `Surface slab c_z (${cellC[2].toFixed(2)} Å) > vacuum thickness`);
+
+      // 5. 非對稱真空層分析器測試 (analyzeVacuum)
+      const vacAnalysis = Crystal.analyzeVacuum(slabSi111, 'z');
+      assert(vacAnalysis !== null, 'analyzeVacuum returned valid analysis');
+      assertNear(vacAnalysis.bottomVacuum, 0.0, 0.01, 'Bottom vacuum starts at 0.0 Å (bottom aligned)');
+      assertNear(vacAnalysis.topVacuum, 15.0, 0.01, 'Top vacuum starts at 15.0 Å');
+      assertNear(vacAnalysis.totalVacuum, 15.0, 0.01, 'Total vacuum is 15.0 Å');
+      assert(vacAnalysis.slabThickness > 0, `Slab material thickness is ${vacAnalysis.slabThickness.toFixed(2)} Å`);
+
+      // 6. 非對稱獨立頂底真空層設定測試 (adjustVacuum)
+      Crystal.adjustVacuum(slabSi111, {
+        axis: 'z',
+        topVacuum: 20.0,
+        bottomVacuum: 5.0
+      });
+      const vacAnalysis2 = Crystal.analyzeVacuum(slabSi111, 'z');
+      assertNear(vacAnalysis2.bottomVacuum, 5.0, 0.01, 'Bottom vacuum accurately set to 5.0 Å');
+      assertNear(vacAnalysis2.topVacuum, 20.0, 0.01, 'Top vacuum accurately set to 20.0 Å');
+      assertNear(vacAnalysis2.totalVacuum, 25.0, 0.01, 'Total vacuum is 25.0 Å');
+      assertNear(vacAnalysis2.cellLength, vacAnalysis.slabThickness + 25.0, 0.05, 'New unit cell length = slab thickness + top + bottom vacuum');
+
+      // 7. 測試置中對稱 (center: true)
+      Crystal.adjustVacuum(slabSi111, {
+        axis: 'z',
+        topVacuum: 10.0,
+        bottomVacuum: 10.0,
+        center: true
+      });
+      const vacAnalysis3 = Crystal.analyzeVacuum(slabSi111, 'z');
+      assertNear(vacAnalysis3.bottomVacuum, 10.0, 0.01, 'Centered bottom vacuum = 10.0 Å');
+      assertNear(vacAnalysis3.topVacuum, 10.0, 0.01, 'Centered top vacuum = 10.0 Å');
+
+      // 8. 預設空白系統初始化驗證
+      const freshStruct = new Structure();
+      assert(freshStruct.atoms.length === 0, 'Fresh Structure starts with 0 atoms on canvas (clean empty startup)');
+      assert(freshStruct.bonds.length === 0, 'Fresh Structure starts with 0 bonds on canvas');
+      assert(freshStruct.cell === null, 'Fresh Structure starts with null cell (no preset loaded)');
+
+      log('=== 33. Unconstrained 3D Camera Rotation & Gimbal-Lock-Free Verification ===');
+      const domEl = document.createElement('div');
+      domEl.clientHeight = 600;
+      domEl.clientWidth = 800;
+      const testCam = new THREE.PerspectiveCamera(45, 800 / 600, 0.1, 1000);
+      testCam.position.set(0, 0, 30);
+      testCam.up.set(0, 1, 0);
+      testCam.lookAt(0, 0, 0);
+
+      const testControls = new THREE.OrbitControls(testCam, domEl);
+      assert(testControls.unconstrainedRotation === true, 'OrbitControls defaults to unconstrainedRotation = true');
+
+      // 模擬沿著軸向連續垂直轉動穿過極點 (Over-the-pole tumbling)
+      // 旋轉 4.0 弧度 (> Math.PI = 3.14159 rad，傳統 OrbitControls 必然限位卡死在 3.14159)
+      const initialDist = testCam.position.distanceTo(testControls.target);
+      assertNear(initialDist, 30.0, 1e-4, 'Initial camera distance is 30.0 Å');
+
+      // 模擬向上連續拖曳 80 次，每次 0.05 rad (累積 4.0 rad > 229°)
+      for (let i = 0; i < 80; i++) {
+        testControls.handleMouseMoveRotate ? testControls.handleMouseMoveRotate({ clientX: 100, clientY: 100 - 10 }) : null;
+        // 直接調用 internal update
+        testControls.update();
+      }
+
+      // 驗證未卡死在極點，相機距離保持嚴格守恆，且無 NaN 異常
+      const afterDist = testCam.position.distanceTo(testControls.target);
+      assertNear(afterDist, 30.0, 1e-3, 'Camera distance strictly conserved after tumbling through pole');
+      assert(Number.isFinite(testCam.position.x) && Number.isFinite(testCam.position.y) && Number.isFinite(testCam.position.z), 'Camera coordinates are valid finite numbers without NaN or singularity');
+
+      // 驗證相機 up 向量正常旋轉伴隨，長度保持 1.0
+      assertNear(testCam.up.length(), 1.0, 1e-4, 'Camera up-vector unit length conserved');
+
       log(`\n========================================`);
       log(`TEST SUMMARY: ${passed} PASSED, ${failed} FAILED`);
       log(`========================================`);

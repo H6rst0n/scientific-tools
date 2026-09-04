@@ -247,51 +247,85 @@ select.dropdown-select:focus {
   box-shadow: var(--shadow-panel);
 }
 
-/* 右側週期性與擴胞面板 (支援點擊左側標籤平滑折疊收合) */
+/* 右側週期性與擴胞面板 (支援點擊左側標籤平滑折疊收合，內部捲動並於非全螢幕底部保留安全留白) */
 .crystal-panel,
 #crystal-panel {
   position: absolute;
   right: 14px;
-  top: 70px;
-  width: 260px;
-  z-index: 20;
+  top: 60px;
+  width: 270px;
+  max-height: calc(100% - 74px);
+  z-index: 50;
   background: var(--bg-panel);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 12px 14px;
   box-shadow: var(--shadow-panel);
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+  padding: 0;
 }
 
 #crystal-panel.collapsed {
   transform: translateX(calc(100% + 20px));
 }
 
+.crystal-panel-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 14px;
+  padding-bottom: 24px;
+}
+
+.crystal-panel-content::-webkit-scrollbar {
+  width: 5px;
+}
+
+.crystal-panel-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 3px;
+}
+
 .crystal-collapse-btn {
   position: absolute;
-  left: -28px;
+  left: -36px;
   top: 14px;
-  width: 28px;
-  height: 38px;
-  background: rgba(15, 23, 42, 0.95);
+  width: 36px;
+  min-height: 52px;
+  padding: 6px 2px;
+  background: rgba(15, 23, 42, 0.96);
   border: 1px solid var(--border);
   border-right: none;
   border-radius: 8px 0 0 8px;
   color: var(--primary);
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
   cursor: pointer;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  box-shadow: -4px 0 10px rgba(0, 0, 0, 0.3);
-  transition: background 0.15s ease, color 0.15s ease;
+  gap: 3px;
+  box-shadow: -5px 2px 14px rgba(0, 0, 0, 0.5);
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  z-index: 60;
+  user-select: none;
 }
 
 .crystal-collapse-btn:hover {
   background: var(--bg-card);
   color: #fff;
+  box-shadow: -6px 2px 16px var(--primary-glow);
+}
+
+.crystal-collapse-btn .collapse-label {
+  writing-mode: vertical-lr;
+  font-size: 10px;
+  letter-spacing: 1px;
 }
 
 /* 框選多原子半透明藍色虛線矩形 */

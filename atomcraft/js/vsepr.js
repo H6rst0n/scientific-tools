@@ -975,5 +975,220 @@ const VSEPR = {
 
     structure.syncFractionalFromCartesian();
     structure.detectBonds();
+  },
+
+  /**
+   * GaussView 風格片段接枝 / 混成延伸 (Attach Fragment on Hydrogen, GaussView Style)
+   * 當使用者在筆刷模式下點選氫原子時，以該價鍵為生長方向，
+   * 依據共價單鍵理想鍵長將氫原子延伸並替換為新重原子，
+   * 同時依混成狀態以交叉式 (Staggered) 立體構型補足新氫原子，保證碳鏈鋸齒狀自然延伸，絕不產生自交環狀錯誤鍵。
+   * @param {Structure} structure
+   * @param {number} hIndex 點選之氫原子索引
+   * @param {string} newElement 目標接枝元素 (例如 'C', 'N', 'O', 'F')
+   * @param {string} hybridMode 混成模式 (例如 'sp3', 'sp2', 'sp')
+   */
+  attachFragment(structure, hIndex, newElement = 'C', hybridMode = 'sp3') {
+    if (hIndex < 0 || hIndex >= structure.atoms.length) return;
+    const hAtom = structure.atoms[hIndex];
+    if (hAtom.element !== 'H') {
+      // 若點選的不是氫原子，回退至原位元素替換
+      hAtom.element = newElement;
+      this.saturateAtom(structure, hIndex, hybridMode);
+      return;
+    }
+
+    structure.detectBonds();
+
+    // 1. 尋找與該氫原子相連的母體重原子 (Parent Atom)
+    let parentIdx = -1;
+    for (const b of structure.bonds) {
+      if (b.order === 'hb') continue;
+      if (b.a === hIndex) { parentIdx = b.b; break; }
+      else if (b.b === hIndex) { parentIdx = b.a; break; }
+    }
+
+    // 若未成鍵，則以最近距離尋找母體原子
+    if (parentIdx === -1) {
+      let minDist = Infinity;
+      for (let i = 0; i < structure.atoms.length; i++) {
+        if (i === hIndex) continue;
+        const a = structure.atoms[i];
+        const d = Math.hypot(a.x - hAtom.x, a.y - hAtom.y, a.z - hAtom.z);
+        if (d < minDist && d <= 1.8) {
+          minDist = d;
+          parentIdx = i;
+        }
+      }
+    }
+
+    if (parentIdx === -1) {
+      // 孤立氫原子：直接原地替換
+      hAtom.element = newElement;
+      this.saturateAtom(structure, hIndex, hybridMode);
+      return;
+    }
+
+    const parentAtom = structure.atoms[parentIdx];
+
+    // 2. 計算由母體原子指向氫原子的方向單位向量 u
+    let ux = hAtom.x - parentAtom.x;
+    let uy = hAtom.y - parentAtom.y;
+    let uz = hAtom.z - parentAtom.z;
+    const uLen = Math.hypot(ux, uy, uz);
+    if (uLen < 1e-4) {
+      ux = 0; uy = 0; uz = 1;
+    } else {
+      ux /= uLen; uy /= uLen; uz /= uLen;
+    }
+    const u = [ux, uy, uz];
+
+    // 3. 計算母體原子與新元素之間的理想共價單鍵鍵長 (例如 C-C 為 1.54 Å)
+    const idealBondDist = VSEPR.getIdealBondLength(parentAtom.element, newElement);
+
+    // 4. 將該氫原子移動至理想單鍵位置，並更新元素為新元素 (成為新重原子)
+    hAtom.element = newElement;
+    hAtom.x = parentAtom.x + u[0] * idealBondDist;
+    hAtom.y = parentAtom.y + u[1] * idealBondDist;
+    hAtom.z = parentAtom.z + u[2] * idealBondDist;
+    const newAtomIdx = hIndex;
+
+    // 5. 建立與母體原子現存取代基相互對齊的參考正交基 (以確保交叉式 Staggered 構型)
+    // 尋找母體原子的其他鄰居 (排除新重原子 newAtomIdx)
+    let refNbrIdx = -1;
+    for (const b of structure.bonds) {
+      if (b.order === 'hb') continue;
+      const nbr = (b.a === parentIdx) ? b.b : ((b.b === parentIdx) ? b.a : -1);
+      if (nbr !== -1 && nbr !== newAtomIdx) {
+        // 優先選取重原子鄰居以確保主碳鏈鋸齒平面的延伸
+        if (refNbrIdx === -1 || structure.atoms[nbr].element !== 'H') {
+          refNbrIdx = nbr;
+          if (structure.atoms[nbr].element !== 'H') break;
+        }
+      }
+    }
+
+    let p1;
+    if (refNbrIdx !== -1) {
+      const refAtom = structure.atoms[refNbrIdx];
+      const vx = refAtom.x - parentAtom.x;
+      const vy = refAtom.y - parentAtom.y;
+      const vz = refAtom.z - parentAtom.z;
+      // 投影至垂直於鍵軸 u 的平面
+      const dot = vx * u[0] + vy * u[1] + vz * u[2];
+      const projX = vx - dot * u[0];
+      const projY = vy - dot * u[1];
+      const projZ = vz - dot * u[2];
+      const projLen = Math.hypot(projX, projY, projZ);
+      if (projLen > 1e-4) {
+        p1 = [projX / projLen, projY / projLen, projZ / projLen];
+      } else {
+        p1 = VSEPR.getPerpendicular(u);
+      }
+    } else {
+      p1 = VSEPR.getPerpendicular(u);
+    }
+
+    // p2 = u × p1
+    const p2 = [
+      u[1] * p1[2] - u[2] * p1[1],
+      u[2] * p1[0] - u[0] * p1[2],
+      u[0] * p1[1] - u[1] * p1[0]
+    ];
+
+    // 6. 判定新原子所需的新生氫原子數量與幾何方向
+    const standardValences = {
+      'H': 1, 'He': 0, 'Li': 1, 'Be': 2, 'B': 3,
+      'C': 4, 'N': 3, 'O': 2, 'F': 1, 'Ne': 0,
+      'Na': 1, 'Mg': 2, 'Al': 3, 'Si': 4, 'P': 3,
+      'S': 2, 'Cl': 1, 'Ar': 0, 'K': 1, 'Ca': 2,
+      'Br': 1, 'I': 1, 'Ge': 4, 'As': 3, 'Se': 2
+    };
+
+    let targetValence = standardValences[newElement] !== undefined ? standardValences[newElement] : 4;
+    if (hybridMode === 'sp3' || hybridMode === 'sp3_tetrahedral') targetValence = 4;
+    else if (hybridMode === 'sp2' || hybridMode === 'sp2_planar') targetValence = 3;
+    else if (hybridMode === 'sp' || hybridMode === 'sp_linear') targetValence = 2;
+    else if (hybridMode === 'sp3_bent') targetValence = 2;
+    else if (hybridMode === 'sp3_pyramidal') targetValence = 3;
+    else if (hybridMode === 'terminal') targetValence = 1;
+
+    // 新原子已與母體原子形成 1 根單鍵，故需補氫數為:
+    const hNeeded = targetValence - 1;
+    const newDirs = [];
+
+    if (hNeeded === 3) {
+      // 正四面體甲基型 (sp3 -CH3)：相對於母體鄰居 p1 採 180° 反式 (Anti) 與 ±60° 左右交叉式 (Gauche)
+      // 夾角與鍵軸反向向量 -u 成 109.47° (即與 u 成 70.53°)
+      const cosA = 1.0 / 3.0;
+      const sinA = Math.sqrt(8.0 / 9.0);
+      // 第一個氫置於反式 (phi = pi，即 -p1 方向)，使後續點擊時自然沿碳鏈平面鋸齒狀延伸
+      const phis = [Math.PI, Math.PI / 3.0, -Math.PI / 3.0];
+      for (const phi of phis) {
+        const cp = Math.cos(phi);
+        const sp = Math.sin(phi);
+        newDirs.push([
+          cosA * u[0] + sinA * (cp * p1[0] + sp * p2[0]),
+          cosA * u[1] + sinA * (cp * p1[1] + sp * p2[1]),
+          cosA * u[2] + sinA * (cp * p1[2] + sp * p2[2])
+        ]);
+      }
+    } else if (hNeeded === 2) {
+      // 2 配位：例如 -NH2 (三角錐) 或 =CH2 (平面三角形)
+      if (hybridMode.startsWith('sp2')) {
+        // 平面 120° (與 u 成 60°)
+        const cosA = 0.5;
+        const sinA = Math.sqrt(0.75);
+        newDirs.push([
+          cosA * u[0] + sinA * p1[0],
+          cosA * u[1] + sinA * p1[1],
+          cosA * u[2] + sinA * p1[2]
+        ]);
+        newDirs.push([
+          cosA * u[0] - sinA * p1[0],
+          cosA * u[1] - sinA * p1[1],
+          cosA * u[2] - sinA * p1[2]
+        ]);
+      } else {
+        // 三角錐 / 角形：夾角 ~107°~109.5°，置於交叉對稱兩側
+        const cosA = 1.0 / 3.0;
+        const sinA = Math.sqrt(8.0 / 9.0);
+        const phis = [Math.PI / 3.0, -Math.PI / 3.0];
+        for (const phi of phis) {
+          const cp = Math.cos(phi);
+          const sp = Math.sin(phi);
+          newDirs.push([
+            cosA * u[0] + sinA * (cp * p1[0] + sp * p2[0]),
+            cosA * u[1] + sinA * (cp * p1[1] + sp * p2[1]),
+            cosA * u[2] + sinA * (cp * p1[2] + sp * p2[2])
+          ]);
+        }
+      }
+    } else if (hNeeded === 1) {
+      // 1 配位：例如醇羥基 -OH (104.5°) 或炔基 -C#CH (180°)
+      if (hybridMode.startsWith('sp') && !hybridMode.startsWith('sp3')) {
+        // 直線形 180°
+        newDirs.push([u[0], u[1], u[2]]);
+      } else {
+        // 彎曲形 104.5° (與 u 夾角 75.5°)，置於反式方向 (-p1)
+        const angle = (75.5 * Math.PI) / 180;
+        const cosA = Math.cos(angle);
+        const sinA = Math.sin(angle);
+        newDirs.push([
+          cosA * u[0] - sinA * p1[0],
+          cosA * u[1] - sinA * p1[1],
+          cosA * u[2] - sinA * p1[2]
+        ]);
+      }
+    }
+
+    // 7. 將新氫原子添加至結構
+    const hBondDist = VSEPR.getIdealBondLength(newElement, 'H');
+    for (const d of newDirs) {
+      structure.addAtom('H', hAtom.x + d[0] * hBondDist, hAtom.y + d[1] * hBondDist, hAtom.z + d[2] * hBondDist);
+    }
+
+    structure.syncFractionalFromCartesian();
+    structure.detectBonds();
   }
 };
+

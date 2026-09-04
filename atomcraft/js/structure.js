@@ -100,7 +100,16 @@ class Structure {
     ];
     this.pbc = [...pbc];
     this.updateCellInverse();
-    this.syncFractionalFromCartesian();
+    // 若現有原子僅具有分數座標 (例如剛載入 CIF 且 x,y,z 均為 0)，優先由分數座標同步為笛卡爾座標
+    let hasOnlyFractional = false;
+    if (this.atoms.length > 0) {
+      hasOnlyFractional = this.atoms.every(a => (a.x === 0 && a.y === 0 && a.z === 0) && (a.fx !== 0 || a.fy !== 0 || a.fz !== 0));
+    }
+    if (hasOnlyFractional) {
+      this.syncCartesianFromFractional();
+    } else {
+      this.syncFractionalFromCartesian();
+    }
   }
 
   /**

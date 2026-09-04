@@ -248,14 +248,25 @@ class InteractionController {
     // 【替換/新增筆刷模式】：點中原子替換，點擊空白處直接在視野平面新增原子！
     if (this.isBrushMode) {
       if (pickedIdx >= 0) {
-        // 點中既有原子：替換為當前元素，並自動進行局部補氫 (GaussView Style)
         this.app.pushHistory();
-        const oldElem = this.structure.atoms[pickedIdx].element;
-        this.structure.atoms[pickedIdx].element = this.brushElement;
-        VSEPR.saturateAtom(this.structure, pickedIdx, this.activeHybrid);
-        this.renderer.update(this.structure);
-        this.app.updateUI();
-        this.app.showToast(`已將原子 #${pickedIdx + 1} (${oldElem}) 替換為 ${this.brushElement} 並自動補氫`);
+        const clickedAtom = this.structure.atoms[pickedIdx];
+        if (clickedAtom.element === 'H') {
+          // 【GaussView 風格片段接枝 / 混成延伸 (Attach Fragment on Hydrogen)】
+          // 點選氫原子：以理想單鍵長延伸並附接新混成片段，自動以交叉式 (Staggered) 立體構型飽和補氫
+          VSEPR.attachFragment(this.structure, pickedIdx, this.brushElement, this.activeHybrid);
+          this.renderer.update(this.structure);
+          this.app.updateUI();
+          this.app.showToast(`已在位置 #${pickedIdx + 1} 接枝新增 ${this.brushElement} (${this.activeHybrid}) 片段`);
+        } else {
+          // 【GaussView 風格原子元素突變 / 置換 (Element Mutation on Heavy Atom)】
+          // 點選重原子：原位替換元素並自動重新飽和配位 (如 C 變 N 減氫、C 變 O 變醇)
+          const oldElem = clickedAtom.element;
+          clickedAtom.element = this.brushElement;
+          VSEPR.saturateAtom(this.structure, pickedIdx, this.activeHybrid);
+          this.renderer.update(this.structure);
+          this.app.updateUI();
+          this.app.showToast(`已將原子 #${pickedIdx + 1} (${oldElem}) 替換為 ${this.brushElement} 並自動重新飽和`);
+        }
       } else {
         // 點擊空白處：在相機視野目標平面上新增原子，並自動進行局部補氫 (如放 C 自動生成 CH4)
         this.app.pushHistory();
