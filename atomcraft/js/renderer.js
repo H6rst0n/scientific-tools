@@ -25,6 +25,7 @@ class MoleculeRenderer {
     this.cellLines = null;
     this.selectionGroup = null;
     this.measurementGroup = null;
+    this.cleavePreviewGroup = null;
 
     // 拾取射線
     this.raycaster = new THREE.Raycaster();
@@ -118,6 +119,9 @@ class MoleculeRenderer {
 
     this.measurementGroup = new THREE.Group();
     this.scene.add(this.measurementGroup);
+
+    this.cleavePreviewGroup = new THREE.Group();
+    this.scene.add(this.cleavePreviewGroup);
 
     // 7. 坐標軸
     this.axesHelper = new THREE.AxesHelper(3);
@@ -630,5 +634,183 @@ class MoleculeRenderer {
 
     this.camera.lookAt(...center);
     this.controls.update();
+  }
+
+  /**
+   * Materials Studio 風格 3D 表面切割與截面平移即時預覽
+   * 包含：
+   * 1. 12 條立體虛線稜線（3D Dashed Slab Prism）
+   * 2. 平移截面位置（琥珀金色半透明平面 + 實線邊界 + 表面法向量箭頭）
+   * 3. 頂部表面邊界
+   * @param {Structure} structure
+   * @param {Object} options { h, k, l, layers, thickness, shift }
+   */
+  updateCleavePreview(structure, options = {}) {
+    if (!structure || !structure.cell || structure.atoms.length === 0) {
+      this.hideCleavePreview();
+      return;
+    }
+
+    const h = parseInt(options.h, 10) || 0;
+    const k = parseInt(options.k, 10) || 0;
+    const l = parseInt(options.l, 10) || 0;
+
+    if (h === 0 && k === 0 && l === 0) {
+      this.hideCleavePreview();
+      return;
+    }
+
+    const planeInfo = Crystal.calculatePlaneSpacing(structure.cell, h, k, l);
+    if (!planeInfo) {
+      this.hideCleavePreview();
+      return;
+    }
+
+    this.hideCleavePreview();
+
+    const { d_hkl, normalUnit, uBasis, vBasis } = planeInfo;
+    const [va, vb, vc] = structure.cell;
+
+    let nLayers = parseInt(options.layers, 10) || 1;
+    if (options.thickness && Number(options.thickness) > 0) {
+      nLayers = Math.max(1, Math.ceil(Number(options.thickness) / d_hkl));
+    }
+    const shiftFrac = Math.max(0, Math.min(1.0, parseFloat(options.shift || 0.0)));
+
+    // 面內基底向量在真實空間的座標 (Cartesian coordinates)
+    const uCart = [
+      uBasis[0] * va[0] + uBasis[1] * vb[0] + uBasis[2] * vc[0],
+      uBasis[0] * va[1] + uBasis[1] * vb[1] + uBasis[2] * vc[1],
+      uBasis[0] * va[2] + uBasis[1] * vb[2] + uBasis[2] * vc[2]
+    ];
+    const vCart = [
+      vBasis[0] * va[0] + vBasis[1] * vb[0] + vBasis[2] * vc[0],
+      vBasis[0] * va[1] + vBasis[1] * vb[1] + vBasis[2] * vc[1],
+      vBasis[0] * va[2] + vBasis[1] * vb[2] + vBasis[2] * vc[2]
+    ];
+
+    const n = normalUnit;
+    const z0 = shiftFrac * d_hkl;
+    const slabHeight = nLayers * d_hkl;
+
+    // 底面 4 個頂點 (平移截面起點)
+    const p00 = [z0 * n[0], z0 * n[1], z0 * n[2]];
+    const p10 = [uCart[0] + p00[0], uCart[1] + p00[1], uCart[2] + p00[2]];
+    const p11 = [uCart[0] + vCart[0] + p00[0], uCart[1] + vCart[1] + p00[1], uCart[2] + vCart[2] + p00[2]];
+    const p01 = [vCart[0] + p00[0], vCart[1] + p00[1], vCart[2] + p00[2]];
+
+    // 頂面 4 個頂點 (頂部終端面)
+    const tDiff = [slabHeight * n[0], slabHeight * n[1], slabHeight * n[2]];
+    const t00 = [p00[0] + tDiff[0], p00[1] + tDiff[1], p00[2] + tDiff[2]];
+    const t10 = [p10[0] + tDiff[0], p10[1] + tDiff[1], p10[2] + tDiff[2]];
+    const t11 = [p11[0] + tDiff[0], p11[1] + tDiff[1], p11[2] + tDiff[2]];
+    const t01 = [p01[0] + tDiff[0], p01[1] + tDiff[1], p01[2] + tDiff[2]];
+
+    // 1. 繪製 12 條立體虛線稜線 (3D Dashed Slab Prism)
+    const edges = [
+      [p00, p10], [p10, p11], [p11, p01], [p01, p00], // 底面 4 邊
+      [t00, t10], [t10, t11], [t11, t01], [t01, t00], // 頂面 4 邊
+      [p00, t00], [p10, t10], [p11, t11], [p01, t01]  // 垂直 4 邊
+    ];
+
+    const linePositions = [];
+    const lineDistances = [];
+    for (const [start, end] of edges) {
+      linePositions.push(start[0], start[1], start[2]);
+      linePositions.push(end[0], end[1], end[2]);
+      const len = Math.hypot(end[0] - start[0], end[1] - start[1], end[2] - start[2]);
+      lineDistances.push(0, len);
+    }
+
+    const dashedGeo = new THREE.BufferGeometry();
+    dashedGeo.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3));
+    dashedGeo.setAttribute('lineDistance', new THREE.Float32BufferAttribute(lineDistances, 1));
+    const dashedMat = new THREE.LineDashedMaterial({
+      color: 0x38bdf8, // 亮青色立體晶格虛線
+      dashSize: 0.35,
+      gapSize: 0.20,
+      linewidth: 2
+    });
+    const dashedBox = new THREE.LineSegments(dashedGeo, dashedMat);
+    this.cleavePreviewGroup.add(dashedBox);
+
+    // 2. 繪製平移截面 (Cleavage / Termination Plane at Shift)
+    const planeVertices = [
+      ...p00, ...p10, ...p11,
+      ...p00, ...p11, ...p01
+    ];
+    const planeGeo = new THREE.BufferGeometry();
+    planeGeo.setAttribute('position', new THREE.Float32BufferAttribute(planeVertices, 3));
+    planeGeo.computeVertexNormals();
+    const planeMat = new THREE.MeshBasicMaterial({
+      color: 0xf59e0b, // 琥珀金色截面
+      transparent: true,
+      opacity: 0.30,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const planeMesh = new THREE.Mesh(planeGeo, planeMat);
+    this.cleavePreviewGroup.add(planeMesh);
+
+    // 平移截面邊界高亮實線
+    const borderVertices = [
+      ...p00, ...p10,
+      ...p10, ...p11,
+      ...p11, ...p01,
+      ...p01, ...p00
+    ];
+    const borderGeo = new THREE.BufferGeometry();
+    borderGeo.setAttribute('position', new THREE.Float32BufferAttribute(borderVertices, 3));
+    const borderMat = new THREE.LineBasicMaterial({
+      color: 0xf59e0b,
+      linewidth: 2
+    });
+    const borderLine = new THREE.LineSegments(borderGeo, borderMat);
+    this.cleavePreviewGroup.add(borderLine);
+
+    // 3. 繪製切面法向量指示箭頭 (Normal Vector Indicator Arrow)
+    const center0 = new THREE.Vector3(
+      (p00[0] + p10[0] + p11[0] + p01[0]) / 4,
+      (p00[1] + p10[1] + p11[1] + p01[1]) / 4,
+      (p00[2] + p10[2] + p11[2] + p01[2]) / 4
+    );
+    const normDir = new THREE.Vector3(n[0], n[1], n[2]).normalize();
+    const arrowLen = Math.max(1.8, Math.min(4.5, d_hkl * 1.5));
+    const arrow = new THREE.ArrowHelper(normDir, center0, arrowLen, 0xf59e0b, 0.45, 0.30);
+    this.cleavePreviewGroup.add(arrow);
+
+    // 4. 繪製頂面微透明封蓋 (Top Surface Cap)
+    const topVertices = [
+      ...t00, ...t10, ...t11,
+      ...t00, ...t11, ...t01
+    ];
+    const topGeo = new THREE.BufferGeometry();
+    topGeo.setAttribute('position', new THREE.Float32BufferAttribute(topVertices, 3));
+    topGeo.computeVertexNormals();
+    const topMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.12,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const topMesh = new THREE.Mesh(topGeo, topMat);
+    this.cleavePreviewGroup.add(topMesh);
+  }
+
+  /**
+   * 隱藏並清空表面切割即時預覽
+   */
+  hideCleavePreview() {
+    if (!this.cleavePreviewGroup) return;
+    while (this.cleavePreviewGroup.children.length > 0) {
+      const obj = this.cleavePreviewGroup.children[0];
+      this.cleavePreviewGroup.remove(obj);
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+        else obj.material.dispose();
+      }
+    }
   }
 }

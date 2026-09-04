@@ -547,7 +547,18 @@ class InteractionController {
         return;
       }
 
-      // (2) 關閉外觀色彩懸浮面版
+      // (2) 關閉表面切割懸浮面板
+      const cleaverDock = document.getElementById('modal-cleaver');
+      if (cleaverDock && cleaverDock.classList.contains('show')) {
+        if (this.app && this.app.closeCleaverModal) {
+          this.app.closeCleaverModal();
+        } else {
+          cleaverDock.classList.remove('show');
+        }
+        return;
+      }
+
+      // (3) 關閉外觀色彩懸浮面版
       const appDock = document.getElementById('appearance-dock');
       if (appDock && appDock.style.display !== 'none') {
         appDock.style.display = 'none';

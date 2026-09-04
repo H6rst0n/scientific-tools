@@ -388,7 +388,11 @@ const Parsers = {
     if (hasFixed) out += 'Selective dynamics\n';
     out += isDirect ? 'Direct\n' : 'Cartesian\n';
 
-    structure.syncFractionalFromCartesian();
+    if (isDirect) {
+      structure.syncFractionalFromCartesian();
+    } else if (structure.atoms.some(a => a.x === null || a.x === undefined || isNaN(a.x))) {
+      structure.syncCartesianFromFractional();
+    }
 
     for (const elem of species) {
       const atoms = speciesMap.get(elem);

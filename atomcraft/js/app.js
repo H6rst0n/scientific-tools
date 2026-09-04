@@ -1000,20 +1000,39 @@ class App {
     const textarea = document.getElementById('export-preview');
     const btnCopy = document.getElementById('btn-copy-export');
     const btnDownload = document.getElementById('btn-download-export');
+    const vaspCoordGroup = document.getElementById('group-export-vasp-coord');
+    const routeGroup = document.getElementById('group-export-route');
+    const chemOptGroup = document.getElementById('group-export-chem-opt');
 
     if (!modal) return;
+
+    const updateModalControls = () => {
+      const fmt = formatSelect.value;
+      const isVasp = (fmt === 'vasp');
+      const isGjfOrOrca = (fmt === 'gjf' || fmt === 'orca');
+
+      if (vaspCoordGroup) vaspCoordGroup.style.display = isVasp ? 'block' : 'none';
+      if (routeGroup) routeGroup.style.display = isGjfOrOrca ? 'block' : 'none';
+      if (chemOptGroup) chemOptGroup.style.display = isGjfOrOrca ? 'flex' : 'none';
+
+      const routeInput = document.getElementById('export-route');
+      if (fmt === 'gjf' && routeInput) routeInput.value = '#p b3lyp/6-31g(d) opt freq';
+      else if (fmt === 'orca' && routeInput) routeInput.value = '! B3LYP def2-SVP Opt';
+    };
 
     const refreshPreview = () => {
       const fmt = formatSelect.value;
       const charge = parseInt(document.getElementById('export-charge').value, 10) || 0;
       const mult = parseInt(document.getElementById('export-mult').value, 10) || 1;
       const route = document.getElementById('export-route').value;
+      const vaspRadio = document.querySelector('input[name="vasp-coord-mode"]:checked');
+      const isDirect = vaspRadio ? vaspRadio.value === 'direct' : true;
       let text = '';
 
       if (fmt === 'xyz') text = Parsers.exportXYZ(this.structure);
       else if (fmt === 'gjf') text = Parsers.exportGaussian(this.structure, { charge, mult, route });
       else if (fmt === 'orca') text = Parsers.exportORCA(this.structure, { charge, mult, header: route });
-      else if (fmt === 'vasp') text = Parsers.exportVASP(this.structure, { direct: true });
+      else if (fmt === 'vasp') text = Parsers.exportVASP(this.structure, { direct: isDirect });
       else if (fmt === 'qe') text = Parsers.exportQE(this.structure);
       else if (fmt === 'cif') text = Parsers.exportCIF(this.structure);
       else if (fmt === 'pdb') text = Parsers.exportPDB(this.structure);
@@ -1026,6 +1045,7 @@ class App {
     btnOpen.addEventListener('click', () => {
       document.getElementById('export-charge').value = this.structure.charge || 0;
       document.getElementById('export-mult').value = this.structure.multiplicity || 1;
+      updateModalControls();
       refreshPreview();
       modal.classList.add('show');
     });
@@ -1033,11 +1053,15 @@ class App {
     btnClose.addEventListener('click', () => modal.classList.remove('show'));
 
     formatSelect.addEventListener('change', () => {
-      const fmt = formatSelect.value;
-      const routeInput = document.getElementById('export-route');
-      if (fmt === 'gjf') routeInput.value = '#p b3lyp/6-31g(d) opt freq';
-      else if (fmt === 'orca') routeInput.value = '! B3LYP def2-SVP Opt';
+      updateModalControls();
       refreshPreview();
+    });
+
+    // 監聽 VASP 座標模式單選切換 (倒座標 vs 卡氏座標)
+    document.querySelectorAll('input[name="vasp-coord-mode"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        refreshPreview();
+      });
     });
 
     ['export-charge', 'export-mult', 'export-route'].forEach(id => {
@@ -1064,7 +1088,8 @@ class App {
         tinker: 'arc',
         lammps: 'data'
       };
-      const filename = fmt === 'vasp' ? 'POSCAR' : (fmt === 'lammps' ? 'structure.data' : `structure.${extMap[fmt] || 'txt'}`);
+      const isVasp = (fmt === 'vasp');
+      const filename = isVasp ? 'POSCAR' : (fmt === 'lammps' ? 'structure.data' : `structure.${extMap[fmt] || 'txt'}`);
       const blob = new Blob([textarea.value], { type: 'text/plain;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -1490,13 +1515,17 @@ class App {
   }
 
   /**
-   * 開啟 Materials Studio 密勒指數表面切割彈窗
+   * 開啟 Materials Studio 密勒指數表面切割懸浮面板
    */
   openCleaverModal() {
     if (!this.structure || !this.structure.cell) {
       this.showToast('表面切割需要週期性塊材晶體 (Bulk) 結構！');
       return;
     }
+    // 關閉可能重疊的外觀面版
+    const appDock = document.getElementById('appearance-dock');
+    if (appDock) appDock.style.display = 'none';
+
     const modal = document.getElementById('modal-cleaver');
     if (modal) {
       modal.classList.add('show');
@@ -1505,10 +1534,26 @@ class App {
   }
 
   /**
-   * 即時計算並更新表面切割之幾何資訊 (d_hkl、面內基向量、層數與厚度換算)
+   * 關閉 Materials Studio 表面切割面板並隱藏 3D 預覽輔助圖元
+   */
+  closeCleaverModal() {
+    const modal = document.getElementById('modal-cleaver');
+    if (modal) {
+      modal.classList.remove('show');
+    }
+    if (this.renderer) {
+      this.renderer.hideCleavePreview();
+    }
+  }
+
+  /**
+   * 即時計算並更新表面切割之幾何資訊與 3D 虛線框/截面即時預覽 (MS Style)
    */
   updateCleaveInfo() {
-    if (!this.structure || !this.structure.cell) return;
+    if (!this.structure || !this.structure.cell) {
+      if (this.renderer) this.renderer.hideCleavePreview();
+      return;
+    }
     const h = parseInt(document.getElementById('cleave-h')?.value, 10) || 0;
     const k = parseInt(document.getElementById('cleave-k')?.value, 10) || 0;
     const l = parseInt(document.getElementById('cleave-l')?.value, 10) || 0;
@@ -1523,12 +1568,14 @@ class App {
       if (uEl) uEl.textContent = '-';
       if (vEl) vEl.textContent = '-';
       if (hintEl) hintEl.textContent = '-';
+      if (this.renderer) this.renderer.hideCleavePreview();
       return;
     }
 
     const planeInfo = Crystal.calculatePlaneSpacing(this.structure.cell, h, k, l);
     if (!planeInfo) {
       if (dhklEl) dhklEl.textContent = '計算失敗 (晶格退化)';
+      if (this.renderer) this.renderer.hideCleavePreview();
       return;
     }
 
@@ -1538,14 +1585,31 @@ class App {
 
     // 更新厚度提示
     const mode = document.querySelector('input[name="cleave-thick-mode"]:checked')?.value || 'layers';
+    let layers = 3;
+    let targetThick = 10.0;
     if (mode === 'layers') {
-      const layers = parseInt(document.getElementById('cleave-layers')?.value, 10) || 1;
+      layers = parseInt(document.getElementById('cleave-layers')?.value, 10) || 1;
       const approxThick = layers * planeInfo.d_hkl;
       if (hintEl) hintEl.textContent = `≈ ${approxThick.toFixed(2)} Å`;
     } else {
-      const targetThick = parseFloat(document.getElementById('cleave-target-thickness')?.value) || 10.0;
-      const approxLayers = Math.max(1, Math.ceil(targetThick / planeInfo.d_hkl));
-      if (hintEl) hintEl.textContent = `≈ ${approxLayers} 層 (${(approxLayers * planeInfo.d_hkl).toFixed(2)} Å)`;
+      targetThick = parseFloat(document.getElementById('cleave-target-thickness')?.value) || 10.0;
+      layers = Math.max(1, Math.ceil(targetThick / planeInfo.d_hkl));
+      if (hintEl) hintEl.textContent = `≈ ${layers} 層 (${(layers * planeInfo.d_hkl).toFixed(2)} Å)`;
+    }
+
+    const shift = parseFloat(document.getElementById('cleave-shift-slider')?.value) || 0;
+
+    // 3D 即時預覽 (Materials Studio Style: 立體虛線晶格框與平移截面)
+    const previewEnabled = document.getElementById('cleave-preview-toggle')?.checked ?? true;
+    if (previewEnabled && this.renderer) {
+      this.renderer.updateCleavePreview(this.structure, {
+        h, k, l,
+        layers: mode === 'layers' ? layers : undefined,
+        thickness: mode === 'thickness' ? targetThick : undefined,
+        shift
+      });
+    } else if (this.renderer) {
+      this.renderer.hideCleavePreview();
     }
   }
 
@@ -1553,6 +1617,15 @@ class App {
    * 綁定 Materials Studio 表面切割彈窗之各項互動控制
    */
   bindCleaverModalEvents() {
+    // 關閉按鈕與取消按鈕
+    document.getElementById('btn-close-cleaver')?.addEventListener('click', () => this.closeCleaverModal());
+    document.getElementById('btn-cancel-cleave')?.addEventListener('click', () => this.closeCleaverModal());
+
+    // 預覽切換核取方塊
+    document.getElementById('cleave-preview-toggle')?.addEventListener('change', () => {
+      this.updateCleaveInfo();
+    });
+
     // 快捷晶面按鈕 (001, 100, 110, 111)
     document.querySelectorAll('.btn-preset-hkl').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -1600,7 +1673,7 @@ class App {
       thickInput.addEventListener('input', () => this.updateCleaveInfo());
     }
 
-    // 截面平移 (Shift) 滑桿與數字雙向同步
+    // 截面平移 (Shift) 滑桿與數字雙向同步 + 即時 3D 切面更新
     const shiftSlider = document.getElementById('cleave-shift-slider');
     const shiftInput = document.getElementById('cleave-shift-input');
     const shiftValSpan = document.getElementById('cleave-shift-val');
@@ -1610,12 +1683,14 @@ class App {
         const val = parseFloat(e.target.value) || 0;
         shiftInput.value = val.toFixed(2);
         if (shiftValSpan) shiftValSpan.textContent = val.toFixed(2);
+        this.updateCleaveInfo();
       });
       shiftInput.addEventListener('input', (e) => {
         let val = parseFloat(e.target.value) || 0;
         val = Math.max(0, Math.min(1, val));
         shiftSlider.value = val;
         if (shiftValSpan) shiftValSpan.textContent = val.toFixed(2);
+        this.updateCleaveInfo();
       });
     }
 
@@ -1669,11 +1744,11 @@ class App {
         });
 
         if (success) {
+          this.closeCleaverModal();
           this.renderer.resetCamera(this.structure);
           this.renderer.update(this.structure);
           this.updateUI();
           this.showToast(`已生成 (${h} ${k} ${l}) Materials Studio 表面 Slab 模型`);
-          document.getElementById('modal-cleaver')?.classList.remove('show');
         }
       });
     }

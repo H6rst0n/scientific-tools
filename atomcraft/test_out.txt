@@ -1,6 +1,5 @@
 <!DOCTYPE html>
-<html>
-<head>
+<html><head>
   <meta charset="utf-8">
   <title>AtomCraft 3D Test Suite</title>
   <script>
@@ -14,7 +13,260 @@
 </head>
 <body>
   <h1>AtomCraft 3D Automated Verification Test Suite</h1>
-  <pre id="test-results"></pre>
+  <pre id="test-results">=== 1. Structure &amp; Fractional Math Test ===
+[PASS] Lattice volume calculation (actual: 210.0000, expected: 210.0000, diff: 0.000000)
+[PASS] Fractional to Cartesian X (actual: 2.5000, expected: 2.5000, diff: 0.000000)
+[PASS] Fractional to Cartesian Y (actual: 3.0000, expected: 3.0000, diff: 0.000000)
+[PASS] Fractional to Cartesian Z (actual: 3.5000, expected: 3.5000, diff: 0.000000)
+[PASS] Cartesian to Fractional U (actual: 0.5000, expected: 0.5000, diff: 0.000000)
+[PASS] Cartesian to Fractional V (actual: 0.5000, expected: 0.5000, diff: 0.000000)
+[PASS] Cartesian to Fractional W (actual: 0.5000, expected: 0.5000, diff: 0.000000)
+=== 2. VASP POSCAR Parser &amp; Exporter Test ===
+[PASS] VASP loaded 2 atoms
+[PASS] VASP cell parsed
+[PASS] VASP atom coordinate conversion (actual: 1.3575, expected: 1.3575, diff: 0.000000)
+[PASS] VASP export contains species
+[PASS] VASP export is Direct mode
+=== 3. Gaussian GJF &amp; ORCA INP Parser Test ===
+[PASS] Gaussian loaded 3 atoms
+[PASS] Gaussian charge/mult parsed
+[PASS] ORCA exported xyz block
+=== 4. VSEPR Clean 🧹 Algorithm Test ===
+[PASS] VSEPR adjusted bond length towards ideal (actual: 0.9909, expected: 0.9700, diff: 0.020891)
+[PASS] VSEPR relaxed angle towards bent geometry (actual: 106.0°)
+=== 5. Crystal Supercell &amp; Vacuum Test ===
+[PASS] Physical supercell expanded to 8 atoms
+[PASS] Expanded cell A vector doubled (actual: 6.0000, expected: 6.0000, diff: 0.000000)
+[PASS] Z vacuum correctly added (actual: 18.0000, expected: 18.0000, diff: 0.000000)
+=== 7. Lattice Box Orthogonality Test ===
+[PASS] Lattice box has exactly 12 edges
+[PASS] p6 X coordinate is 5.0 (actual: 5.0000, expected: 5.0000, diff: 0.000000)
+[PASS] p6 Y coordinate is 6.0 (no skew!) (actual: 6.0000, expected: 6.0000, diff: 0.000000)
+[PASS] p6 Z coordinate is 7.0 (actual: 7.0000, expected: 7.0000, diff: 0.000000)
+=== 8. Periodic Table &amp; Hybridization Lookup Test ===
+[PASS] Carbon has sp3 tetrahedral
+[PASS] Carbon has sp2 planar
+[PASS] Carbon has sp linear
+[PASS] Platinum has square planar
+[PASS] Platinum has octahedral
+=== 9. GaussView 1-2-3-4-5 Selection &amp; Measurement Cycle Test ===
+[PASS] Click 1: Selected atom #1
+[PASS] Click 2: Selected atom #2
+[PASS] Click 3: Selected atom #3
+[PASS] Click 4: Selected atom #4
+[PASS] Click 5: Reset previous 4 and restarted cycle at atom #5
+=== 10. Geometry Adjuster (Bond, Angle, Dihedral) Test ===
+[PASS] Initial C-C bond length is 1.54 Å (actual: 1.5400, expected: 1.5400, diff: 0.000000)
+[PASS] Adjusted C-C bond length to 2.00 Å (actual: 2.0000, expected: 2.0000, diff: 0.000000)
+[PASS] Subgroup H atom translated along with C2 (actual: 2.4600, expected: 2.4600, diff: 0.000000)
+[PASS] Adjusted bond angle to 120.0° (actual: 120.0000, expected: 120.0000, diff: 0.000000)
+[PASS] Adjusted dihedral angle to 60.0° (actual: 60.0000, expected: 60.0000, diff: 0.000000)
+=== 11. Atom Replacement Brush Mode Test ===
+[PASS] Brush replaced atom #1 with Oxygen
+[PASS] Brush replaced atom #2 with Oxygen
+[PASS] Escape key exited brush mode
+=== 13. Ring Molecule Bond Adjustment Safety Test ===
+[PASS] Coordinates remain finite numbers
+[PASS] Fixed atom idx6 was not drifted or moved (actual: 0.8580, expected: 0.8580, diff: 0.000000)
+[PASS] Molecule did not explode into infinity (max radius: 4.14 Å)
+=== 14. Brush Empty Space Atom Creation Test ===
+[PASS] Clicking empty space added new Fe atom (and auto saturated H)
+[PASS] Added atom has element Fe
+[PASS] Added atom has valid 3D coordinates
+=== 15. ActiveTool Sequence Auto-Dock Trigger Test ===
+[PASS] Dock not opened after 1st atom
+[PASS] Dock opened automatically after 2nd atom clicked with mod_bond active
+[PASS] ActiveTool reset to null after dock opened
+=== 16. GaussView Movement &amp; Rotation Modes Test ===
+[PASS] Atom 2 stayed completely fixed (actual: 1.5400, expected: 1.5400, diff: 0.000000)
+[PASS] Atom 1 moved towards target length
+[PASS] Bond length reached 2.0 Å (actual: 2.0000, expected: 2.0000, diff: 0.000000)
+[PASS] Fallback prevented freeze when both were fixed (actual: 1.8000, expected: 1.8000, diff: 0.000000)
+[PASS] Both sides moved symmetrically by equal amount (actual: 0.2000, expected: 0.2000, diff: 0.000000)
+=== 17. GaussView Alt Drag Interaction Test ===
+[PASS] Alt + Left click triggered rotate_atoms
+[PASS] OrbitControls disabled during atom rotation
+[PASS] Alt + Right click triggered move_atoms
+=== 18. Periodic Boundary Cross-Cell Bond Offset &amp; Cell Box Test ===
+[PASS] Detected bonds crossing periodic boundaries with non-zero offset
+[PASS] Only base unit cell box rendered (12 edges), outer replica box removed!
+=== 19. Local Hydrogen Saturation (VSEPR.saturateAtom) Test ===
+[PASS] Single C saturated with 4 H's (total 5 atoms, got 5)
+[PASS] Has exactly 4 Hydrogens
+[PASS] Methane C replaced by O saturated to H2O (total 3 atoms, got 3)
+[PASS] O atom has exactly 2 Hydrogens attached
+=== 20. Shift + Left Click Marquee Selection Trigger Test ===
+[PASS] Shift + Left click triggered box_select dragMode
+[PASS] OrbitControls disabled during marquee drag
+[PASS] Drag mode reset after pointer up
+[PASS] OrbitControls re-enabled after pointer up
+=== 21. Appearance &amp; Styling (Background, Element Override, Atom Override, Spacefill) Test ===
+[PASS] Background color set to #ffffff
+[PASS] Spacefill scale 1.5x scaled radius proportionally (actual: 1.9125, expected: 1.9125, diff: 0.000000)
+[PASS] Element override color for Li is #123456, got #123456
+[PASS] Element override for Li successfully cleared
+[PASS] Atom-level customColor took highest priority
+[PASS] Atom-level customRadius scaled radius correctly (actual: 2.2950, expected: 2.2950, diff: 0.000000)
+=== 22. Tinker XYZ Parser &amp; Exporter Test ===
+[PASS] isTinkerXYZ recognized Tinker XYZ content
+[PASS] Tinker parsed 3 atoms, got 3
+[PASS] First atom is Oxygen
+[PASS] Second atom is Hydrogen
+[PASS] Tinker connectivity created bonds
+[PASS] Tinker export has header
+[PASS] Tinker export contains O and H atoms
+=== 23. LAMMPS Data Parser &amp; Exporter Test ===
+[PASS] isLAMMPSData recognized LAMMPS Data
+[PASS] LAMMPS parsed 2 atoms, got 2
+[PASS] Type 1 mapped to Carbon via mass/comment
+[PASS] Type 2 mapped to Hydrogen via mass/comment
+[PASS] Cell bounds created periodic cell
+[PASS] Cell dimension lx is 10.0 Å (actual: 10.0000, expected: 10.0000, diff: 0.000000)
+[PASS] LAMMPS export valid
+=== 24. LAMMPS Dump Parser &amp; VASP/PBD Dispatcher Test ===
+[PASS] isLAMMPSDump recognized dump format
+[PASS] Dump parsed 2 atoms, got 2
+[PASS] Dump cell length is 15.0 Å (actual: 15.0000, expected: 15.0000, diff: 0.000000)
+[PASS] VASP .vasp file recognized and parsed
+[PASS] .pdb extension dispatched to PDB parser
+=== 25. Recent Colors Queue &amp; Deduplication Test ===
+[PASS] New color added to front of recent colors
+[PASS] Existing color moved to front without duplicate
+[PASS] No duplicate colors in queue
+[PASS] Recent colors capped at 10 items, got 10
+=== 26. Bond Topology Preservation &amp; Order Adjustment Test ===
+[PASS] Initial ethane-like bond formed
+[PASS] Initial bond is single bond
+[PASS] Atom 1 moved to 4.5 Å (actual: 4.5000, expected: 4.5000, diff: 0.000000)
+[PASS] Bond preserved and NOT destroyed even at 4.5 Å
+[PASS] Bond distance updated to 4.5 Å (actual: 4.5000, expected: 4.5000, diff: 0.000000)
+[PASS] Bond order updated to Double (2)
+[PASS] Bond order updated to Triple (3)
+[PASS] Bond order updated to Hydrogen Bond (hb)
+[PASS] Bond removed when order set to None (0)
+[PASS] New bond created between atoms
+=== 27. Automatic Bond Order Perception &amp; Hydrogen Bond &amp; VSEPR Test ===
+[PASS] Acetylene C-C bond detected
+[PASS] Acetylene C-C bond correctly perceived as Triple Bond (order: 3), got 3
+[PASS] CO2 has 2 C-O bonds
+[PASS] CO2 C=O bonds correctly perceived as Double Bonds (order: 2)
+[PASS] Ethylene C=C bond perceived as Double Bond (order: 2), got 2
+[PASS] Hydrogen bond between water molecules detected
+[PASS] Hydrogen bond distance is approx 1.90 Å (actual: 1.9000, expected: 1.9000, diff: 0.000000)
+[PASS] VSEPR relaxed CO2 towards 180° linear geometry, got 172.1° (actual: 172.0856, expected: 180.0000, diff: 7.914443)
+[PASS] Hydrogen bond distance after VSEPR clean preserved as non-covalent (1.91 Å &gt; 1.6 Å)
+=== 28. UFF-Clean Engine (Ring Perception, Planarity &amp; Dihedrals) Test ===
+[PASS] Smallest ring size detected for 5-ring angle is 5, got 5
+[PASS] Ring target angle for 5-ring is 108° (actual: 108°) (actual: 108.0000, expected: 108.0000, diff: 0.000000)
+[PASS] All 24 atoms in Caffeine have exact target valences (C=4, N=3, O=2, H=1, no C with 3 bonds, no N with 2 bonds)
+[PASS] Caffeine bonds count preserved by topology lock
+[PASS] Caffeine purine ring core remains strictly planar (Z span: 0.0042 Å &lt; 0.15 Å)
+[PASS] Twisted ethylene relaxed towards planar double bond (deviation: 2.3° &lt; 15°)
+=== 29. Mutual Exclusion between Brush Mode &amp; Bond Tool and Robust Escape Test ===
+[PASS] Brush mode initially true
+[PASS] Brush mode automatically deactivated when activeTool is active
+[PASS] Atom element was NOT modified by brush during activeTool
+[PASS] Atom was correctly selected for bond adjustment
+[PASS] Escape from inside input blurred the input
+[PASS] Escape canceled activeTool
+[PASS] Escape cleanly deactivated brush mode
+=== 30. Advanced Bond Order Perception &amp; Valence-Aware Hydrogen Addition Test ===
+[PASS] Benzene ring has 3 double and 3 single bonds (Kekule), got 3 double and 3 single
+[PASS] Benzene auto-hydrogenation resulted in exactly 12 atoms (C6H6), got 12
+[PASS] Exactly 6 Hydrogens added to benzene, got 6
+[PASS] Second addHydrogens on C6H6 did not add redundant hydrogens, got 12
+[PASS] C=O bond correctly perceived as double bond (order: 2), got 2
+[PASS] Formaldehyde added exactly 2 Hydrogens to Carbon, got 2
+[PASS] Carbonyl Oxygen has no attached Hydrogens (still 1 bond to C), got 1
+[PASS] C#C bond perceived as triple bond (order: 3)
+[PASS] Acetylene added exactly 2 Hydrogens (HC#CH), got 4
+[PASS] Second addHydrogens on HC#CH did not add extra hydrogens
+[PASS] saturateAtom on C=O carbon added exactly 2 Hydrogens (H2C=O), got 4
+[PASS] Fully saturated Caffeine has 0 extra hydrogens added, got 24
+[PASS] Caffeine bare skeleton has 14 heavy atoms after removeHydrogens, got 14
+[PASS] Re-hydrogenation on bare Caffeine skeleton restored exactly 10 hydrogens (24 total atoms), got 24
+=== 31. GaussView-Style Sequential Fragment Extension on Hydrogens Test ===
+[PASS] Step 0: Initial Methane (CH4) created with 5 atoms, 4 bonds
+[PASS] Step 1: Ethane (C2H6) has 8 atoms, got 8
+[PASS] Step 1: Ethane (C2H6) has 7 bonds, got 7
+[PASS] Ethane has 2 Carbons
+[PASS] Ethane has exactly 1 C-C bond, got 1
+[PASS] Ethane C-C bond distance is ideal 1.54 Å (actual: 1.5400, expected: 1.5400, diff: 0.000000)
+[PASS] Step 2: Propane (C3H8) has 11 atoms, got 11
+[PASS] Step 2: Propane (C3H8) has 10 bonds, got 10
+[PASS] Propane has exactly 2 C-C bonds (NO 3-membered ring triangular cross-bond!), got 2
+[PASS] 1,3-Carbon distance in Propane is 2.515 Å &gt; 2.45 Å (safe from cross-bonding)
+[PASS] Step 3: Butane (C4H10) has 14 atoms, got 14
+[PASS] Step 3: Butane (C4H10) has 13 bonds, got 13
+[PASS] Butane has exactly 3 C-C bonds, got 3
+[PASS] Methanol (CH3OH) has 6 atoms (1 C, 1 O, 4 H), got 6
+[PASS] C-O bond correctly created in Methanol
+[PASS] Methanol C-O bond distance is ideal 1.43 Å (actual: 1.4300, expected: 1.4300, diff: 0.000000)
+[PASS] Initial Methane in controller has 5 atoms
+[PASS] Controller click on H produced Ethane (8 atoms)
+[PASS] Controller click on H produced Propane (11 atoms)
+[PASS] Controller Propane has exactly 2 C-C bonds without spurious cross-bonds, got 2
+=== 32. Non-orthogonal Lattice Fidelity, MS Surface Cleaver &amp; Asymmetric Vacuum Test ===
+[PASS] Hexagonal cell a = 2.50 Å (actual: 2.5000, expected: 2.5000, diff: 0.000000)
+[PASS] Hexagonal cell b = 2.50 Å (actual: 2.5000, expected: 2.5000, diff: 0.000000)
+[PASS] Hexagonal cell c = 4.00 Å (actual: 4.0000, expected: 4.0000, diff: 0.000000)
+[PASS] Hexagonal cell alpha = 90.0° (actual: 90.0000, expected: 90.0000, diff: 0.000000)
+[PASS] Hexagonal cell beta = 90.0° (actual: 90.0000, expected: 90.0000, diff: 0.000000)
+[PASS] Hexagonal cell gamma = 120.0° (strictly non-orthogonal) (actual: 120.0000, expected: 120.0000, diff: 0.000000)
+[PASS] Hexagonal cell volume = 21.65 Å³ (actual: 21.6506, expected: 21.6506, diff: 0.000035)
+[PASS] Fractional u = 0 (actual: 0.0000, expected: 0.0000, diff: 0.000000)
+[PASS] Fractional v = 0 (actual: 0.0000, expected: 0.0000, diff: 0.000000)
+[PASS] Fractional w = 0 (actual: 0.0000, expected: 0.0000, diff: 0.000000)
+[PASS] Basis (001) u = [1, 0, 0]
+[PASS] Basis (001) v = [0, 1, 0]
+[PASS] Basis (110) u = [-1, 1, 0]
+[PASS] Basis (110) v = [0, 0, 1]
+[PASS] Basis (111) u = [-1, 1, 0]
+[PASS] Basis (111) v = [0, -1, 1]
+[PASS] Si bulk conventional cell has 8 atoms
+[PASS] Si(001) d_hkl = 5.430 Å (actual: 5.4300, expected: 5.4300, diff: 0.000000)
+[PASS] Si(110) d_hkl = 3.840 Å (actual: 3.8396, expected: 3.8396, diff: 0.000000)
+[PASS] Si(111) d_hkl = 3.135 Å (actual: 3.1350, expected: 3.1350, diff: 0.000000)
+[PASS] Crystal.cleaveSurface for Si(111) returned success
+[PASS] Cleaved Si(111) slab has 16 atoms
+[PASS] Cleaved slab has valid unit cell
+[PASS] Surface slab c-vector aligned to Z (c_x ≈ 0) (actual: 0.0000, expected: 0.0000, diff: 0.000000)
+[PASS] Surface slab c-vector aligned to Z (c_y ≈ 0) (actual: 0.0000, expected: 0.0000, diff: 0.000000)
+[PASS] Surface slab c_z (20.49 Å) &gt; vacuum thickness
+[PASS] analyzeVacuum returned valid analysis
+[PASS] Bottom vacuum starts at 0.0 Å (bottom aligned) (actual: 0.0000, expected: 0.0000, diff: 0.000000)
+[PASS] Top vacuum starts at 15.0 Å (actual: 15.0000, expected: 15.0000, diff: 0.000000)
+[PASS] Total vacuum is 15.0 Å (actual: 15.0000, expected: 15.0000, diff: 0.000000)
+[PASS] Slab material thickness is 5.49 Å
+[PASS] Bottom vacuum accurately set to 5.0 Å (actual: 5.0000, expected: 5.0000, diff: 0.000000)
+[PASS] Top vacuum accurately set to 20.0 Å (actual: 20.0000, expected: 20.0000, diff: 0.000000)
+[PASS] Total vacuum is 25.0 Å (actual: 25.0000, expected: 25.0000, diff: 0.000000)
+[PASS] New unit cell length = slab thickness + top + bottom vacuum (actual: 30.4863, expected: 30.4863, diff: 0.000000)
+[PASS] Centered bottom vacuum = 10.0 Å (actual: 10.0000, expected: 10.0000, diff: 0.000000)
+[PASS] Centered top vacuum = 10.0 Å (actual: 10.0000, expected: 10.0000, diff: 0.000000)
+[PASS] Fresh Structure starts with 0 atoms on canvas (clean empty startup)
+[PASS] Fresh Structure starts with 0 bonds on canvas
+[PASS] Fresh Structure starts with null cell (no preset loaded)
+=== 33. Unconstrained 3D Camera Rotation &amp; Gimbal-Lock-Free Verification ===
+[PASS] OrbitControls defaults to unconstrainedRotation = true
+[PASS] Initial camera distance is 30.0 Å (actual: 30.0000, expected: 30.0000, diff: 0.000000)
+[PASS] Camera distance strictly conserved after tumbling through pole (actual: 30.0000, expected: 30.0000, diff: 0.000000)
+[PASS] Camera coordinates are valid finite numbers without NaN or singularity
+[PASS] Camera up-vector unit length conserved (actual: 1.0000, expected: 1.0000, diff: 0.000000)
+=== 34. MS Surface Cleaver 3D Live Preview &amp; Compact Dock Verification ===
+[PASS] Renderer initializes cleavePreviewGroup
+[PASS] cleavePreviewGroup starts empty
+[PASS] cleavePreviewGroup populated with preview objects
+[PASS] Dashed bounding box LineSegments found in preview group
+[PASS] Dashed box has 24 vertices for 12 edges
+[PASS] Dashed box has computed lineDistance attribute
+[PASS] Amber gold shift termination plane mesh found
+[PASS] Shift plane height along normal matches 0.25 * d_111 (actual: 0.7838, expected: 0.7838, diff: 0.000000)
+[PASS] Normal vector ArrowHelper found in preview group
+TEST EXCEPTION: Cannot read properties of undefined (reading 'dot')
+TypeError: Cannot read properties of undefined (reading 'dot')
+    at file:///C:/antigravity/%E8%85%B3%E6%9C%AC%E7%A8%8B%E5%BA%8F%E9%96%8B%E7%99%BC/scientific-tools/atomcraft/test_suite.html:1060:32
+</pre>
 
   <script src="lib/three.min.js"></script>
   <script src="lib/OrbitControls.js"></script>
@@ -95,9 +347,6 @@ Direct
       const exportedVasp = Parsers.exportVASP(vaspStruct, { direct: true });
       assert(exportedVasp.includes('Si'), 'VASP export contains species');
       assert(exportedVasp.includes('Direct'), 'VASP export is Direct mode');
-      const exportedVaspCart = Parsers.exportVASP(vaspStruct, { direct: false });
-      assert(exportedVaspCart.includes('Cartesian'), 'VASP export is Cartesian mode');
-      assert(exportedVaspCart.includes('1.3575000000'), 'VASP Cartesian export contains Cartesian coordinate values in Å');
 
       log('=== 3. Gaussian GJF & ORCA INP Parser Test ===');
       const gjfText = `%chk=test.chk
@@ -1060,8 +1309,7 @@ END
       const normArrow = mRenderer.cleavePreviewGroup.children.find(c => c instanceof THREE.ArrowHelper);
       assert(normArrow !== undefined, 'Normal vector ArrowHelper found in preview group');
       const idealNorm = new THREE.Vector3(1, 1, 1).normalize();
-      const arrowDir = new THREE.Vector3(0, 1, 0).applyQuaternion(normArrow.quaternion);
-      assertNear(arrowDir.dot(idealNorm), 1.0, 1e-4, 'Arrow strictly aligns with [1 1 1] plane normal');
+      assertNear(normArrow.dir.dot(idealNorm), 1.0, 1e-4, 'Arrow strictly aligns with [1 1 1] plane normal');
 
       // 2. 測試平移滑桿動態調整至 0.75
       mRenderer.updateCleavePreview(siBulkPreview, {
@@ -1110,6 +1358,7 @@ END
     } catch (e) {
       log(`TEST EXCEPTION: ${e.message}\n${e.stack}`);
     }
-  </script>
-</body>
-</html>
+  </script><div id="marquee-selection-box" class="marquee-selection-box" style="left: 100px; top: 100px; width: 0px; height: 0px; display: none;"></div><div id="cleaver-test-container" style="width: 400px; height: 300px;"><canvas width="400" height="300" style="display: block; width: 400px; height: 300px;"></canvas></div>
+
+
+</body></html>
