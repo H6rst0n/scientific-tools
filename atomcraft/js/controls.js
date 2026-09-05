@@ -250,7 +250,16 @@ class InteractionController {
       if (pickedIdx >= 0) {
         this.app.pushHistory();
         const clickedAtom = this.structure.atoms[pickedIdx];
-        if (clickedAtom.element === 'H') {
+        const oldElem = clickedAtom.element;
+
+        if (this.activeHybrid === 'single_atom') {
+          // 【GaussView 風格單一原子純替換 (Single Atom Substitution)】
+          // 純 1-to-1 替換單一原子，保持現有鍵結拓撲，沿鍵軸自動調整理想鍵長，不額外生成或移除其他原子
+          VSEPR.replaceSingleAtom(this.structure, pickedIdx, this.brushElement);
+          this.renderer.update(this.structure);
+          this.app.updateUI();
+          this.app.showToast(`已將原子 #${pickedIdx + 1} (${oldElem}) 替換為單一原子 ${this.brushElement}`);
+        } else if (clickedAtom.element === 'H') {
           // 【GaussView 風格片段接枝 / 混成延伸 (Attach Fragment on Hydrogen)】
           // 點選氫原子：以理想單鍵長延伸並附接新混成片段，自動以交叉式 (Staggered) 立體構型飽和補氫
           VSEPR.attachFragment(this.structure, pickedIdx, this.brushElement, this.activeHybrid);
@@ -260,7 +269,6 @@ class InteractionController {
         } else {
           // 【GaussView 風格原子元素突變 / 置換 (Element Mutation on Heavy Atom)】
           // 點選重原子：原位替換元素並自動重新飽和配位 (如 C 變 N 減氫、C 變 O 變醇)
-          const oldElem = clickedAtom.element;
           clickedAtom.element = this.brushElement;
           VSEPR.saturateAtom(this.structure, pickedIdx, this.activeHybrid);
           this.renderer.update(this.structure);
@@ -268,7 +276,7 @@ class InteractionController {
           this.app.showToast(`已將原子 #${pickedIdx + 1} (${oldElem}) 替換為 ${this.brushElement} 並自動重新飽和`);
         }
       } else {
-        // 點擊空白處：在相機視野目標平面上新增原子，並自動進行局部補氫 (如放 C 自動生成 CH4)
+        // 點擊空白處：在相機視野目標平面上新增原子
         this.app.pushHistory();
         const rect = this.renderer.container ? this.renderer.container.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
         const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -292,13 +300,25 @@ class InteractionController {
         if (hitPoint) {
           this.structure.addAtom(this.brushElement, hitPoint.x, hitPoint.y, hitPoint.z);
           const newIdx = this.structure.atoms.length - 1;
-          VSEPR.saturateAtom(this.structure, newIdx, this.activeHybrid);
-          this.renderer.update(this.structure);
-          if (this.structure.atoms.length === 1) {
-            this.renderer.resetCamera(this.structure);
+
+          if (this.activeHybrid === 'single_atom') {
+            this.structure.syncFractionalFromCartesian();
+            this.structure.detectBonds();
+            this.renderer.update(this.structure);
+            if (this.structure.atoms.length === 1) {
+              this.renderer.resetCamera(this.structure);
+            }
+            this.app.updateUI();
+            this.app.showToast(`已在空白處新增單一 ${this.brushElement} 原子 (#${newIdx + 1})`);
+          } else {
+            VSEPR.saturateAtom(this.structure, newIdx, this.activeHybrid);
+            this.renderer.update(this.structure);
+            if (this.structure.atoms.length === 1) {
+              this.renderer.resetCamera(this.structure);
+            }
+            this.app.updateUI();
+            this.app.showToast(`已在空白處新增 ${this.brushElement} 原子並自動補氫 (#${newIdx + 1})`);
           }
-          this.app.updateUI();
-          this.app.showToast(`已在空白處新增 ${this.brushElement} 原子並自動補氫 (#${newIdx + 1})`);
         }
       }
       return;

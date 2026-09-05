@@ -1189,6 +1189,95 @@ const VSEPR = {
 
     structure.syncFractionalFromCartesian();
     structure.detectBonds();
+  },
+
+  /**
+   * GaussView 風格單一原子純替換 (1-to-1 Atom Substitution)
+   * 替換單一原子元素，保持既有分子鍵結拓撲，不自動加氫或接枝片段
+   * 自動沿鍵軸向調整理想共價鍵長 (例如 CH4 中將 H 替換為 F，自動將 C-H 1.09 Å 調整為 C-F 1.33~1.35 Å)
+   * @param {Structure} structure
+   * @param {number} atomIndex 目標原子索引
+   * @param {string} newElement 新元素符號 (例如 'F', 'Cl', 'O', 'N', 'C', 'Si')
+   * @returns {boolean} 是否成功替換
+   */
+  replaceSingleAtom(structure, atomIndex, newElement) {
+    if (!structure || atomIndex < 0 || atomIndex >= structure.atoms.length) return false;
+    const target = structure.atoms[atomIndex];
+    if (!target) return false;
+
+    structure.detectBonds();
+
+    // 尋找與該原子鍵結的所有鄰居
+    const nbrs = [];
+    for (const b of structure.bonds) {
+      if (b.order === 'hb') continue;
+      if (b.a === atomIndex) nbrs.push(b.b);
+      else if (b.b === atomIndex) nbrs.push(b.a);
+    }
+
+    // 若未成鍵，嘗試尋找最近鄰原子 (Cutoff 2.2 Å)
+    if (nbrs.length === 0) {
+      let nearestIdx = -1;
+      let nearestDist = Infinity;
+      for (let i = 0; i < structure.atoms.length; i++) {
+        if (i === atomIndex) continue;
+        const a = structure.atoms[i];
+        const d = Math.hypot(a.x - target.x, a.y - target.y, a.z - target.z);
+        if (d < nearestDist && d <= 2.2) {
+          nearestDist = d;
+          nearestIdx = i;
+        }
+      }
+      if (nearestIdx !== -1) {
+        nbrs.push(nearestIdx);
+      }
+    }
+
+    if (nbrs.length === 1) {
+      // 單配位/末端原子 (例如 CH4 上的 H 換成 F, 或苯環上的 H 換成 Br)
+      const parent = structure.atoms[nbrs[0]];
+      let ux = target.x - parent.x;
+      let uy = target.y - parent.y;
+      let uz = target.z - parent.z;
+      const uLen = Math.hypot(ux, uy, uz);
+      if (uLen < 1e-4) {
+        ux = 0; uy = 0; uz = 1;
+      } else {
+        ux /= uLen; uy /= uLen; uz /= uLen;
+      }
+
+      const idealDist = VSEPR.getIdealBondLength(parent.element, newElement);
+      target.x = parent.x + ux * idealDist;
+      target.y = parent.y + uy * idealDist;
+      target.z = parent.z + uz * idealDist;
+      target.element = newElement;
+    } else if (nbrs.length > 1) {
+      // 多配位原子 (例如將中心 C 替換為 Si)
+      target.element = newElement;
+      // 若鄰居中有氫原子，微調氫原子距離以符合新元素的理想鍵長
+      for (const nbrIdx of nbrs) {
+        const nbrAtom = structure.atoms[nbrIdx];
+        if (nbrAtom.element === 'H') {
+          let vx = nbrAtom.x - target.x;
+          let vy = nbrAtom.y - target.y;
+          let vz = nbrAtom.z - target.z;
+          const vLen = Math.hypot(vx, vy, vz);
+          const idealH = VSEPR.getIdealBondLength(newElement, 'H');
+          if (vLen > 1e-4) {
+            nbrAtom.x = target.x + (vx / vLen) * idealH;
+            nbrAtom.y = target.y + (vy / vLen) * idealH;
+            nbrAtom.z = target.z + (vz / vLen) * idealH;
+          }
+        }
+      }
+    } else {
+      // 孤立原子
+      target.element = newElement;
+    }
+
+    structure.syncFractionalFromCartesian();
+    structure.detectBonds();
+    return true;
   }
 };
 

@@ -1104,6 +1104,69 @@ END
       mRenderer.hideCleavePreview();
       assert(mRenderer.cleavePreviewGroup.children.length === 0, 'hideCleavePreview completely clears preview group');
 
+      log('=== 35. Single Atom Replacement (e.g. CH4: H -> F, H -> Cl, C -> Si) Test ===');
+      // 1. 建立甲烷 CH4
+      const ch4 = PRESETS.methane.build();
+      assert(ch4.atoms.length === 5, 'Methane has 5 atoms initially');
+      assert(ch4.getFormula() === 'C H4', 'Initial formula is C H4');
+
+      // 2. 將其中一個 H 替換為 F (CH4 -> CH3F 氟甲烷)
+      const hIdx1 = ch4.atoms.findIndex(a => a.element === 'H');
+      assert(hIdx1 !== -1, 'Found H atom in CH4');
+      const successF = VSEPR.replaceSingleAtom(ch4, hIdx1, 'F');
+      assert(successF === true, 'replaceSingleAtom returned true for F');
+      assert(ch4.atoms.length === 5, 'Atom count strictly remains 5 (no extra atoms added)');
+      assert(ch4.atoms[hIdx1].element === 'F', 'Target atom element is now F');
+      assert(ch4.getFormula() === 'C H3 F', 'Formula is now C H3 F (fluoromethane)');
+
+      // 驗證 C-F 鍵長已自適應為理想共價鍵長 (~1.33-1.35 Å)
+      const cIdx = ch4.atoms.findIndex(a => a.element === 'C');
+      const dCF = Math.hypot(
+        ch4.atoms[hIdx1].x - ch4.atoms[cIdx].x,
+        ch4.atoms[hIdx1].y - ch4.atoms[cIdx].y,
+        ch4.atoms[hIdx1].z - ch4.atoms[cIdx].z
+      );
+      assertNear(dCF, 1.33, 0.05, `C-F bond length adjusted to ideal (~1.33 Å, actual: ${dCF.toFixed(3)} Å)`);
+
+      // 3. 連續將第二個 H 替換為 Cl (CH3F -> CH2ClF 氯氟甲烷)
+      const hIdx2 = ch4.atoms.findIndex((a, i) => a.element === 'H' && i !== hIdx1);
+      assert(hIdx2 !== -1, 'Found second H atom');
+      VSEPR.replaceSingleAtom(ch4, hIdx2, 'Cl');
+      assert(ch4.atoms.length === 5, 'Atom count remains 5');
+      assert(ch4.getFormula() === 'C H2 Cl F', 'Formula is now C H2 Cl F (chlorofluoromethane)');
+      const dCCl = Math.hypot(
+        ch4.atoms[hIdx2].x - ch4.atoms[cIdx].x,
+        ch4.atoms[hIdx2].y - ch4.atoms[cIdx].y,
+        ch4.atoms[hIdx2].z - ch4.atoms[cIdx].z
+      );
+      assertNear(dCCl, 1.78, 0.05, `C-Cl bond length adjusted to ideal (~1.78 Å, actual: ${dCCl.toFixed(3)} Å)`);
+
+      // 4. 將中心碳原子 C 替換為矽 Si (CH2ClF -> SiH2ClF)
+      VSEPR.replaceSingleAtom(ch4, cIdx, 'Si');
+      assert(ch4.atoms.length === 5, 'Atom count remains 5');
+      assert(ch4.atoms[cIdx].element === 'Si', 'Central atom is now Si');
+      assert(ch4.getFormula() === 'Cl F H2 Si', 'Formula is now Cl F H2 Si (alphabetical for non-carbon)');
+
+      // 5. 測試週期表單一原子模式清單注入與筆刷互動
+      const dummySingleAtomApp = {
+        structure: PRESETS.methane.build(),
+        controller: {
+          activeElement: 'F',
+          activeHybrid: 'single_atom',
+          isBrushMode: true,
+          brushElement: 'F',
+          selectedSequence: [1],
+          clearSelection: () => {}
+        },
+        renderer: { update: () => {} },
+        pushHistory: () => {},
+        updateUI: () => {},
+        showToast: () => {}
+      };
+      VSEPR.replaceSingleAtom(dummySingleAtomApp.structure, 1, dummySingleAtomApp.controller.brushElement);
+      assert(dummySingleAtomApp.structure.atoms[1].element === 'F', 'Brush replaced atom #2 with single atom F');
+      assert(dummySingleAtomApp.structure.atoms.length === 5, 'Brush replacement kept atom count at 5');
+
       log(`\n========================================`);
       log(`TEST SUMMARY: ${passed} PASSED, ${failed} FAILED`);
       log(`========================================`);

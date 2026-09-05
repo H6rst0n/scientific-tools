@@ -269,13 +269,14 @@
         <div class="hybrid-section">
           <div class="hybrid-header">
             <span id="ptable-selected-title" style="font-weight: 600; color: #fff;">已選中：C (碳 / Carbon - No.6)</span>
-            <span style="font-size: 11px; color: var(--text-dim);">點選下方混成幾何，再按「啟用替換筆刷」</span>
+            <span id="ptable-selected-hint" style="font-size: 11px; color: var(--text-dim);">點選「單一原子」替換單一原子；或選取混成幾何以片段接枝</span>
           </div>
           <div class="hybrid-list" id="ptable-hybrid-list"></div>
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn-header" onclick="document.getElementById('modal-ptable').classList.remove('show')">取消</button>
+        <button class="btn-header accent" id="btn-replace-selected" style="display: none;" title="直接將畫布上當前選中的原子替換為所選元素">🔄 替換選中原子</button>
         <button class="btn-header primary" id="btn-start-brush" title="左鍵點擊畫布原子替換為所選元素，可連續替換多個原子，按 Esc 退出">
           🖌️ 啟用替換筆刷 (點擊原子替換)
         </button>

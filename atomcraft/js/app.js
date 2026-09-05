@@ -406,25 +406,81 @@ class App {
 
     hybridContainer.innerHTML = '';
     const hybrids = getHybridizationsForElement(sym);
-    this.controller.activeHybrid = hybrids[0].id;
 
-    for (const h of hybrids) {
+    // 混成幾何 / 替換模式清單：首項固定加入「單一原子 (直接替換)」
+    const modes = [
+      { id: 'single_atom', name: 'Single Atom', nameZh: '⚛️ 單一原子 (純替換 / 1-to-1)', isSingleAtom: true },
+      ...hybrids
+    ];
+
+    // 若當前選取的混成模式在新元素中不存在，或先前就是單一原子，保持或設為合理預設
+    const modeExists = modes.some(m => m.id === this.controller.activeHybrid);
+    if (!modeExists) {
+      this.controller.activeHybrid = ['F', 'Cl', 'Br', 'I', 'H'].includes(sym) ? 'single_atom' : modes[0].id;
+    }
+
+    for (const m of modes) {
       const btn = document.createElement('button');
-      btn.className = `btn-hybrid ${h.id === this.controller.activeHybrid ? 'active' : ''}`;
-      btn.textContent = h.nameZh;
-      btn.dataset.id = h.id;
+      btn.className = `btn-hybrid ${m.id === this.controller.activeHybrid ? 'active' : ''}`;
+      if (m.id === 'single_atom') {
+        btn.classList.add('btn-hybrid-single');
+      }
+      btn.textContent = m.nameZh;
+      btn.dataset.id = m.id;
 
       btn.addEventListener('click', () => {
-        this.controller.activeHybrid = h.id;
+        this.controller.activeHybrid = m.id;
         document.querySelectorAll('.btn-hybrid').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         this.updateElementFragmentBadge();
+        this.updatePtableModalButtons();
       });
 
       hybridContainer.appendChild(btn);
     }
 
     this.updateElementFragmentBadge();
+    this.updatePtableModalButtons();
+  }
+
+  /**
+   * 更新週期表彈窗內的按鈕文字與「替換選中原子」按鈕狀態
+   */
+  updatePtableModalButtons() {
+    const btnReplaceSelected = document.getElementById('btn-replace-selected');
+    const btnStartBrush = document.getElementById('btn-start-brush');
+    const sym = this.controller.activeElement || 'C';
+    const isSingleAtom = (this.controller.activeHybrid === 'single_atom');
+
+    // 1. 更新筆刷啟動按鈕標題與提示
+    if (btnStartBrush) {
+      if (isSingleAtom) {
+        btnStartBrush.innerHTML = `🖌️ 啟用替換筆刷 (單一原子 ${sym})`;
+        btnStartBrush.title = `點擊任意原子直接替換為單一原子 ${sym}（不自動加氫，保持現有鍵結拓撲），按 Esc 退出`;
+      } else {
+        const hybrids = getHybridizationsForElement(sym);
+        const curH = hybrids.find(h => h.id === this.controller.activeHybrid) || hybrids[0];
+        btnStartBrush.innerHTML = `🖌️ 啟用替換筆刷 (${sym} ${curH ? curH.nameZh : ''})`;
+        btnStartBrush.title = `點擊氫原子以 ${sym} (${curH ? curH.nameZh : ''}) 片段延伸接枝，點擊重原子置換並自動補氫，按 Esc 退出`;
+      }
+    }
+
+    // 2. 檢查畫布上是否有當前被選取的原子
+    if (btnReplaceSelected) {
+      const selected = this.controller.selectedSequence || [];
+      if (selected.length > 0 && selected[0] >= 0 && selected[0] < this.structure.atoms.length) {
+        btnReplaceSelected.style.display = 'inline-flex';
+        const targetIdx = selected[0];
+        const oldElem = this.structure.atoms[targetIdx].element;
+        if (selected.length === 1) {
+          btnReplaceSelected.innerHTML = `🔄 替換選中原子 (#${targetIdx + 1} ${oldElem} ➔ ${sym})`;
+        } else {
+          btnReplaceSelected.innerHTML = `🔄 替換選中的 ${selected.length} 個原子 ➔ ${sym}`;
+        }
+      } else {
+        btnReplaceSelected.style.display = 'none';
+      }
+    }
   }
 
   /**
@@ -435,11 +491,14 @@ class App {
     if (!badge) return;
 
     const sym = this.controller.activeElement;
-    const hybrids = getHybridizationsForElement(sym);
-    const curH = hybrids.find(h => h.id === this.controller.activeHybrid) || hybrids[0];
     const elemInfo = getElementInfo(sym);
-
-    badge.innerHTML = `⊞ 元素: <b style="color: ${elemInfo.color}; margin: 0 3px;">${sym}</b> (${curH.nameZh})`;
+    if (this.controller.activeHybrid === 'single_atom') {
+      badge.innerHTML = `⊞ 元素: <b style="color: ${elemInfo.color}; margin: 0 3px;">${sym}</b> (單一原子替換)`;
+    } else {
+      const hybrids = getHybridizationsForElement(sym);
+      const curH = hybrids.find(h => h.id === this.controller.activeHybrid) || hybrids[0];
+      badge.innerHTML = `⊞ 元素: <b style="color: ${elemInfo.color}; margin: 0 3px;">${sym}</b> (${curH ? curH.nameZh : ''})`;
+    }
   }
 
   /**
@@ -456,7 +515,10 @@ class App {
     this.controller.brushElement = elem || this.controller.activeElement;
     document.body.classList.add('brush-mode-active');
     this.updateUI();
-    this.showToast(`🖌️ 替換/新增筆刷啟動：點擊原子替換，點擊空白處新增 ${this.controller.brushElement} (按 Esc 退出)`);
+
+    const isSingle = (this.controller.activeHybrid === 'single_atom');
+    const modeDesc = isSingle ? `單一原子純替換` : `${this.controller.activeHybrid} 混成片段接枝`;
+    this.showToast(`🖌️ 筆刷啟動【${modeDesc}】：點擊原子替換為 ${this.controller.brushElement}，點擊空白處新增 (按 Esc 退出)`);
   }
 
   /**
@@ -480,10 +542,47 @@ class App {
     const closePtable = document.getElementById('btn-close-ptable');
 
     if (btnElem && modalPtable) {
-      btnElem.addEventListener('click', () => modalPtable.classList.add('show'));
+      btnElem.addEventListener('click', () => {
+        this.updatePtableModalButtons();
+        modalPtable.classList.add('show');
+      });
     }
     if (closePtable && modalPtable) {
       closePtable.addEventListener('click', () => modalPtable.classList.remove('show'));
+    }
+
+    // 週期表「替換選中原子」按鈕 (1 鍵原地替換選中原子)
+    const btnReplaceSelected = document.getElementById('btn-replace-selected');
+    if (btnReplaceSelected) {
+      btnReplaceSelected.addEventListener('click', () => {
+        const selected = [...(this.controller.selectedSequence || [])];
+        if (selected.length === 0) return;
+        this.pushHistory();
+
+        const newElem = this.controller.activeElement;
+        const isSingleAtom = (this.controller.activeHybrid === 'single_atom');
+
+        for (const idx of selected) {
+          if (idx >= 0 && idx < this.structure.atoms.length) {
+            if (isSingleAtom) {
+              VSEPR.replaceSingleAtom(this.structure, idx, newElem);
+            } else {
+              const atom = this.structure.atoms[idx];
+              if (atom.element === 'H') {
+                VSEPR.attachFragment(this.structure, idx, newElem, this.controller.activeHybrid);
+              } else {
+                atom.element = newElem;
+                VSEPR.saturateAtom(this.structure, idx, this.controller.activeHybrid);
+              }
+            }
+          }
+        }
+
+        this.renderer.update(this.structure);
+        this.updateUI();
+        modalPtable.classList.remove('show');
+        this.showToast(`已成功將選中原子替換為 ${newElem}！`);
+      });
     }
 
     // 週期表「啟用替換筆刷」按鈕
@@ -1140,7 +1239,11 @@ class App {
       brushHud.style.display = this.controller.isBrushMode ? 'flex' : 'none';
       const label = document.getElementById('brush-hud-label');
       if (label) {
-        label.innerHTML = `🖌️ 筆刷模式中：點擊原子替換，點擊空白處新增 <b>${this.controller.brushElement}</b>`;
+        if (this.controller.activeHybrid === 'single_atom') {
+          label.innerHTML = `🖌️ 筆刷模式中：點擊任意原子替換為單一 <b>${this.controller.brushElement}</b> (純替換不加氫，點空白處新增)`;
+        } else {
+          label.innerHTML = `🖌️ 筆刷模式中：點擊原子接枝/置換 <b>${this.controller.brushElement} (${this.controller.activeHybrid})</b> (點空白處新增)`;
+        }
       }
     }
 
