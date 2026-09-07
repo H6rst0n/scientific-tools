@@ -33,12 +33,27 @@ const Parsers = {
     if (ext === 'lammpstrj' || ext === 'dump' || this.isLAMMPSDump(cleanText)) {
       return this.parseLAMMPSDump(text);
     }
-    if (ext === 'arc' || this.isTinkerXYZ(cleanText)) {
-      return this.parseTinkerXYZ(text);
-    }
     if (cleanText.includes('&CONTROL') || cleanText.includes('CELL_PARAMETERS') || cleanText.includes('ATOMIC_POSITIONS')) {
       return this.parseQE(text);
     }
+
+    // ==========================================
+    // 關鍵格式判別：Tinker XYZ (.arc / .xyz) vs Standard / Extended XYZ (.xyz)
+    // 兩者副檔名皆常為 .xyz，依據檔案內部欄位結構精確識別並雙向容錯
+    // ==========================================
+    if (ext === 'arc' || this.isTinkerXYZ(cleanText)) {
+      const sTinker = this.parseTinkerXYZ(text);
+      if (sTinker.atoms.length > 0) return sTinker;
+    }
+
+    if (this.isStandardXYZ(cleanText)) {
+      const sXYZ = this.parseXYZ(text);
+      if (sXYZ.atoms.length > 0) return sXYZ;
+    }
+
+    // 容錯回退機制：若未定，雙向嘗試以確保能正確載入並顯示分子
+    const tryTinker = this.parseTinkerXYZ(text);
+    if (tryTinker.atoms.length > 0) return tryTinker;
 
     // 預設嘗試 XYZ
     return this.parseXYZ(text);
@@ -734,41 +749,128 @@ const Parsers = {
   },
 
   // ==========================================
-  // 9. Tinker XYZ 格式 (.arc / .xyz)
+  // 9. Tinker XYZ 格式 (.arc / .xyz) 與 標準 XYZ 判定
   // ==========================================
   isTinkerXYZ(text) {
-    const lines = text.trim().split('\n');
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
     if (lines.length < 2) return false;
-    const firstTokens = lines[0].trim().split(/\s+/);
-    if (firstTokens.length < 1 || isNaN(parseInt(firstTokens[0], 10))) return false;
-    const secondTokens = lines[1].trim().split(/\s+/);
-    if (secondTokens.length >= 6) {
-      const id = parseInt(secondTokens[0], 10);
-      const x = parseFloat(secondTokens[2]);
-      const y = parseFloat(secondTokens[3]);
-      const z = parseFloat(secondTokens[4]);
-      const type = parseInt(secondTokens[5], 10);
-      return id === 1 && !isNaN(x) && !isNaN(y) && !isNaN(z) && !isNaN(type);
+
+    const firstTokens = lines[0].split(/\s+/);
+    if (firstTokens.length < 1) return false;
+    const nAtoms = parseInt(firstTokens[0], 10);
+    if (isNaN(nAtoms) || nAtoms <= 0) return false;
+
+    // 檢查第 2 行是否為 Tinker 週期性晶胞參數 (a, b, c, alpha, beta, gamma 共 6 個數值)
+    let atomStartLine = 1;
+    if (lines.length > 2) {
+      const line1Tokens = lines[1].split(/\s+/);
+      if (line1Tokens.length === 6 && line1Tokens.every(t => !isNaN(Number(t)))) {
+        atomStartLine = 2;
+      }
     }
-    return false;
+
+    const linesToCheck = Math.min(5, lines.length - atomStartLine);
+    if (linesToCheck <= 0) return false;
+
+    let matchCount = 0;
+    for (let i = 0; i < linesToCheck; i++) {
+      const tokens = lines[atomStartLine + i].split(/\s+/);
+      // Tinker 原子行至少包含 5 欄 (id, element, x, y, z)，標準格式具備 6 欄以上 (含 force field type 與鍵結)
+      if (tokens.length < 5) return false;
+
+      const atomId = parseInt(tokens[0], 10);
+      // 首欄必須是遞增的正整數序號 (1, 2, 3...)
+      const isIdValid = !isNaN(atomId) && atomId === (i + 1);
+
+      // 第 2 欄為元素或原子名稱 (非純數字，且包含英文字母)
+      const isNameValid = isNaN(Number(tokens[1])) && /[A-Za-z]/.test(tokens[1]);
+
+      // 第 3, 4, 5 欄為 x, y, z 浮點座標
+      const x = parseFloat(tokens[2]);
+      const y = parseFloat(tokens[3]);
+      const z = parseFloat(tokens[4]);
+      const areCoordsValid = !isNaN(x) && !isNaN(y) && !isNaN(z);
+
+      // 第 6 欄若存在，在 Tinker 中為原子類型整數
+      const isTypeValid = (tokens.length >= 6) ? !isNaN(parseInt(tokens[5], 10)) : true;
+
+      if (isIdValid && isNameValid && areCoordsValid && isTypeValid) {
+        matchCount++;
+      }
+    }
+
+    return matchCount === linesToCheck;
+  },
+
+  isStandardXYZ(text) {
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length < 3) return false;
+
+    const firstTokens = lines[0].split(/\s+/);
+    if (firstTokens.length < 1) return false;
+    const nAtoms = parseInt(firstTokens[0], 10);
+    if (isNaN(nAtoms) || nAtoms <= 0) return false;
+
+    // 標準 XYZ 第 2 行為註解行，第 3 行起為原子座標行
+    const linesToCheck = Math.min(5, lines.length - 2);
+    if (linesToCheck <= 0) return false;
+
+    let matchCount = 0;
+    for (let i = 0; i < linesToCheck; i++) {
+      const tokens = lines[2 + i].split(/\s+/);
+      if (tokens.length < 4) return false;
+
+      // 標準 XYZ 第 1 欄必須是化學元素符號 (非純數字，1~3 個英文字母)
+      const isElemSymbol = isNaN(Number(tokens[0])) && /^[A-Za-z]{1,3}$/.test(tokens[0]);
+
+      // 第 2, 3, 4 欄為 x, y, z 座標
+      const x = parseFloat(tokens[1]);
+      const y = parseFloat(tokens[2]);
+      const z = parseFloat(tokens[3]);
+      const areCoordsValid = !isNaN(x) && !isNaN(y) && !isNaN(z);
+
+      if (isElemSymbol && areCoordsValid) {
+        matchCount++;
+      }
+    }
+
+    return matchCount === linesToCheck;
   },
 
   parseTinkerXYZ(text) {
     const structure = new Structure();
-    const lines = text.trim().split('\n');
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
     if (lines.length < 2) return structure;
 
-    const firstTokens = lines[0].trim().split(/\s+/);
+    const firstTokens = lines[0].split(/\s+/);
     const nAtoms = parseInt(firstTokens[0], 10);
     structure.title = lines[0].replace(firstTokens[0], '').trim() || 'Tinker Structure';
 
-    const bondsList = [];
+    let startIdx = 1;
+    // 檢查第 2 行是否為 Tinker 週期性晶胞參數 (a, b, c, alpha, beta, gamma)
+    if (lines.length > 2) {
+      const line1Tokens = lines[1].split(/\s+/);
+      if (line1Tokens.length === 6 && line1Tokens.every(t => !isNaN(Number(t)))) {
+        const a = parseFloat(line1Tokens[0]);
+        const b = parseFloat(line1Tokens[1]);
+        const c = parseFloat(line1Tokens[2]);
+        const alpha = parseFloat(line1Tokens[3]);
+        const beta = parseFloat(line1Tokens[4]);
+        const gamma = parseFloat(line1Tokens[5]);
+        if (a > 0 && b > 0 && c > 0) {
+          structure.setCellParameters(a, b, c, alpha, beta, gamma);
+          startIdx = 2;
+        }
+      }
+    }
 
-    for (let i = 1; i < lines.length && structure.atoms.length < nAtoms; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
+    const bondsList = [];
+    const idMap = new Map();
+
+    for (let i = startIdx; i < lines.length && structure.atoms.length < nAtoms; i++) {
+      const line = lines[i];
       const tokens = line.split(/\s+/);
-      if (tokens.length >= 6) {
+      if (tokens.length >= 5) {
         const atomId = parseInt(tokens[0], 10);
         let rawElem = tokens[1];
         let elem = rawElem.replace(/[^a-zA-Z]/g, '');
@@ -787,14 +889,18 @@ const Parsers = {
         const y = parseFloat(tokens[3]);
         const z = parseFloat(tokens[4]);
 
-        structure.addAtom(elem, x, y, z);
+        if (!isNaN(x) && !isNaN(y) && !isNaN(z)) {
+          structure.addAtom(elem, x, y, z);
+          const curIdx = structure.atoms.length - 1;
+          idMap.set(atomId, curIdx);
 
-        // 讀取相連成鍵資訊 (1-indexed)
-        if (tokens.length > 6) {
-          for (let k = 6; k < tokens.length; k++) {
-            const neighborId = parseInt(tokens[k], 10);
-            if (!isNaN(neighborId) && neighborId > atomId) {
-              bondsList.push({ a: atomId - 1, b: neighborId - 1 });
+          // 讀取相連成鍵資訊 (第 7 欄起，1-indexed)
+          if (tokens.length > 6) {
+            for (let k = 6; k < tokens.length; k++) {
+              const neighborId = parseInt(tokens[k], 10);
+              if (!isNaN(neighborId)) {
+                bondsList.push({ aId: atomId, bId: neighborId });
+              }
             }
           }
         }
@@ -802,12 +908,27 @@ const Parsers = {
     }
 
     if (bondsList.length > 0) {
-      structure.bonds = bondsList.map(b => ({
-        a: b.a,
-        b: b.b,
-        dist: structure.getDistance(b.a, b.b),
-        order: 1
-      }));
+      const bondSet = new Set();
+      const finalBonds = [];
+      for (const b of bondsList) {
+        const idxA = idMap.get(b.aId);
+        const idxB = idMap.get(b.bId);
+        if (idxA !== undefined && idxB !== undefined && idxA !== idxB) {
+          const min = Math.min(idxA, idxB);
+          const max = Math.max(idxA, idxB);
+          const key = `${min}-${max}`;
+          if (!bondSet.has(key)) {
+            bondSet.add(key);
+            finalBonds.push({
+              a: min,
+              b: max,
+              dist: structure.getDistance(min, max),
+              order: 1
+            });
+          }
+        }
+      }
+      structure.bonds = finalBonds;
     } else {
       structure.detectBonds();
     }

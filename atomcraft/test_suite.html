@@ -1167,6 +1167,69 @@ END
       assert(dummySingleAtomApp.structure.atoms[1].element === 'F', 'Brush replaced atom #2 with single atom F');
       assert(dummySingleAtomApp.structure.atoms.length === 5, 'Brush replacement kept atom count at 5');
 
+      log('=== 36. Tinker XYZ vs Standard XYZ Format Discrimination Test ===');
+      // 1. 標準 XYZ 格式（標準 .xyz 命名，第 1 行為原子數，第 2 行為註解，第 3 行起元素符號開頭）
+      const standardXYZ = `3
+Water Molecule Standard XYZ
+O   0.000000  0.000000  0.117790
+H   0.000000  0.755453 -0.471160
+H   0.000000 -0.755453 -0.471160`;
+
+      assert(Parsers.isStandardXYZ(standardXYZ) === true, 'isStandardXYZ correctly identifies standard XYZ');
+      assert(Parsers.isTinkerXYZ(standardXYZ) === false, 'isTinkerXYZ correctly rejects standard XYZ');
+      const parsedStd = Parsers.parse(standardXYZ, 'water.xyz');
+      assert(parsedStd.atoms.length === 3, 'parse() via water.xyz parsed 3 atoms for standard XYZ');
+      assert(parsedStd.atoms[0].element === 'O' && parsedStd.atoms[1].element === 'H', 'Standard XYZ elements parsed correctly');
+      assert(parsedStd.bonds.length === 2, 'Standard XYZ auto-detected 2 O-H bonds');
+
+      // 2. Tinker XYZ 分子格式（同為 .xyz 命名，第 1 行原子數+名稱，第 2 行起原子序號 1 2 3... + 元素 + 座標 + 類型 + 連鍵）
+      const tinkerXYZ = ` 3  Water Tinker XYZ
+     1  O       0.000000    0.000000    0.117790     1     2     3
+     2  H       0.000000    0.755453   -0.471160     2     1
+     3  H       0.000000   -0.755453   -0.471160     2     1`;
+
+      assert(Parsers.isTinkerXYZ(tinkerXYZ) === true, 'isTinkerXYZ correctly identifies molecular Tinker XYZ');
+      assert(Parsers.isStandardXYZ(tinkerXYZ) === false, 'isStandardXYZ correctly rejects Tinker XYZ');
+      const parsedTinker = Parsers.parse(tinkerXYZ, 'water.xyz');
+      assert(parsedTinker.atoms.length === 3, 'parse() via water.xyz correctly parsed 3 atoms for Tinker XYZ');
+      assert(parsedTinker.atoms[0].element === 'O', 'Tinker atom 1 is O');
+      assert(parsedTinker.bonds.length === 2, 'Tinker XYZ loaded explicit bond topology (2 bonds)');
+
+      // 3. Tinker XYZ 晶格格式（包含 PBC 晶胞參數在第 2 行：a b c alpha beta gamma）
+      const tinkerPBCXYZ = ` 3  Water in Periodic Box
+    20.000000   20.000000   20.000000   90.000000   90.000000   90.000000
+     1  O       0.000000    0.000000    0.117790     1     2     3
+     2  H       0.000000    0.755453   -0.471160     2     1
+     3  H       0.000000   -0.755453   -0.471160     2     1`;
+
+      assert(Parsers.isTinkerXYZ(tinkerPBCXYZ) === true, 'isTinkerXYZ correctly detects Tinker XYZ with PBC cell line');
+      assert(Parsers.isStandardXYZ(tinkerPBCXYZ) === false, 'isStandardXYZ correctly rejects Tinker XYZ with PBC cell');
+      const parsedPBC = Parsers.parse(tinkerPBCXYZ, 'water_pbc.xyz');
+      assert(parsedPBC.atoms.length === 3, 'Parsed 3 atoms from Tinker PBC XYZ');
+      assert(parsedPBC.cell !== null, 'Tinker PBC cell parameters parsed and set');
+      const cellParams = parsedPBC.getCellParameters();
+      assertNear(cellParams.a, 20.0, 0.001, 'Cell parameter a is 20.0 Å');
+      assertNear(cellParams.alpha, 90.0, 0.001, 'Cell parameter alpha is 90 deg');
+
+      // 4. Extended XYZ 格式（第 2 行包含 Lattice="..."）
+      const extXYZ = `2
+Lattice="10.0 0.0 0.0 0.0 10.0 0.0 0.0 0.0 10.0" Properties=species:S:1:pos:R:3
+Si  0.000000  0.000000  0.000000
+Si  2.500000  2.500000  2.500000`;
+
+      assert(Parsers.isStandardXYZ(extXYZ) === true, 'isStandardXYZ correctly identifies Extended XYZ');
+      assert(Parsers.isTinkerXYZ(extXYZ) === false, 'isTinkerXYZ correctly rejects Extended XYZ');
+      const parsedExt = Parsers.parse(extXYZ, 'silicon.xyz');
+      assert(parsedExt.atoms.length === 2, 'Parsed 2 atoms from Extended XYZ');
+      assert(parsedExt.cell !== null, 'Extended XYZ parsed Lattice into structure.cell');
+
+      // 5. 匯出與往返測試 (Round-trip)
+      const exportTinkerOut = Parsers.exportTinkerXYZ(ch4);
+      assert(Parsers.isTinkerXYZ(exportTinkerOut) === true, 'exportTinkerXYZ produces text detected as Tinker XYZ');
+      const reimportedTinker = Parsers.parse(exportTinkerOut, 'exported.xyz');
+      assert(reimportedTinker.atoms.length === ch4.atoms.length, 'Re-imported Tinker XYZ matches original atom count');
+      assert(reimportedTinker.bonds.length === ch4.bonds.length, 'Re-imported Tinker XYZ preserves bond count');
+
       log(`\n========================================`);
       log(`TEST SUMMARY: ${passed} PASSED, ${failed} FAILED`);
       log(`========================================`);
