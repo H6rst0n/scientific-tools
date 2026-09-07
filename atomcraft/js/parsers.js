@@ -24,6 +24,31 @@ const Parsers = {
     if (ext === 'pdb' || cleanText.includes('ATOM  ') || cleanText.includes('HETATM') || cleanText.startsWith('CRYST1')) {
       return this.parsePDB(text);
     }
+
+    // ==========================================
+    // 2. XYZ 族系優先處理（副檔名為 .xyz, .arc，或特徵符合 Tinker / Standard XYZ）
+    // 兩者副檔名皆常為 .xyz，優先交由 XYZ 族系處理，防止被其他格式誤判
+    // ==========================================
+    if (ext === 'arc' || (ext === 'xyz' && this.isTinkerXYZ(cleanText))) {
+      const sTinker = this.parseTinkerXYZ(text);
+      if (sTinker.atoms.length > 0) return sTinker;
+    }
+
+    if (ext === 'xyz' && this.isStandardXYZ(cleanText)) {
+      const sXYZ = this.parseXYZ(text);
+      if (sXYZ.atoms.length > 0) return sXYZ;
+    }
+
+    if (ext === 'xyz') {
+      const tryTinker = this.parseTinkerXYZ(text);
+      if (tryTinker.atoms.length > 0) return tryTinker;
+      const tryXYZ = this.parseXYZ(text);
+      if (tryXYZ.atoms.length > 0) return tryXYZ;
+    }
+
+    // ==========================================
+    // 3. 晶體與動力學格式 (VASP, LAMMPS, QE)
+    // ==========================================
     if (ext === 'vasp' || filename.toUpperCase().includes('POSCAR') || filename.toUpperCase().includes('CONTCAR') || this.isVASP(cleanText)) {
       return this.parseVASP(text);
     }
@@ -38,10 +63,9 @@ const Parsers = {
     }
 
     // ==========================================
-    // 關鍵格式判別：Tinker XYZ (.arc / .xyz) vs Standard / Extended XYZ (.xyz)
-    // 兩者副檔名皆常為 .xyz，依據檔案內部欄位結構精確識別並雙向容錯
+    // 4. 無副檔名或未定格式時的內容判定
     // ==========================================
-    if (ext === 'arc' || this.isTinkerXYZ(cleanText)) {
+    if (this.isTinkerXYZ(cleanText)) {
       const sTinker = this.parseTinkerXYZ(text);
       if (sTinker.atoms.length > 0) return sTinker;
     }
@@ -51,11 +75,10 @@ const Parsers = {
       if (sXYZ.atoms.length > 0) return sXYZ;
     }
 
-    // 容錯回退機制：若未定，雙向嘗試以確保能正確載入並顯示分子
+    // 5. 終極回退容錯
     const tryTinker = this.parseTinkerXYZ(text);
     if (tryTinker.atoms.length > 0) return tryTinker;
 
-    // 預設嘗試 XYZ
     return this.parseXYZ(text);
   },
 
@@ -63,16 +86,41 @@ const Parsers = {
    * 判斷是否為 VASP POSCAR
    */
   isVASP(text) {
-    const lines = text.trim().split('\n');
+    const lines = text.trim().split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
     if (lines.length < 8) return false;
-    const scale = parseFloat(lines[1].trim());
-    if (isNaN(scale)) return false;
-    // 第 3-5 行各應有 3 個浮點數
+
+    // 第 2 行 (lines[1]) 在 VASP POSCAR 中為晶格縮放因子 (universal scaling factor)
+    // 必須為單一非零浮點數，絕不能是 6 個晶格參數
+    const scaleTokens = lines[1].split(/\s+/);
+    if (scaleTokens.length !== 1) return false;
+    const scale = parseFloat(scaleTokens[0]);
+    if (isNaN(scale) || scale === 0) return false;
+
+    // 第 3-5 行 (lines[2..4]) 各為晶格基向量 a, b, c，每行必須有至少 3 個數值且全為浮點數
     for (let i = 2; i <= 4; i++) {
-      const parts = lines[i].trim().split(/\s+/);
-      if (parts.length < 3 || isNaN(parseFloat(parts[0]))) return false;
+      const parts = lines[i].split(/\s+/);
+      if (parts.length < 3) return false;
+      if (isNaN(parseFloat(parts[0])) || isNaN(parseFloat(parts[1])) || isNaN(parseFloat(parts[2]))) {
+        return false;
+      }
     }
-    return true;
+
+    // 檢查第 6-9 行是否具備 VASP 特徵關鍵字 (Direct, Cartesian, Fractional, 或 Selective dynamics)
+    let hasCoordKeyword = false;
+    for (let i = 5; i < Math.min(10, lines.length); i++) {
+      const lineLower = lines[i].toLowerCase();
+      if (
+        lineLower.includes('direct') ||
+        lineLower.includes('cart') ||
+        lineLower.includes('fractional') ||
+        lineLower.includes('selective')
+      ) {
+        hasCoordKeyword = true;
+        break;
+      }
+    }
+
+    return hasCoordKeyword;
   },
 
   // ==========================================

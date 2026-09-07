@@ -1204,6 +1204,7 @@ H   0.000000 -0.755453 -0.471160`;
 
       assert(Parsers.isTinkerXYZ(tinkerPBCXYZ) === true, 'isTinkerXYZ correctly detects Tinker XYZ with PBC cell line');
       assert(Parsers.isStandardXYZ(tinkerPBCXYZ) === false, 'isStandardXYZ correctly rejects Tinker XYZ with PBC cell');
+      assert(Parsers.isVASP(tinkerPBCXYZ) === false, 'isVASP strictly rejects Tinker XYZ with PBC cell');
       const parsedPBC = Parsers.parse(tinkerPBCXYZ, 'water_pbc.xyz');
       assert(parsedPBC.atoms.length === 3, 'Parsed 3 atoms from Tinker PBC XYZ');
       assert(parsedPBC.cell !== null, 'Tinker PBC cell parameters parsed and set');
@@ -1229,6 +1230,21 @@ Si  2.500000  2.500000  2.500000`;
       const reimportedTinker = Parsers.parse(exportTinkerOut, 'exported.xyz');
       assert(reimportedTinker.atoms.length === ch4.atoms.length, 'Re-imported Tinker XYZ matches original atom count');
       assert(reimportedTinker.bonds.length === ch4.bonds.length, 'Re-imported Tinker XYZ preserves bond count');
+
+      // 6. 複雜介面模型防誤判測試 (Cu 晶格 + 分子鏈，如 Cu100_water_interface.xyz)
+      const slabTinker = `  4
+    14.521220   14.521220   49.185458   90.000000   90.000000   90.000000
+     1  Cu     0.000000    0.000000   10.000000   228
+     2  Cu     0.000000    3.630305   10.000000   228
+     3  C      1.888229   10.318841   37.836080   225     4
+     4  F      0.828205   10.091971   38.721768   224     3`;
+      assert(Parsers.isVASP(slabTinker) === false, 'isVASP rejects slab Tinker XYZ (6 numbers in cell line, element string in column 2)');
+      assert(Parsers.isTinkerXYZ(slabTinker) === true, 'isTinkerXYZ accepts slab Tinker XYZ');
+      const parsedSlab = Parsers.parse(slabTinker, 'Cu100_water_interface.xyz');
+      assert(parsedSlab.atoms.length === 4, 'Parsed 4 atoms for slab model');
+      assert(parsedSlab.atoms[0].element === 'Cu', 'Atom 1 is Cu');
+      assert(parsedSlab.cell !== null, 'Lattice cell parsed for slab');
+      assert(parsedSlab.bonds.length === 1, 'C-F bond loaded');
 
       log(`\n========================================`);
       log(`TEST SUMMARY: ${passed} PASSED, ${failed} FAILED`);
