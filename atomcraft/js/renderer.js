@@ -5,7 +5,7 @@
 
 class MoleculeRenderer {
   constructor(containerId) {
-    this.container = document.getElementById(containerId);
+    this.container = (typeof containerId === 'string') ? document.getElementById(containerId) : containerId;
     this.style = 'ball_and_stick'; // 'ball_and_stick' | 'spacefill' | 'stick' | 'wireframe'
     
     // 視覺擴胞設定 (Visual Expansion)
@@ -677,7 +677,15 @@ class MoleculeRenderer {
   /**
    * 繪製主原胞晶格線框 (依使用者需求：視覺擴胞時僅顯示原本的原始晶胞，不畫大外框)
    */
-  drawLatticeBox(cell) {
+  drawCellBox(cell, na = 1, nb = 1, nc = 1) {
+    if (this.cellLines) {
+      this.scene.remove(this.cellLines);
+      if (this.cellLines.geometry) this.cellLines.geometry.dispose();
+      if (this.cellLines.material) this.cellLines.material.dispose();
+      this.cellLines = null;
+    }
+    if (!cell) return;
+
     const lines = Crystal.getLatticeBoxLines(cell);
     const vertices = [];
 
@@ -692,6 +700,10 @@ class MoleculeRenderer {
     const mat = new THREE.LineBasicMaterial({ color: 0x38bdf8, linewidth: 1 });
     this.cellLines = new THREE.LineSegments(geo, mat);
     this.scene.add(this.cellLines);
+  }
+
+  drawLatticeBox(cell) {
+    this.drawCellBox(cell);
   }
 
   /**

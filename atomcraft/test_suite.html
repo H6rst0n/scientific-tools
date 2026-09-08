@@ -1608,6 +1608,15 @@ N        0.01000000       3.01000000      13.10000000`;
       parsedNebXyz.setFrame(1);
       assertNear(parsedNebXyz.atoms[2].z, 14.800, 1e-3, 'Frame 2 N z switched to 14.800 in XYZ');
 
+      log('=== 46. MoleculeRenderer Periodic Cell Box (drawCellBox) Test ===');
+      const testCellRenderer = new MoleculeRenderer(document.createElement('div'));
+      testCellRenderer.showCellBox = true;
+      testCellRenderer.update(parsedNebPdb);
+      assert(testCellRenderer.cellLines !== null, 'drawCellBox created unit cell wireframe line segments without error');
+      assert(testCellRenderer.atomMesh !== null, 'Atom instanced mesh created for periodic NEB structure');
+      testCellRenderer.updateFramePositions(parsedNebPdb);
+      assert(testCellRenderer.atomMesh.instanceMatrix.version > 0 || testCellRenderer.atomMesh.instanceMatrix.needsUpdate, 'updateFramePositions updated GPU instance matrix');
+
       log(`\n========================================`);
       log(`TEST SUMMARY: ${passed} PASSED, ${failed} FAILED`);
       log(`========================================`);
