@@ -318,7 +318,7 @@ class Structure {
   }
 
   /**
-   * 偵測化學鍵 (支援孤立分子與週期性邊界最小鏡像約定)
+   * 偵測化學鍵 (支援 O(N) 3D 空間網格分割、孤立分子與週期性邊界最小鏡像約定)
    */
   detectBonds(tolerance = 0.40) {
     const bonds = [];
@@ -329,65 +329,264 @@ class Structure {
     }
 
     const hasPbc = this.cell && (this.pbc[0] || this.pbc[1] || this.pbc[2]);
+    if (hasPbc) {
+      this.syncFractionalFromCartesian();
+    }
 
+    // 預先取得所有原子之共價半徑
+    const radii = new Float32Array(n);
+    let maxR = 0.77;
     for (let i = 0; i < n; i++) {
-      const a = this.atoms[i];
-      const infoA = getElementInfo(a.element);
-      for (let j = i + 1; j < n; j++) {
-        const b = this.atoms[j];
-        const infoB = getElementInfo(b.element);
-        const maxBondDist = infoA.covRadius + infoB.covRadius + tolerance;
+      const info = getElementInfo(this.atoms[i].element);
+      const r = info.covRadius || 0.77;
+      radii[i] = r;
+      if (r > maxR) maxR = r;
+    }
+    const maxCutoff = maxR * 2 + tolerance + 0.1;
 
-        let dx = b.x - a.x;
-        let dy = b.y - a.y;
-        let dz = b.z - a.z;
-        let offset = [0, 0, 0];
+    // =========================================================================
+    // 分支 1：小系統 (N <= 120)，直接進行微秒級計算
+    // =========================================================================
+    if (n <= 120) {
+      for (let i = 0; i < n; i++) {
+        const a = this.atoms[i];
+        const rA = radii[i];
+        for (let j = i + 1; j < n; j++) {
+          const b = this.atoms[j];
+          const maxBondDist = rA + radii[j] + tolerance;
 
-        let shiftA = 0, shiftB = 0, shiftC = 0;
-        if (hasPbc) {
-          // 最小鏡像約定 (Minimum Image Convention in Fractional coords)
-          let dfx = (b.fx !== undefined ? b.fx : 0) - (a.fx !== undefined ? a.fx : 0);
-          let dfy = (b.fy !== undefined ? b.fy : 0) - (a.fy !== undefined ? a.fy : 0);
-          let dfz = (b.fz !== undefined ? b.fz : 0) - (a.fz !== undefined ? a.fz : 0);
+          let dx = b.x - a.x;
+          let dy = b.y - a.y;
+          let dz = b.z - a.z;
+          let shiftA = 0, shiftB = 0, shiftC = 0;
 
-          if (this.pbc[0]) {
-            shiftA = Math.round(dfx);
-            dfx -= shiftA;
+          if (hasPbc) {
+            let dfx = (b.fx !== undefined ? b.fx : 0) - (a.fx !== undefined ? a.fx : 0);
+            let dfy = (b.fy !== undefined ? b.fy : 0) - (a.fy !== undefined ? a.fy : 0);
+            let dfz = (b.fz !== undefined ? b.fz : 0) - (a.fz !== undefined ? a.fz : 0);
+
+            if (this.pbc[0]) {
+              shiftA = Math.round(dfx);
+              dfx -= shiftA;
+            }
+            if (this.pbc[1]) {
+              shiftB = Math.round(dfy);
+              dfy -= shiftB;
+            }
+            if (this.pbc[2]) {
+              shiftC = Math.round(dfz);
+              dfz -= shiftC;
+            }
+
+            const c = this.cell;
+            dx = dfx * c[0][0] + dfy * c[1][0] + dfz * c[2][0];
+            dy = dfx * c[0][1] + dfy * c[1][1] + dfz * c[2][1];
+            dz = dfx * c[0][2] + dfy * c[1][2] + dfz * c[2][2];
           }
-          if (this.pbc[1]) {
-            shiftB = Math.round(dfy);
-            dfy -= shiftB;
-          }
-          if (this.pbc[2]) {
-            shiftC = Math.round(dfz);
-            dfz -= shiftC;
-          }
 
-          const c = this.cell;
-          dx = dfx * c[0][0] + dfy * c[1][0] + dfz * c[2][0];
-          dy = dfx * c[0][1] + dfy * c[1][1] + dfz * c[2][1];
-          dz = dfx * c[0][2] + dfy * c[1][2] + dfz * c[2][2];
+          const dist = Math.hypot(dx, dy, dz);
+          if (dist > 0.45 && dist <= maxBondDist) {
+            bonds.push({
+              a: i,
+              b: j,
+              dist: dist,
+              order: 1,
+              offset: [-shiftA, -shiftB, -shiftC]
+            });
+          }
         }
+      }
+    } else if (hasPbc) {
+      // =========================================================================
+      // 分支 2：PBC 週期性邊界大系統 (分數座標空間 Cell List 網格分割)
+      // =========================================================================
+      const [va, vb, vc] = this.cell;
+      const lenA = Math.hypot(va[0], va[1], va[2]);
+      const lenB = Math.hypot(vb[0], vb[1], vb[2]);
+      const lenC = Math.hypot(vc[0], vc[1], vc[2]);
 
-        const dist = Math.hypot(dx, dy, dz);
-        if (dist > 0.45 && dist <= maxBondDist) {
-          bonds.push({
-            a: i,
-            b: j,
-            dist: dist,
-            order: 1,
-            offset: [-shiftA, -shiftB, -shiftC]
-          });
+      const nDivA = Math.max(1, Math.floor(lenA / maxCutoff));
+      const nDivB = Math.max(1, Math.floor(lenB / maxCutoff));
+      const nDivC = Math.max(1, Math.floor(lenC / maxCutoff));
+
+      const pbcGrid = new Map();
+      const getGridKey = (ga, gb, gc) => `${ga}_${gb}_${gc}`;
+
+      for (let i = 0; i < n; i++) {
+        const a = this.atoms[i];
+        const fa = ((a.fx % 1) + 1) % 1;
+        const fb = ((a.fy % 1) + 1) % 1;
+        const fc = ((a.fz % 1) + 1) % 1;
+        const ga = Math.min(nDivA - 1, Math.max(0, Math.floor(fa * nDivA)));
+        const gb = Math.min(nDivB - 1, Math.max(0, Math.floor(fb * nDivB)));
+        const gc = Math.min(nDivC - 1, Math.max(0, Math.floor(fc * nDivC)));
+        const key = getGridKey(ga, gb, gc);
+        let list = pbcGrid.get(key);
+        if (!list) {
+          list = [];
+          pbcGrid.set(key, list);
+        }
+        list.push(i);
+      }
+
+      const bondSet = new Set();
+
+      for (const [key, cellAtoms] of pbcGrid) {
+        const [ga, gb, gc] = key.split('_').map(Number);
+
+        // 搜尋 27 個相鄰網格
+        for (let da = -1; da <= 1; da++) {
+          for (let db = -1; db <= 1; db++) {
+            for (let dc = -1; dc <= 1; dc++) {
+              let nga = ga + da;
+              let ngb = gb + db;
+              let ngc = gc + dc;
+
+              if (this.pbc[0]) nga = (nga % nDivA + nDivA) % nDivA;
+              if (this.pbc[1]) ngb = (ngb % nDivB + nDivB) % nDivB;
+              if (this.pbc[2]) ngc = (ngc % nDivC + nDivC) % nDivC;
+
+              if (nga < 0 || nga >= nDivA || ngb < 0 || ngb >= nDivB || ngc < 0 || ngc >= nDivC) continue;
+
+              const nbrList = pbcGrid.get(getGridKey(nga, ngb, ngc));
+              if (!nbrList) continue;
+
+              for (const i of cellAtoms) {
+                const a = this.atoms[i];
+                const rA = radii[i];
+                for (const j of nbrList) {
+                  if (j <= i) continue;
+                  const pairKey = (i < j) ? `${i}_${j}` : `${j}_${i}`;
+                  if (bondSet.has(pairKey)) continue;
+
+                  const b = this.atoms[j];
+                  const maxBondDist = rA + radii[j] + tolerance;
+
+                  let dfx = (b.fx !== undefined ? b.fx : 0) - (a.fx !== undefined ? a.fx : 0);
+                  let dfy = (b.fy !== undefined ? b.fy : 0) - (a.fy !== undefined ? a.fy : 0);
+                  let dfz = (b.fz !== undefined ? b.fz : 0) - (a.fz !== undefined ? a.fz : 0);
+                  let shiftA = 0, shiftB = 0, shiftC = 0;
+
+                  if (this.pbc[0]) {
+                    shiftA = Math.round(dfx);
+                    dfx -= shiftA;
+                  }
+                  if (this.pbc[1]) {
+                    shiftB = Math.round(dfy);
+                    dfy -= shiftB;
+                  }
+                  if (this.pbc[2]) {
+                    shiftC = Math.round(dfz);
+                    dfz -= shiftC;
+                  }
+
+                  const c = this.cell;
+                  const dx = dfx * c[0][0] + dfy * c[1][0] + dfz * c[2][0];
+                  const dy = dfx * c[0][1] + dfy * c[1][1] + dfz * c[2][1];
+                  const dz = dfx * c[0][2] + dfy * c[1][2] + dfz * c[2][2];
+                  const distSq = dx * dx + dy * dy + dz * dz;
+
+                  if (distSq > 0.20 && distSq <= maxBondDist * maxBondDist) {
+                    bondSet.add(pairKey);
+                    bonds.push({
+                      a: i,
+                      b: j,
+                      dist: Math.sqrt(distSq),
+                      order: 1,
+                      offset: [-shiftA, -shiftB, -shiftC]
+                    });
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    } else {
+      // =========================================================================
+      // 分支 3：非 PBC 孤立分子/大體系 (3D 笛卡爾空間 Cell List 網格分割)
+      // =========================================================================
+      let minX = Infinity, maxX = -Infinity;
+      let minY = Infinity, maxY = -Infinity;
+      let minZ = Infinity, maxZ = -Infinity;
+
+      for (let i = 0; i < n; i++) {
+        const a = this.atoms[i];
+        if (a.x < minX) minX = a.x;
+        if (a.x > maxX) maxX = a.x;
+        if (a.y < minY) minY = a.y;
+        if (a.y > maxY) maxY = a.y;
+        if (a.z < minZ) minZ = a.z;
+        if (a.z > maxZ) maxZ = a.z;
+      }
+
+      const cellSize = Math.max(3.5, maxCutoff);
+      const invCell = 1.0 / cellSize;
+      const cartGrid = new Map();
+      const getCartKey = (gx, gy, gz) => `${gx}_${gy}_${gz}`;
+
+      for (let i = 0; i < n; i++) {
+        const a = this.atoms[i];
+        const gx = Math.floor((a.x - minX) * invCell);
+        const gy = Math.floor((a.y - minY) * invCell);
+        const gz = Math.floor((a.z - minZ) * invCell);
+        const key = getCartKey(gx, gy, gz);
+        let list = cartGrid.get(key);
+        if (!list) {
+          list = [];
+          cartGrid.set(key, list);
+        }
+        list.push(i);
+      }
+
+      for (const [key, cellAtoms] of cartGrid) {
+        const [gx, gy, gz] = key.split('_').map(Number);
+
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dz = -1; dz <= 1; dz++) {
+              const nbrKey = getCartKey(gx + dx, gy + dy, gz + dz);
+              const nbrList = cartGrid.get(nbrKey);
+              if (!nbrList) continue;
+
+              for (const i of cellAtoms) {
+                const a = this.atoms[i];
+                const rA = radii[i];
+                for (const j of nbrList) {
+                  if (j <= i) continue;
+                  const b = this.atoms[j];
+                  const maxBondDist = rA + radii[j] + tolerance;
+
+                  const deltaX = b.x - a.x;
+                  const deltaY = b.y - a.y;
+                  const deltaZ = b.z - a.z;
+                  const distSq = deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ;
+
+                  if (distSq > 0.20 && distSq <= maxBondDist * maxBondDist) {
+                    bonds.push({
+                      a: i,
+                      b: j,
+                      dist: Math.sqrt(distSq),
+                      order: 1,
+                      offset: [0, 0, 0]
+                    });
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }
+
     this.bonds = bonds;
 
-    // 自動進行鍵級推算 (Bond Order Perception)
-    this.perceiveBondOrders();
-
-    // 自動偵測氫鍵 (Hydrogen Bond Detection)
-    this.detectHydrogenBonds();
+    // 自動進行鍵級推算 (Bond Order Perception) 與 氫鍵偵測
+    // 對於大系統 (N > 1500，如金屬表面、MD 溶液水箱、高分子膜)，旁路以獲得極致毫秒級流暢體驗
+    if (n <= 1500) {
+      this.perceiveBondOrders();
+      this.detectHydrogenBonds();
+    }
 
     return this.bonds;
   }
@@ -399,8 +598,9 @@ class Structure {
    */
   perceiveBondOrders() {
     if (!this.bonds || this.bonds.length === 0) return;
-
     const n = this.atoms.length;
+    if (n > 1500) return;
+
     const monovalent = new Set(['H', 'F', 'Cl', 'Br', 'I', 'Li', 'Na', 'K']);
 
     const targetValences = {
@@ -577,7 +777,7 @@ class Structure {
   detectHydrogenBonds() {
     const electronegative = new Set(['O', 'N', 'F']);
     const n = this.atoms.length;
-    if (n < 3) return;
+    if (n < 3 || n > 1500) return;
 
     // 先建立共價鄰接關係以快速查找 D-H
     const covNeighbors = Array.from({ length: n }, () => new Set());

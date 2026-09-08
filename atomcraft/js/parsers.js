@@ -165,7 +165,7 @@ const Parsers = {
       }
 
       // 讀取該影格的所有原子座標
-      const framePositions = [];
+      const framePositions = new Float32Array(natoms * 3);
       let atomsParsed = 0;
 
       while (lineIdx < rawLines.length && atomsParsed < natoms) {
@@ -175,7 +175,8 @@ const Parsers = {
 
         const tokens = line.split(/\s+/);
         if (tokens.length >= 4) {
-          const elem = tokens[0];
+          const rawElem = tokens[0];
+          const elem = normalizeElementSymbol(rawElem);
           const x = parseFloat(tokens[1]);
           const y = parseFloat(tokens[2]);
           const z = parseFloat(tokens[3]);
@@ -183,7 +184,9 @@ const Parsers = {
             if (frameIdx === 0) {
               structure.addAtom(elem, x, y, z);
             }
-            framePositions.push({ x, y, z });
+            framePositions[atomsParsed * 3] = x;
+            framePositions[atomsParsed * 3 + 1] = y;
+            framePositions[atomsParsed * 3 + 2] = z;
             atomsParsed++;
           }
         }
@@ -196,7 +199,7 @@ const Parsers = {
         }
       }
 
-      if (framePositions.length > 0) {
+      if (atomsParsed > 0) {
         structure.addTrajectoryFrame(framePositions, frameCell, {
           title: `Frame ${frameIdx + 1}`,
           comment: comment,
@@ -710,57 +713,111 @@ const Parsers = {
   parsePDB(text) {
     const structure = new Structure();
     const lines = text.split(/\r?\n/);
-    let modelCount = 0;
-    let currentModelPositions = [];
-    let isMultiModel = false;
+    if (lines.length === 0) return structure;
 
-    const finishModel = () => {
-      if (currentModelPositions.length > 0) {
-        structure.addTrajectoryFrame(currentModelPositions, structure.cell, {
-          title: `Model ${modelCount}`,
-          timestep: modelCount - 1
-        });
-        currentModelPositions = [];
+    let modelIndex = 0;
+    let currentModelPositions = [];
+    let currentCell = null;
+    let firstFrameAtomsCount = 0;
+    let lastAtomSerial = -1;
+
+    const commitFrame = () => {
+      if (currentModelPositions.length === 0) return;
+
+      if (modelIndex === 0) {
+        firstFrameAtomsCount = structure.atoms.length;
+        if (currentCell) {
+          structure.setCell(currentCell, [true, true, true]);
+        }
       }
+
+      structure.addTrajectoryFrame(currentModelPositions, currentCell || structure.cell, {
+        title: `Model ${modelIndex + 1}`,
+        timestep: modelIndex
+      });
+
+      currentModelPositions = [];
+      lastAtomSerial = -1;
+      modelIndex++;
     };
 
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.length < 3) continue;
+
       if (line.startsWith('MODEL')) {
-        isMultiModel = true;
-        finishModel();
-        modelCount++;
-      } else if (line.startsWith('ENDMDL')) {
-        finishModel();
-      } else if (line.startsWith('CRYST1')) {
+        commitFrame();
+        continue;
+      }
+      if (line.startsWith('ENDMDL') || line.startsWith('END') || line.startsWith('TER')) {
+        commitFrame();
+        continue;
+      }
+      if (line.startsWith('CRYST1')) {
+        if (currentModelPositions.length > 0) {
+          commitFrame();
+        }
         const a = parseFloat(line.substring(6, 15));
         const b = parseFloat(line.substring(15, 24));
         const c = parseFloat(line.substring(24, 33));
         const alpha = parseFloat(line.substring(33, 40)) || 90;
         const beta = parseFloat(line.substring(40, 47)) || 90;
         const gamma = parseFloat(line.substring(47, 54)) || 90;
-        if (!isNaN(a) && !isNaN(b) && !isNaN(c)) {
-          structure.setCellParameters(a, b, c, alpha, beta, gamma, [true, true, true]);
+        if (!isNaN(a) && !isNaN(b) && !isNaN(c) && a > 0 && b > 0 && c > 0) {
+          const toRad = Math.PI / 180;
+          const aRad = alpha * toRad;
+          const bRad = beta * toRad;
+          const gRad = gamma * toRad;
+          const ax = a, ay = 0, az = 0;
+          const bx = b * Math.cos(gRad), by = b * Math.sin(gRad), bz = 0;
+          const cx = c * Math.cos(bRad);
+          const cy = c * (Math.cos(aRad) - Math.cos(bRad) * Math.cos(gRad)) / Math.sin(gRad);
+          const cz = Math.sqrt(Math.max(0, c * c - cx * cx - cy * cy));
+          currentCell = [[ax, ay, az], [bx, by, bz], [cx, cy, cz]];
+          if (modelIndex === 0) {
+            structure.setCell(currentCell, [true, true, true]);
+          }
         }
-      } else if (line.startsWith('ATOM  ') || line.startsWith('HETATM')) {
+        continue;
+      }
+
+      if (line.startsWith('ATOM  ') || line.startsWith('HETATM')) {
+        const serialStr = line.substring(6, 11).trim();
+        const serial = parseInt(serialStr, 10);
+
+        // 如果不是第一幀，且已經收集到了第一幀的原子數目，或者序號重置回 1 或驟降
+        if (modelIndex > 0 || firstFrameAtomsCount > 0) {
+          if (firstFrameAtomsCount > 0 && currentModelPositions.length >= firstFrameAtomsCount) {
+            commitFrame();
+          } else if (!isNaN(serial) && lastAtomSerial !== -1 && serial < lastAtomSerial && (serial === 1 || lastAtomSerial > 10)) {
+            commitFrame();
+          }
+        }
+
         const x = parseFloat(line.substring(30, 38));
         const y = parseFloat(line.substring(38, 46));
         const z = parseFloat(line.substring(46, 54));
-        let elem = line.substring(76, 78).trim();
-        if (!elem) {
-          elem = line.substring(12, 16).trim().replace(/[^a-zA-Z]/g, '');
+        let rawElem = line.length >= 78 ? line.substring(76, 78).trim() : '';
+        if (!rawElem) {
+          rawElem = line.substring(12, 16).trim();
         }
+        const elem = normalizeElementSymbol(rawElem);
+
         if (!isNaN(x) && !isNaN(y) && !isNaN(z)) {
-          if (modelCount <= 1 && (!isMultiModel || structure.atoms.length === currentModelPositions.length)) {
+          if (modelIndex === 0) {
             structure.addAtom(elem, x, y, z);
           }
           currentModelPositions.push({ x, y, z });
+          if (!isNaN(serial)) lastAtomSerial = serial;
         }
       }
     }
 
-    finishModel();
+    commitFrame();
 
-    structure.detectBonds();
+    if (structure.atoms.length > 0) {
+      structure.detectBonds();
+    }
 
     if (structure.trajectory && structure.trajectory.frames.length <= 1) {
       structure.trajectory = null;
@@ -879,78 +936,84 @@ const Parsers = {
   // 9. Tinker XYZ 格式 (.arc / .xyz) 與 標準 XYZ 判定
   // ==========================================
   isTinkerXYZ(text) {
-    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
-    if (lines.length < 2) return false;
+    const rawLines = text.split(/\r?\n/);
+    let lineIdx = 0;
+    while (lineIdx < rawLines.length && !rawLines[lineIdx].trim()) lineIdx++;
+    if (lineIdx >= rawLines.length) return false;
 
-    const firstTokens = lines[0].split(/\s+/);
-    if (firstTokens.length < 1) return false;
+    const firstTokens = rawLines[lineIdx].trim().split(/\s+/);
     const nAtoms = parseInt(firstTokens[0], 10);
     if (isNaN(nAtoms) || nAtoms <= 0) return false;
+    lineIdx++;
 
     // 檢查第 2 行是否為 Tinker 週期性晶胞參數 (a, b, c, alpha, beta, gamma 共 6 個數值)
-    let atomStartLine = 1;
-    if (lines.length > 2) {
-      const line1Tokens = lines[1].split(/\s+/);
+    if (lineIdx < rawLines.length) {
+      const line1Tokens = rawLines[lineIdx].trim().split(/\s+/);
       if (line1Tokens.length === 6 && line1Tokens.every(t => !isNaN(Number(t)))) {
-        atomStartLine = 2;
+        lineIdx++;
       }
     }
 
-    const linesToCheck = Math.min(5, lines.length - atomStartLine);
-    if (linesToCheck <= 0) return false;
-
     let matchCount = 0;
-    for (let i = 0; i < linesToCheck; i++) {
-      const tokens = lines[atomStartLine + i].split(/\s+/);
+    let checked = 0;
+    const linesToCheck = Math.min(nAtoms, 5);
+    while (lineIdx < rawLines.length && checked < linesToCheck) {
+      const line = rawLines[lineIdx].trim();
+      lineIdx++;
+      if (!line) continue;
+
+      const tokens = line.split(/\s+/);
       // Tinker 原子行至少包含 5 欄 (id, element, x, y, z)，標準格式具備 6 欄以上 (含 force field type 與鍵結)
       if (tokens.length < 5) return false;
 
       const atomId = parseInt(tokens[0], 10);
-      // 首欄必須是遞增的正整數序號 (1, 2, 3...)
-      const isIdValid = !isNaN(atomId) && atomId === (i + 1);
-
-      // 第 2 欄為元素或原子名稱 (非純數字，且包含英文字母)
+      const isIdValid = !isNaN(atomId) && atomId === (checked + 1);
       const isNameValid = isNaN(Number(tokens[1])) && /[A-Za-z]/.test(tokens[1]);
-
-      // 第 3, 4, 5 欄為 x, y, z 浮點座標
       const x = parseFloat(tokens[2]);
       const y = parseFloat(tokens[3]);
       const z = parseFloat(tokens[4]);
       const areCoordsValid = !isNaN(x) && !isNaN(y) && !isNaN(z);
-
-      // 第 6 欄若存在，在 Tinker 中為原子類型整數
       const isTypeValid = (tokens.length >= 6) ? !isNaN(parseInt(tokens[5], 10)) : true;
 
       if (isIdValid && isNameValid && areCoordsValid && isTypeValid) {
         matchCount++;
       }
+      checked++;
     }
 
-    return matchCount === linesToCheck;
+    return checked > 0 && matchCount === checked;
   },
 
   isStandardXYZ(text) {
-    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
-    if (lines.length < 3) return false;
+    const rawLines = text.split(/\r?\n/);
+    let lineIdx = 0;
+    while (lineIdx < rawLines.length && !rawLines[lineIdx].trim()) lineIdx++;
+    if (lineIdx >= rawLines.length) return false;
 
-    const firstTokens = lines[0].split(/\s+/);
-    if (firstTokens.length < 1) return false;
+    const firstTokens = rawLines[lineIdx].trim().split(/\s+/);
     const nAtoms = parseInt(firstTokens[0], 10);
     if (isNaN(nAtoms) || nAtoms <= 0) return false;
+    lineIdx++;
 
     // 標準 XYZ 第 2 行為註解行，第 3 行起為原子座標行
-    const linesToCheck = Math.min(5, lines.length - 2);
-    if (linesToCheck <= 0) return false;
+    if (lineIdx >= rawLines.length) return false;
+    lineIdx++;
 
     let matchCount = 0;
-    for (let i = 0; i < linesToCheck; i++) {
-      const tokens = lines[2 + i].split(/\s+/);
+    let checked = 0;
+    const linesToCheck = Math.min(nAtoms, 5);
+    while (lineIdx < rawLines.length && checked < linesToCheck) {
+      const line = rawLines[lineIdx].trim();
+      lineIdx++;
+      if (!line) continue;
+
+      const tokens = line.split(/\s+/);
       if (tokens.length < 4) return false;
 
-      // 標準 XYZ 第 1 欄必須是化學元素符號 (非純數字，1~3 個英文字母)
-      const isElemSymbol = isNaN(Number(tokens[0])) && /^[A-Za-z]{1,3}$/.test(tokens[0]);
+      // 標準 XYZ 第 1 欄為元素或力場原子標籤 (例如 H, Cu, HW1, OW, Cu100, C1, Fe3+, Cl-)
+      const rawSym = tokens[0];
+      const isElemSymbol = isNaN(Number(rawSym)) && /^[A-Za-z][A-Za-z0-9+_\-]{0,7}$/.test(rawSym);
 
-      // 第 2, 3, 4 欄為 x, y, z 座標
       const x = parseFloat(tokens[1]);
       const y = parseFloat(tokens[2]);
       const z = parseFloat(tokens[3]);
@@ -959,14 +1022,15 @@ const Parsers = {
       if (isElemSymbol && areCoordsValid) {
         matchCount++;
       }
+      checked++;
     }
 
-    return matchCount === linesToCheck;
+    return checked > 0 && matchCount === checked;
   },
 
   parseTinkerXYZ(text) {
     const structure = new Structure();
-    const rawLines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+    const rawLines = text.split(/\r?\n/);
     if (rawLines.length < 2) return structure;
 
     let lineIdx = 0;
@@ -975,17 +1039,23 @@ const Parsers = {
     const idMap = new Map();
 
     while (lineIdx < rawLines.length) {
-      const firstTokens = rawLines[lineIdx].split(/\s+/);
+      while (lineIdx < rawLines.length && !rawLines[lineIdx].trim()) {
+        lineIdx++;
+      }
+      if (lineIdx >= rawLines.length) break;
+
+      const firstLine = rawLines[lineIdx].trim();
+      const firstTokens = firstLine.split(/\s+/);
       const nAtoms = parseInt(firstTokens[0], 10);
       if (isNaN(nAtoms) || nAtoms <= 0) break;
 
-      const frameTitle = rawLines[lineIdx].replace(firstTokens[0], '').trim() || (frameIdx === 0 ? 'Tinker Structure' : `Frame ${frameIdx + 1}`);
+      const frameTitle = firstLine.replace(firstTokens[0], '').trim() || (frameIdx === 0 ? 'Tinker Structure' : `Frame ${frameIdx + 1}`);
       lineIdx++;
 
       // 檢查第 2 行是否為 Tinker 週期性晶胞參數 (a, b, c, alpha, beta, gamma)
       let frameCell = null;
       if (lineIdx < rawLines.length) {
-        const lineTokens = rawLines[lineIdx].split(/\s+/);
+        const lineTokens = rawLines[lineIdx].trim().split(/\s+/);
         if (lineTokens.length === 6 && lineTokens.every(t => !isNaN(Number(t)))) {
           const a = parseFloat(lineTokens[0]);
           const b = parseFloat(lineTokens[1]);
@@ -997,7 +1067,6 @@ const Parsers = {
             if (frameIdx === 0) {
               structure.setCellParameters(a, b, c, alpha, beta, gamma);
             }
-            // 構建晶胞矩陣供影格記錄
             const toRad = Math.PI / 180;
             const aRad = alpha * toRad;
             const bRad = beta * toRad;
@@ -1013,27 +1082,19 @@ const Parsers = {
         }
       }
 
-      const framePositions = [];
+      const framePositions = new Float32Array(nAtoms * 3);
       let atomsParsed = 0;
 
       while (lineIdx < rawLines.length && atomsParsed < nAtoms) {
-        const line = rawLines[lineIdx];
+        const line = rawLines[lineIdx].trim();
         lineIdx++;
+        if (!line) continue;
+
         const tokens = line.split(/\s+/);
         if (tokens.length >= 5) {
           const atomId = parseInt(tokens[0], 10);
-          let rawElem = tokens[1];
-          let elem = rawElem.replace(/[^a-zA-Z]/g, '');
-          if (elem.length > 2) {
-            elem = elem.charAt(0);
-          } else if (elem.length === 2) {
-            const info = getElementInfo(elem);
-            if (!info || info.name === elem) {
-              elem = elem.charAt(0);
-            }
-          }
-          if (!elem) elem = 'C';
-          elem = elem.charAt(0).toUpperCase() + elem.slice(1).toLowerCase();
+          const rawElem = tokens[1];
+          const elem = normalizeElementSymbol(rawElem);
 
           const x = parseFloat(tokens[2]);
           const y = parseFloat(tokens[3]);
@@ -1055,7 +1116,9 @@ const Parsers = {
                 }
               }
             }
-            framePositions.push({ x, y, z });
+            framePositions[atomsParsed * 3] = x;
+            framePositions[atomsParsed * 3 + 1] = y;
+            framePositions[atomsParsed * 3 + 2] = z;
             atomsParsed++;
           }
         }
@@ -1065,7 +1128,7 @@ const Parsers = {
         structure.title = frameTitle;
       }
 
-      if (framePositions.length > 0) {
+      if (atomsParsed > 0) {
         structure.addTrajectoryFrame(framePositions, frameCell, {
           title: frameTitle,
           timestep: frameIdx
@@ -1097,7 +1160,7 @@ const Parsers = {
         }
       }
       structure.bonds = finalBonds;
-    } else {
+    } else if (structure.atoms.length > 0) {
       structure.detectBonds();
     }
 

@@ -85,6 +85,49 @@ for (const [num, elem] of Object.entries(ELEMENTS)) {
 }
 
 /**
+ * 智慧正規化化學元素名稱（支援 MD 力場標籤如 HW1, OW, Cu100, C1, Fe3+, Cl- 等）
+ * @param {string} rawSymbol 
+ * @returns {string} 標準元素符號 (如 H, O, Cu, C, Fe, Cl)
+ */
+function normalizeElementSymbol(rawSymbol) {
+  if (!rawSymbol || typeof rawSymbol !== 'string') return 'C';
+  const clean = rawSymbol.trim();
+  if (!clean) return 'C';
+
+  // 1. 直接精確匹配
+  const normalized = clean.charAt(0).toUpperCase() + clean.slice(1).toLowerCase();
+  if (SYMBOL_TO_ELEMENT[normalized]) return SYMBOL_TO_ELEMENT[normalized].symbol;
+  if (SYMBOL_TO_ELEMENT[clean.toUpperCase()]) return SYMBOL_TO_ELEMENT[clean.toUpperCase()].symbol;
+
+  // 2. MD 水分子與常見力場別名對應
+  const upper = clean.toUpperCase();
+  if (upper.startsWith('OW') || upper.startsWith('OT') || upper === 'OH2') return 'O';
+  if (upper.startsWith('HW') || upper.startsWith('HT') || upper === 'MW' || upper === 'LP') return 'H';
+  if (upper.startsWith('NT')) return 'N';
+
+  // 3. 去除尾端數字、下劃線與帶電符號 (+, -)
+  const stripped = clean.replace(/[0-9+_\-]/g, '').trim();
+  if (stripped.length > 0) {
+    const strippedNorm = stripped.charAt(0).toUpperCase() + stripped.slice(1).toLowerCase();
+    if (SYMBOL_TO_ELEMENT[strippedNorm]) return SYMBOL_TO_ELEMENT[strippedNorm].symbol;
+    if (SYMBOL_TO_ELEMENT[stripped.toUpperCase()]) return SYMBOL_TO_ELEMENT[stripped.toUpperCase()].symbol;
+
+    // 嘗試前兩字元 (例如 CU, FE, ZN, MG, AL, SI, CA, BR, PT, AU)
+    if (stripped.length >= 2) {
+      const two = stripped.slice(0, 2);
+      const twoNorm = two.charAt(0).toUpperCase() + two.slice(1).toLowerCase();
+      if (SYMBOL_TO_ELEMENT[twoNorm]) return SYMBOL_TO_ELEMENT[twoNorm].symbol;
+    }
+
+    // 嘗試首字元 (例如 C, H, O, N, P, S, F, K, V, W, I, B, Y)
+    const one = stripped.charAt(0).toUpperCase();
+    if (SYMBOL_TO_ELEMENT[one]) return SYMBOL_TO_ELEMENT[one].symbol;
+  }
+
+  return clean;
+}
+
+/**
  * 取得元素資訊，若不存在則提供合理的預設值
  * @param {string|number} symbolOrNumber 
  * @returns {object}
@@ -109,6 +152,12 @@ function getElementInfo(symbolOrNumber) {
   if (SYMBOL_TO_ELEMENT[normalized]) return SYMBOL_TO_ELEMENT[normalized];
   if (SYMBOL_TO_ELEMENT[clean.toUpperCase()]) return SYMBOL_TO_ELEMENT[clean.toUpperCase()];
   
+  // 嘗試 MD / 力場名稱正規化
+  const normSym = normalizeElementSymbol(clean);
+  if (normSym && SYMBOL_TO_ELEMENT[normSym]) {
+    return SYMBOL_TO_ELEMENT[normSym];
+  }
+
   // 嘗試數字解析
   const num = parseInt(clean, 10);
   if (!isNaN(num) && ELEMENTS[num]) return ELEMENTS[num];
