@@ -1559,6 +1559,55 @@ HW1     2.150000   0.850000   0.000000`;
       stressStruct.setFrame(2);
       assertNear(stressStruct.atoms[0].x, 0.2, 1e-4, 'Switched to Frame 2 in < 1 ms');
 
+      log('=== 45. Real NEB Ru-Cu Dissociation Trajectory (PDB & XYZ) Test ===');
+      const nebPdbSnippet = `CRYST1   10.626   10.626   26.401  90.00  90.00 121.04 P 1
+MODEL     1
+ATOM      1   Cu MOL     1      -1.426   3.810   5.000  1.00  0.00          CU  
+ATOM     33   Ru MOL     1      -0.025   1.516   5.000  1.00  0.00          RU  
+ATOM     65    N MOL     1       0.020   3.003  14.399  1.00  0.00           N  
+ATOM     66    N MOL     1       0.009   3.007  13.266  1.00  0.00           N  
+ENDMDL
+CRYST1   10.626   10.626   26.401  90.00  90.00 121.04 P 1
+MODEL     2
+ATOM      1   Cu MOL     1      -1.426   3.810   5.000  1.00  0.00          CU  
+ATOM     33   Ru MOL     1      -0.025   1.516   5.000  1.00  0.00          RU  
+ATOM     65    N MOL     1       0.040   3.050  14.800  1.00  0.00           N  
+ATOM     66    N MOL     1       0.010   3.010  13.100  1.00  0.00           N  
+ENDMDL`;
+
+      const parsedNebPdb = Parsers.parse(nebPdbSnippet, 'full_RuCu_dissociation_movie.pdb');
+      assert(parsedNebPdb.atoms.length === 4, 'NEB PDB parsed 4 atoms per frame');
+      assert(parsedNebPdb.getFrameCount() === 2, 'NEB PDB parsed 2 frames');
+      assert(parsedNebPdb.atoms[0].element === 'Cu', 'NEB PDB Atom 1 is Cu');
+      assert(parsedNebPdb.atoms[1].element === 'Ru', 'NEB PDB Atom 2 is Ru');
+      assert(parsedNebPdb.atoms[2].element === 'N', 'NEB PDB Atom 3 is N');
+      assertNear(parsedNebPdb.atoms[2].z, 14.399, 1e-3, 'Frame 1 N z is 14.399');
+      parsedNebPdb.setFrame(1);
+      assertNear(parsedNebPdb.atoms[2].z, 14.800, 1e-3, 'Frame 2 N z switched to 14.800');
+
+      const nebXyzSnippet = `4
+Lattice="10.62597 0.0 0.0 -5.47944 9.10423 0.0 0.0 0.0 26.40071" Properties=species:S:1:pos:R:3 pbc="T T T"
+Cu      -1.42620711       3.80959939       5.00000000
+Ru      -0.02478951       1.51570255       5.00000000
+N        0.02000000       3.00300000      14.39900000
+N        0.00900000       3.00700000      13.26600000
+4
+Lattice="10.62597 0.0 0.0 -5.47944 9.10423 0.0 0.0 0.0 26.40071" Properties=species:S:1:pos:R:3 pbc="T T T"
+Cu      -1.42620711       3.80959939       5.00000000
+Ru      -0.02478951       1.51570255       5.00000000
+N        0.04000000       3.05000000      14.80000000
+N        0.01000000       3.01000000      13.10000000`;
+
+      const parsedNebXyz = Parsers.parse(nebXyzSnippet, 'full_RuCu_dissociation_movie.xyz');
+      assert(parsedNebXyz.atoms.length === 4, 'NEB XYZ parsed 4 atoms');
+      assert(parsedNebXyz.getFrameCount() === 2, 'NEB XYZ parsed 2 frames');
+      assert(parsedNebXyz.atoms[0].element === 'Cu', 'NEB XYZ Atom 1 is Cu');
+      assert(parsedNebXyz.atoms[1].element === 'Ru', 'NEB XYZ Atom 2 is Ru');
+      assert(parsedNebXyz.atoms[2].element === 'N', 'NEB XYZ Atom 3 is N');
+      assertNear(parsedNebXyz.atoms[2].z, 14.399, 1e-3, 'Frame 1 N z is 14.399 in XYZ');
+      parsedNebXyz.setFrame(1);
+      assertNear(parsedNebXyz.atoms[2].z, 14.800, 1e-3, 'Frame 2 N z switched to 14.800 in XYZ');
+
       log(`\n========================================`);
       log(`TEST SUMMARY: ${passed} PASSED, ${failed} FAILED`);
       log(`========================================`);

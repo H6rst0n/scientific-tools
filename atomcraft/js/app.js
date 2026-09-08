@@ -1519,7 +1519,13 @@ class App {
         selAtoms.forEach(a => {
           delete a.customColor;
           delete a.customRadius;
+          a.renderStyle = 'inherit';
         });
+        this.renderer.update(this.structure);
+        this.showToast(`已恢復 ${selAtoms.length} 個原子的預設樣式`);
+      });
+    }
+
     // 4. 個別選中原子混合顯示模式按鈕 (Spacefill, Ball & Stick, Stick, Wireframe, Hidden, Inherit)
     const styleButtons = [
       { id: 'btn-style-spacefill', style: 'spacefill', name: '空間填充 (CPK)' },
