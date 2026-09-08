@@ -14,6 +14,7 @@ class Structure {
     this.title = 'Untitled';
     this.charge = 0;
     this.multiplicity = 1;
+    this.trajectory = null; // { frames: [], currentFrame: 0, fps: 20, loop: 'loop' }
   }
 
   /**
@@ -29,6 +30,7 @@ class Structure {
     this.title = 'Untitled';
     this.charge = 0;
     this.multiplicity = 1;
+    this.trajectory = null;
   }
 
   /**
@@ -47,6 +49,14 @@ class Structure {
     }
     copy.atoms = this.atoms.map(a => ({ ...a }));
     copy.bonds = this.bonds.map(b => ({ ...b }));
+    if (this.trajectory) {
+      copy.trajectory = {
+        frames: this.trajectory.frames, // 共用影格資料以保持效能與記憶體精簡
+        currentFrame: this.trajectory.currentFrame,
+        fps: this.trajectory.fps || 20,
+        loop: this.trajectory.loop || 'loop'
+      };
+    }
     return copy;
   }
 
@@ -64,7 +74,8 @@ class Structure {
       fy: fy !== null ? Number(fy) : 0,
       fz: fz !== null ? Number(fz) : 0,
       selected: false,
-      fixed: false
+      fixed: false,
+      renderStyle: 'inherit' // 'inherit' | 'spacefill' | 'ball_and_stick' | 'stick' | 'wireframe' | 'hidden'
     };
 
     if (this.cell && (fx === null || fy === null || fz === null)) {
@@ -860,4 +871,211 @@ class Structure {
       this.translate(-center[0], -center[1], -center[2], selectedOnly);
     }
   }
+
+  // ==========================================
+  // 多影格動態軌跡 (Trajectory Management)
+  // ==========================================
+
+  /**
+   * 初始化多影格軌跡資料容器
+   */
+  initTrajectory(frames = []) {
+    this.trajectory = {
+      frames: frames, // [{ positions: Float32Array | {x,y,z}[], cell: [[...],...]|null, timestep: number, title: string, comment: string, energy: number }]
+      currentFrame: 0,
+      fps: 20,
+      loop: 'loop' // 'loop' | 'pingpong' | 'once'
+    };
+  }
+
+  /**
+   * 新增一個軌跡影格
+   * @param {Array<{x:number, y:number, z:number}> | Float32Array | number[][]} positions 
+   * @param {number[][] | null} cell 
+   * @param {Object} metadata 
+   */
+  addTrajectoryFrame(positions, cell = null, metadata = {}) {
+    if (!this.trajectory) {
+      this.initTrajectory();
+    }
+    const n = this.atoms.length;
+    let posData;
+    if (positions instanceof Float32Array) {
+      posData = positions;
+    } else if (Array.isArray(positions)) {
+      posData = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) {
+        const p = positions[i];
+        if (p) {
+          if (Array.isArray(p)) {
+            posData[i * 3] = p[0] || 0;
+            posData[i * 3 + 1] = p[1] || 0;
+            posData[i * 3 + 2] = p[2] || 0;
+          } else {
+            posData[i * 3] = p.x || 0;
+            posData[i * 3 + 1] = p.y || 0;
+            posData[i * 3 + 2] = p.z || 0;
+          }
+        }
+      }
+    } else {
+      posData = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) {
+        posData[i * 3] = this.atoms[i].x;
+        posData[i * 3 + 1] = this.atoms[i].y;
+        posData[i * 3 + 2] = this.atoms[i].z;
+      }
+    }
+
+    const frame = {
+      positions: posData,
+      cell: cell ? cell.map(r => [...r]) : (this.cell ? this.cell.map(r => [...r]) : null),
+      timestep: metadata.timestep !== undefined ? metadata.timestep : this.trajectory.frames.length,
+      title: metadata.title || '',
+      comment: metadata.comment || '',
+      energy: metadata.energy !== undefined ? metadata.energy : null
+    };
+
+    this.trajectory.frames.push(frame);
+    return frame;
+  }
+
+  /**
+   * 切換結構當前影格座標
+   * @param {number} frameIndex 
+   */
+  setFrame(frameIndex) {
+    if (!this.trajectory || !this.trajectory.frames || this.trajectory.frames.length === 0) return false;
+    const idx = Math.max(0, Math.min(this.trajectory.frames.length - 1, frameIndex));
+    const frame = this.trajectory.frames[idx];
+    this.trajectory.currentFrame = idx;
+
+    const n = this.atoms.length;
+    const pos = frame.positions;
+    if (pos instanceof Float32Array) {
+      for (let i = 0; i < n; i++) {
+        this.atoms[i].x = pos[i * 3];
+        this.atoms[i].y = pos[i * 3 + 1];
+        this.atoms[i].z = pos[i * 3 + 2];
+      }
+    } else if (Array.isArray(pos)) {
+      for (let i = 0; i < n && i < pos.length; i++) {
+        const p = pos[i];
+        if (Array.isArray(p)) {
+          this.atoms[i].x = p[0];
+          this.atoms[i].y = p[1];
+          this.atoms[i].z = p[2];
+        } else if (p) {
+          this.atoms[i].x = p.x;
+          this.atoms[i].y = p.y;
+          this.atoms[i].z = p.z;
+        }
+      }
+    }
+
+    if (frame.cell) {
+      this.cell = frame.cell.map(r => [...r]);
+      this.updateCellInverse();
+    }
+
+    if (this.cell) {
+      this.syncFractionalFromCartesian();
+    }
+
+    return true;
+  }
+
+  /**
+   * 取得總影格數
+   */
+  getFrameCount() {
+    return (this.trajectory && this.trajectory.frames && this.trajectory.frames.length > 0)
+      ? this.trajectory.frames.length
+      : 1;
+  }
+
+  /**
+   * 取得當前影格索引 (0-based)
+   */
+  getCurrentFrameIndex() {
+    return this.trajectory ? this.trajectory.currentFrame : 0;
+  }
+
+  /**
+   * 取得當前影格中繼資料 (timestep, energy, title...)
+   */
+  getCurrentFrameMetadata() {
+    if (!this.trajectory || !this.trajectory.frames || this.trajectory.frames.length === 0) {
+      return { frameIndex: 0, totalFrames: 1, timestep: 0, title: this.title, comment: '', energy: null };
+    }
+    const idx = this.trajectory.currentFrame;
+    const f = this.trajectory.frames[idx] || {};
+    return {
+      frameIndex: idx,
+      totalFrames: this.trajectory.frames.length,
+      timestep: f.timestep,
+      title: f.title || this.title,
+      comment: f.comment || '',
+      energy: f.energy
+    };
+  }
+
+  /**
+   * 設定指定原子的渲染樣式 ('inherit' | 'spacefill' | 'ball_and_stick' | 'stick' | 'wireframe' | 'hidden')
+   */
+  setAtomRenderStyle(indices, style = 'inherit') {
+    const list = Array.isArray(indices) ? indices : Array.from(indices);
+    for (const idx of list) {
+      if (this.atoms[idx]) {
+        this.atoms[idx].renderStyle = style;
+      }
+    }
+  }
+
+  /**
+   * 解析序號範圍或元素字串 (支援 "1-252", "253-1022", "1, 3, 5-10", "Cu, Pt", "Cu, 1-100")
+   * @param {string} rangeStr
+   * @returns {Set<number>} 0-based 原子索引集合
+   */
+  parseRange(rangeStr) {
+    const indices = new Set();
+    if (!rangeStr || typeof rangeStr !== 'string') return indices;
+
+    const parts = rangeStr.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
+    const n = this.atoms.length;
+
+    for (const part of parts) {
+      // 1. 檢查是否為元素符號 (如 Cu, Pt, H, O...)
+      const upper = part.toUpperCase();
+      const matchedByElem = this.atoms
+        .map((a, i) => (a.element.toUpperCase() === upper || a.element === part ? i : -1))
+        .filter(i => i >= 0);
+      if (matchedByElem.length > 0) {
+        matchedByElem.forEach(i => indices.add(i));
+        continue;
+      }
+
+      // 2. 檢查是否為範圍 (如 1-252 或 253..1022)
+      const rangeMatch = part.match(/^(\d+)[-~.]{1,2}(\d+)$/);
+      if (rangeMatch) {
+        const start = parseInt(rangeMatch[1], 10);
+        const end = parseInt(rangeMatch[2], 10);
+        const minIdx = Math.max(0, Math.min(start, end) - 1);
+        const maxIdx = Math.min(n - 1, Math.max(start, end) - 1);
+        for (let i = minIdx; i <= maxIdx; i++) {
+          indices.add(i);
+        }
+        continue;
+      }
+
+      // 3. 檢查單一序號 (如 252)
+      const singleNum = parseInt(part, 10);
+      if (!isNaN(singleNum) && singleNum >= 1 && singleNum <= n) {
+        indices.add(singleNum - 1);
+      }
+    }
+
+    return indices;
+  }
 }
+

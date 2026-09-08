@@ -141,3 +141,23 @@ function isBonded(elemA, elemB, dist, tolerance = 0.40) {
   const idealDist = rA + rB;
   return dist > 0.4 && dist <= (idealDist + tolerance);
 }
+
+/**
+ * 根據原子質量 (Mass) 自動推斷最接近之化學元素符號 (用於 LAMMPS Data 等檔案)
+ * @param {number} mass 原子量 (amu)
+ * @returns {string} 元素符號 (如 H, C, N, O, Cu, Pt, ...)
+ */
+function inferElementFromMass(mass) {
+  if (typeof mass !== 'number' || isNaN(mass) || mass <= 0) return 'C';
+  let bestSymbol = 'C';
+  let minDiff = Infinity;
+  for (const [num, elem] of Object.entries(ELEMENTS)) {
+    const diff = Math.abs(elem.mass - mass);
+    if (diff < minDiff) {
+      minDiff = diff;
+      bestSymbol = elem.symbol;
+    }
+  }
+  return bestSymbol;
+}
+

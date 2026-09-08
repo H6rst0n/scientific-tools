@@ -17,6 +17,12 @@ class App {
     this.isAdjustDockOpen = false;
     this.adjustDockType = null; // 'bond' | 'angle' | 'dihedral'
 
+    // 動態軌跡播放器狀態 (MD, Optimization, NEB, IRC Scans)
+    this.trajTimer = null;
+    this.trajIsPlaying = false;
+    this.trajFps = 20;
+    this.trajLoop = true;
+
     // 歷史紀錄 (Undo / Redo)
     this.undoStack = [];
     this.redoStack = [];
@@ -135,12 +141,16 @@ class App {
     // 6. 綁定外觀與色彩自訂面板
     this.bindAppearanceModal();
 
-    // 7. 預設啟動為空白畫布 (依使用者需求：初始無預載分子，提供乾淨操作畫布)
+    // 7. 初始化軌跡播放器與 LAMMPS 對應面板
+    this.initTrajectoryPlayer();
+    this.initLAMMPSTypesModal();
+
+    // 8. 預設啟動為空白畫布 (依使用者需求：初始無預載分子，提供乾淨操作畫布)
     this.structure = new Structure();
     this.renderer.update(this.structure);
     this.updateUI();
 
-    // 8. 啟動時提示建議使用全螢幕 (F11)，5 秒後自動消失
+    // 9. 啟動時提示建議使用全螢幕 (F11)，5 秒後自動消失
     setTimeout(() => {
       this.showToast('💡 建議使用全螢幕 (F11) 以獲得最佳操作體驗', 5000);
     }, 600);
@@ -168,6 +178,7 @@ class App {
       this.showToast('已經是最早的歷史狀態');
       return;
     }
+    this.pauseTrajectory();
     this.redoStack.push(this.structure.clone());
     this.structure = this.undoStack.pop();
     this.controller.structure = this.structure;
@@ -186,6 +197,7 @@ class App {
       this.showToast('已經是最新的歷史狀態');
       return;
     }
+    this.pauseTrajectory();
     this.undoStack.push(this.structure.clone());
     this.structure = this.redoStack.pop();
     this.controller.structure = this.structure;
@@ -263,6 +275,7 @@ class App {
   clearStructure() {
     if (this.structure.atoms.length === 0) return;
     if (confirm('確定要清空目前畫布上的所有原子與晶胞嗎？')) {
+      this.pauseTrajectory();
       this.pushHistory();
       this.structure.clear();
       this.controller.clearSelection();
@@ -281,6 +294,7 @@ class App {
   loadPreset(key) {
     const preset = PRESETS[key];
     if (!preset) return;
+    this.pauseTrajectory();
     this.pushHistory();
     this.structure = preset.build();
     this.controller.structure = this.structure;
@@ -304,6 +318,7 @@ class App {
         alert('無法從此檔案解析出有效的原子座標，請確認格式是否正確。');
         return;
       }
+      this.pauseTrajectory();
       this.structure = s;
       this.controller.structure = this.structure;
       this.controller.clearSelection();
@@ -312,7 +327,14 @@ class App {
       this.renderer.resetCamera(this.structure);
       this.updateUI();
       this.setMeasurementDisplay('');
-      this.showToast(`成功載入：${this.structure.title || filename} (${this.structure.atoms.length} 個原子)`);
+
+      const frameCount = this.structure.getFrameCount();
+      const trajInfo = frameCount > 1 ? ` (${frameCount} 幀動態軌跡)` : '';
+      this.showToast(`成功載入：${this.structure.title || filename} (${this.structure.atoms.length} 個原子)${trajInfo}`);
+
+      if (this.structure.lammpsTypes && this.structure.lammpsTypes.length > 0) {
+        this.checkLAMMPSTypesOnLoad();
+      }
     } catch (err) {
       console.error(err);
       alert(`檔案解析失敗: ${err.message}`);
@@ -320,7 +342,7 @@ class App {
   }
 
   /**
-   * 拖曳檔案處理
+   * 拖曳檔案處理 (支援單一檔案或 Data + Dump 聯合多檔拖曳)
    */
   bindFileDrop() {
     const dropZone = window;
@@ -342,14 +364,61 @@ class App {
       e.stopPropagation();
       document.body.classList.remove('drag-active');
 
-      const files = e.dataTransfer.files;
-      if (files && files.length > 0) {
+      const files = Array.from(e.dataTransfer.files || []);
+      if (files.length === 0) return;
+
+      if (files.length === 1) {
         const file = files[0];
         const reader = new FileReader();
         reader.onload = (evt) => {
           this.loadFromText(evt.target.result, file.name);
         };
         reader.readAsText(file);
+      } else {
+        // 多檔案同時拖入 (例如: Cu100_water.data + Cu100_water.lammpstrj / dump)
+        const dataFile = files.find(f => f.name.endsWith('.data') || f.name.endsWith('.lammps'));
+        const dumpFile = files.find(f => f.name.endsWith('.dump') || f.name.endsWith('.lammpstrj') || f.name.endsWith('.arc') || f.name.endsWith('.xyz'));
+
+        if (dataFile && dumpFile) {
+          const readData = new Promise((resolve) => {
+            const r = new FileReader();
+            r.onload = (evt) => resolve(evt.target.result);
+            r.readAsText(dataFile);
+          });
+          const readDump = new Promise((resolve) => {
+            const r = new FileReader();
+            r.onload = (evt) => resolve(evt.target.result);
+            r.readAsText(dumpFile);
+          });
+
+          Promise.all([readData, readDump]).then(([dataText, dumpText]) => {
+            try {
+              const dataStruct = Parsers.parseLAMMPSData(dataText);
+              const dumpStruct = Parsers.parseLAMMPSDump(dumpText, dataStruct.masses);
+              this.pushHistory();
+              this.pauseTrajectory();
+              this.structure = dumpStruct;
+              this.controller.structure = this.structure;
+              this.controller.clearSelection();
+              this.closeAdjustDock();
+              this.renderer.update(this.structure);
+              this.renderer.resetCamera(this.structure);
+              this.updateUI();
+              this.showToast(`成功聯合載入 Data 元素定義與軌跡：${dumpFile.name} (${dumpStruct.getFrameCount()} 幀)`);
+            } catch (err) {
+              console.error(err);
+              this.loadFromText(dumpText, dumpFile.name);
+            }
+          });
+        } else {
+          // 載入第一個支援檔案
+          const file = files[0];
+          const reader = new FileReader();
+          reader.onload = (evt) => {
+            this.loadFromText(evt.target.result, file.name);
+          };
+          reader.readAsText(file);
+        }
       }
     });
   }
@@ -1250,7 +1319,10 @@ class App {
     // 4. 更新週期性面板晶格參數與真空層狀態
     this.updateCrystalPanelInfo();
 
-    // 5. 若外觀懸浮面板開啟中，即時同步更新選取與元素資訊
+    // 5. 更新動態軌跡播放器狀態與影格進度
+    this.updateTrajectoryUI();
+
+    // 6. 若外觀懸浮面板開啟中，即時同步更新選取與元素資訊
     if (this.updateAppearanceDock) {
       this.updateAppearanceDock();
     }
@@ -1448,11 +1520,490 @@ class App {
           delete a.customColor;
           delete a.customRadius;
         });
+    // 4. 個別選中原子混合顯示模式按鈕 (Spacefill, Ball & Stick, Stick, Wireframe, Hidden, Inherit)
+    const styleButtons = [
+      { id: 'btn-style-spacefill', style: 'spacefill', name: '空間填充 (CPK)' },
+      { id: 'btn-style-ballstick', style: 'ball_and_stick', name: '球棍模型' },
+      { id: 'btn-style-stick', style: 'stick', name: '棍狀模型' },
+      { id: 'btn-style-wireframe', style: 'wireframe', name: '線框模型' },
+      { id: 'btn-style-hidden', style: 'hidden', name: '隱藏' },
+      { id: 'btn-style-inherit', style: 'inherit', name: '繼承全域' }
+    ];
+
+    styleButtons.forEach(({ id, style, name }) => {
+      const btn = document.getElementById(id);
+      if (btn) {
+        btn.addEventListener('click', () => {
+          const selIndices = this.structure.atoms
+            .map((a, idx) => a.selected ? idx : -1)
+            .filter(idx => idx >= 0);
+          if (selIndices.length === 0) {
+            this.showToast('⚠️ 請先在畫布上選取欲指定模式的原子');
+            return;
+          }
+          this.pushHistory();
+          this.structure.setAtomRenderStyle(selIndices, style);
+          this.renderer.update(this.structure);
+          this.showToast(`已將 ${selIndices.length} 顆選中原子設為【${name}】`);
+        });
+      }
+    });
+
+    // 5. 按序號範圍或元素批次套用顯示模式 (如: 1-252 或 Cu, Pt)
+    const btnApplyRangeStyle = document.getElementById('btn-apply-range-style');
+    const inputStyleRange = document.getElementById('input-style-range');
+    const selectRangeStyle = document.getElementById('select-range-style');
+
+    if (btnApplyRangeStyle && inputStyleRange && selectRangeStyle) {
+      btnApplyRangeStyle.addEventListener('click', () => {
+        const rangeText = inputStyleRange.value.trim();
+        if (!rangeText) {
+          this.showToast('⚠️ 請輸入序號範圍 (如 1-252) 或元素名稱 (如 Cu, Pt)');
+          return;
+        }
+        const targetIndices = Array.from(this.parseRangeString(rangeText));
+        if (targetIndices.length === 0) {
+          this.showToast(`⚠️ 未找到符合「${rangeText}」的原子`);
+          return;
+        }
+        const style = selectRangeStyle.value;
+        const styleNames = {
+          spacefill: '空間填充 (CPK)',
+          ball_and_stick: '球棍模型',
+          stick: '棍狀模型',
+          wireframe: '線框模型',
+          hidden: '隱藏',
+          inherit: '繼承全域'
+        };
+        this.pushHistory();
+        this.structure.setAtomRenderStyle(targetIndices, style);
         this.renderer.update(this.structure);
-        this.showToast(`已重設 ${selAtoms.length} 個原子的外觀樣式`);
+        this.showToast(`已將 ${targetIndices.length} 顆原子設為【${styleNames[style] || style}】`);
       });
     }
   }
+
+  /**
+   * 解析序號範圍字串 (支援 "1-252", "253-1022", "1, 3, 5-10", "Cu, Pt", "Cu, 1-100")
+   * @param {string} rangeStr
+   * @returns {Set<number>} 0-based 原子索引集合
+   */
+  parseRangeString(rangeStr) {
+    const indices = new Set();
+    if (!rangeStr || typeof rangeStr !== 'string' || !this.structure) return indices;
+
+    const parts = rangeStr.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
+    const n = this.structure.atoms.length;
+
+    for (const part of parts) {
+      // 1. 檢查是否為元素符號 (如 Cu, Pt, H, O...)
+      const upper = part.toUpperCase();
+      const matchedByElem = this.structure.atoms
+        .map((a, i) => (a.element.toUpperCase() === upper || a.element === part ? i : -1))
+        .filter(i => i >= 0);
+      if (matchedByElem.length > 0) {
+        matchedByElem.forEach(i => indices.add(i));
+        continue;
+      }
+
+      // 2. 檢查是否為範圍 (如 1-252 或 253..1022)
+      const rangeMatch = part.match(/^(\d+)[-~.]{1,2}(\d+)$/);
+      if (rangeMatch) {
+        const start = parseInt(rangeMatch[1], 10);
+        const end = parseInt(rangeMatch[2], 10);
+        const minIdx = Math.max(0, Math.min(start, end) - 1);
+        const maxIdx = Math.min(n - 1, Math.max(start, end) - 1);
+        for (let i = minIdx; i <= maxIdx; i++) {
+          indices.add(i);
+        }
+        continue;
+      }
+
+      // 3. 檢查單一序號 (如 252)
+      const singleNum = parseInt(part, 10);
+      if (!isNaN(singleNum) && singleNum >= 1 && singleNum <= n) {
+        indices.add(singleNum - 1);
+      }
+    }
+
+    return indices;
+  }
+
+  /**
+   * 初始化動態軌跡播放器 UI 控制項
+   */
+  initTrajectoryPlayer() {
+    const bar = document.getElementById('trajectory-player-bar');
+    const btnFirst = document.getElementById('btn-traj-first');
+    const btnPrev = document.getElementById('btn-traj-prev');
+    const btnPlay = document.getElementById('btn-traj-play');
+    const btnNext = document.getElementById('btn-traj-next');
+    const btnLast = document.getElementById('btn-traj-last');
+    const slider = document.getElementById('slider-traj-frame');
+    const speedSelect = document.getElementById('select-traj-speed');
+    const btnLoop = document.getElementById('btn-traj-loop');
+    const btnClose = document.getElementById('btn-traj-close');
+    const btnLoadData = document.getElementById('btn-traj-load-data');
+
+    if (btnFirst) btnFirst.onclick = () => this.goToFrame(0);
+    if (btnPrev) btnPrev.onclick = () => this.stepFrame(-1);
+    if (btnPlay) btnPlay.onclick = () => this.togglePlayTrajectory();
+    if (btnNext) btnNext.onclick = () => this.stepFrame(1);
+    if (btnLast) btnLast.onclick = () => this.goToFrame(this.structure.getFrameCount() - 1);
+
+    if (slider) {
+      slider.oninput = (e) => {
+        const idx = parseInt(e.target.value, 10) || 0;
+        this.goToFrame(idx);
+      };
+    }
+
+    if (speedSelect) {
+      speedSelect.onchange = (e) => {
+        this.setTrajectorySpeed(parseFloat(e.target.value) || 1.0);
+      };
+    }
+
+    if (btnLoop) {
+      btnLoop.onclick = () => {
+        this.trajLoop = !this.trajLoop;
+        btnLoop.classList.toggle('active', this.trajLoop);
+        this.showToast(this.trajLoop ? '已開啟軌跡循環播放' : '已關閉軌跡循環播放');
+      };
+    }
+
+    if (btnClose) {
+      btnClose.onclick = () => {
+        this.pauseTrajectory();
+        if (bar) bar.style.display = 'none';
+      };
+    }
+
+    if (btnLoadData) {
+      btnLoadData.onclick = () => {
+        this.openLAMMPSTypesModal();
+      };
+    }
+  }
+
+  /**
+   * 跳轉至指定影格 (支援 GPU 高效更新與量測數據同步)
+   */
+  goToFrame(idx, updateMeshOnly = true) {
+    if (!this.structure) return;
+    const count = this.structure.getFrameCount();
+    if (count <= 1) return;
+
+    const frameIdx = Math.max(0, Math.min(count - 1, idx));
+    this.structure.setFrame(frameIdx);
+
+    if (updateMeshOnly && this.renderer.atomMesh) {
+      this.renderer.updateFramePositions(this.structure);
+    } else {
+      this.renderer.update(this.structure);
+    }
+
+    // 更新 UI 控件
+    const slider = document.getElementById('slider-traj-frame');
+    if (slider) {
+      slider.max = count - 1;
+      slider.value = frameIdx;
+    }
+
+    const labelFrame = document.getElementById('label-traj-frame');
+    if (labelFrame) labelFrame.textContent = `Frame ${frameIdx + 1} / ${count}`;
+
+    const meta = this.structure.getCurrentFrameMetadata();
+    const labelInfo = document.getElementById('label-traj-info');
+    if (labelInfo) {
+      let infoStr = '';
+      if (meta.timestep !== undefined && meta.timestep !== null) infoStr += `Step: ${meta.timestep} `;
+      if (meta.energy !== undefined && meta.energy !== null) infoStr += `E: ${meta.energy.toFixed(4)} `;
+      if (meta.comment) infoStr += `| ${meta.comment}`;
+      labelInfo.textContent = infoStr;
+    }
+
+    // 同步更新量測數值 (若有選中原子)
+    if (this.controller && this.controller.selectedSequence && this.controller.selectedSequence.length > 0) {
+      this.controller.updateMeasurementDisplay();
+    }
+
+    // 若晶胞工具面板開啟，更新其幾何數據
+    this.updateCrystalPanelInfo();
+  }
+
+  /**
+   * 影格步進 (+1 或 -1)
+   */
+  stepFrame(delta) {
+    const count = this.structure.getFrameCount();
+    if (count <= 1) return;
+    let cur = this.structure.getCurrentFrameIndex();
+    let next = cur + delta;
+    if (next >= count) {
+      next = this.trajLoop ? 0 : count - 1;
+    } else if (next < 0) {
+      next = this.trajLoop ? count - 1 : 0;
+    }
+    this.goToFrame(next);
+  }
+
+  /**
+   * 播放動態軌跡
+   */
+  playTrajectory() {
+    if (this.trajIsPlaying || !this.structure || this.structure.getFrameCount() <= 1) return;
+    this.trajIsPlaying = true;
+
+    const btnPlay = document.getElementById('btn-traj-play');
+    if (btnPlay) {
+      btnPlay.textContent = '⏸';
+      btnPlay.title = '暫停播放 (空白鍵)';
+    }
+
+    const intervalMs = Math.max(10, Math.round(1000 / this.trajFps));
+    if (this.trajTimer) clearInterval(this.trajTimer);
+    this.trajTimer = setInterval(() => {
+      const count = this.structure.getFrameCount();
+      const cur = this.structure.getCurrentFrameIndex();
+      if (cur + 1 >= count && !this.trajLoop) {
+        this.pauseTrajectory();
+        return;
+      }
+      this.stepFrame(1);
+    }, intervalMs);
+  }
+
+  /**
+   * 暫停動態軌跡播放
+   */
+  pauseTrajectory() {
+    this.trajIsPlaying = false;
+    if (this.trajTimer) {
+      clearInterval(this.trajTimer);
+      this.trajTimer = null;
+    }
+    const btnPlay = document.getElementById('btn-traj-play');
+    if (btnPlay) {
+      btnPlay.textContent = '▶';
+      btnPlay.title = '播放動態軌跡 (空白鍵)';
+    }
+  }
+
+  /**
+   * 切換播放 / 暫停
+   */
+  togglePlayTrajectory() {
+    if (this.trajIsPlaying) {
+      this.pauseTrajectory();
+    } else {
+      this.playTrajectory();
+    }
+  }
+
+  /**
+   * 設定播放速率倍數 (0.25x ~ 10x)
+   */
+  setTrajectorySpeed(multiplier) {
+    this.trajFps = Math.max(1, Math.round(20 * multiplier));
+    if (this.trajIsPlaying) {
+      this.pauseTrajectory();
+      this.playTrajectory();
+    }
+  }
+
+  /**
+   * 同步更新動態軌跡工具列顯示狀態
+   */
+  updateTrajectoryUI() {
+    const bar = document.getElementById('trajectory-player-bar');
+    if (!bar) return;
+
+    const hasTraj = this.structure && this.structure.trajectory && this.structure.trajectory.frames && this.structure.trajectory.frames.length > 1;
+    if (hasTraj) {
+      bar.style.display = 'flex';
+      const count = this.structure.getFrameCount();
+      const cur = this.structure.getCurrentFrameIndex();
+      const slider = document.getElementById('slider-traj-frame');
+      if (slider) {
+        slider.min = 0;
+        slider.max = count - 1;
+        slider.value = cur;
+      }
+
+      const labelFrame = document.getElementById('label-traj-frame');
+      if (labelFrame) labelFrame.textContent = `Frame ${cur + 1} / ${count}`;
+
+      const meta = this.structure.getCurrentFrameMetadata();
+      const labelInfo = document.getElementById('label-traj-info');
+      if (labelInfo) {
+        let infoStr = '';
+        if (meta.timestep !== undefined && meta.timestep !== null) infoStr += `Step: ${meta.timestep} `;
+        if (meta.energy !== undefined && meta.energy !== null) infoStr += `E: ${meta.energy.toFixed(4)} `;
+        if (meta.comment) infoStr += `| ${meta.comment}`;
+        labelInfo.textContent = infoStr;
+      }
+
+      const btnLoadData = document.getElementById('btn-traj-load-data');
+      if (btnLoadData) {
+        const hasNumericTypes = (this.structure.lammpsTypes && this.structure.lammpsTypes.length > 0) || this.structure.atoms.some(a => a.lammpsType);
+        btnLoadData.style.display = hasNumericTypes ? 'inline-flex' : 'none';
+      }
+    } else {
+      bar.style.display = 'none';
+      if (this.trajIsPlaying) this.pauseTrajectory();
+    }
+  }
+
+  /**
+   * 初始化 LAMMPS 類型與元素對應彈窗事件
+   */
+  initLAMMPSTypesModal() {
+    const modal = document.getElementById('modal-lammps-types');
+    const btnClose = document.getElementById('btn-close-lammps-modal');
+    const btnCancel = document.getElementById('btn-cancel-lammps-modal');
+    const btnPickData = document.getElementById('btn-lammps-pick-data');
+    const inputDataFile = document.getElementById('input-lammps-data-file');
+    const btnApply = document.getElementById('btn-apply-lammps-mapping');
+
+    if (btnClose) btnClose.onclick = () => modal.classList.remove('show');
+    if (btnCancel) btnCancel.onclick = () => modal.classList.remove('show');
+
+    if (btnPickData && inputDataFile) {
+      btnPickData.onclick = () => inputDataFile.click();
+      inputDataFile.onchange = (e) => {
+        if (e.target.files && e.target.files[0]) {
+          const file = e.target.files[0];
+          const reader = new FileReader();
+          reader.onload = (evt) => {
+            const dataStruct = Parsers.parseLAMMPSData(evt.target.result);
+            if (dataStruct.masses && Object.keys(dataStruct.masses).length > 0) {
+              for (const [tStr, elem] of Object.entries(dataStruct.masses)) {
+                const select = document.querySelector(`.lammps-elem-select[data-type="${tStr}"]`);
+                if (select) {
+                  select.value = elem;
+                }
+              }
+              this.showToast(`已從 ${file.name} 載入 ${Object.keys(dataStruct.masses).length} 個型別的質量映射！`);
+            }
+          };
+          reader.readAsText(file);
+          e.target.value = '';
+        }
+      };
+    }
+
+    if (btnApply) {
+      btnApply.onclick = () => {
+        const mapping = {};
+        document.querySelectorAll('.lammps-elem-select').forEach(select => {
+          const t = parseInt(select.dataset.type, 10);
+          if (!isNaN(t) && select.value) {
+            mapping[t] = select.value;
+          }
+        });
+
+        if (Object.keys(mapping).length > 0) {
+          this.pushHistory();
+          for (const a of this.structure.atoms) {
+            if (a.lammpsType && mapping[a.lammpsType]) {
+              a.element = mapping[a.lammpsType];
+            }
+          }
+
+          const checkRem = document.getElementById('check-lammps-remember');
+          if (checkRem && checkRem.checked) {
+            try {
+              const saved = JSON.parse(localStorage.getItem('atomcraft_lammps_type_map') || '{}');
+              Object.assign(saved, mapping);
+              localStorage.setItem('atomcraft_lammps_type_map', JSON.stringify(saved));
+            } catch (err) {}
+          }
+
+          this.renderer.update(this.structure);
+          this.updateUI();
+          this.showToast(`已成功套用 ${Object.keys(mapping).length} 個 LAMMPS 類型元素映射！`);
+        }
+        modal.classList.remove('show');
+      };
+    }
+  }
+
+  /**
+   * 開啟 LAMMPS 類型對應彈窗
+   */
+  openLAMMPSTypesModal() {
+    const modal = document.getElementById('modal-lammps-types');
+    const table = document.getElementById('lammps-type-mapping-table');
+    if (!modal || !table || !this.structure) return;
+
+    table.innerHTML = '';
+    const types = [...(this.structure.lammpsTypes || [])];
+    if (types.length === 0) {
+      const discoveredTypes = new Set(this.structure.atoms.map(a => a.lammpsType).filter(Boolean));
+      types.push(...discoveredTypes);
+      types.sort((a, b) => a - b);
+    }
+
+    if (types.length === 0) {
+      this.showToast('當前結構未包含 LAMMPS 型別資訊');
+      return;
+    }
+
+    let savedMapping = {};
+    try {
+      savedMapping = JSON.parse(localStorage.getItem('atomcraft_lammps_type_map') || '{}');
+    } catch (e) {}
+
+    const commonElems = ['Cu', 'H', 'O', 'C', 'N', 'Pt', 'Au', 'Si', 'F', 'Cl', 'S', 'P', 'Li', 'Na', 'Fe', 'Ni'];
+
+    for (const t of types) {
+      const count = this.structure.atoms.filter(a => a.lammpsType === t).length;
+      const curElem = this.structure.atoms.find(a => a.lammpsType === t)?.element || savedMapping[t] || 'C';
+
+      const row = document.createElement('div');
+      row.className = 'lammps-type-row';
+
+      let optionsHtml = '';
+      const allList = [...new Set([curElem, savedMapping[t], ...commonElems].filter(Boolean))];
+      for (const sym of allList) {
+        const info = getElementInfo(sym);
+        optionsHtml += `<option value="${sym}" ${sym === curElem ? 'selected' : ''}>${sym} (${info.nameZh || ''})</option>`;
+      }
+
+      row.innerHTML = `
+        <span class="lammps-type-badge">Type ${t}</span>
+        <span class="lammps-type-count">${count} 顆原子</span>
+        <select class="dropdown-select small lammps-elem-select" data-type="${t}" style="flex: 1;">
+          ${optionsHtml}
+        </select>
+      `;
+      table.appendChild(row);
+    }
+
+    modal.classList.add('show');
+  }
+
+  /**
+   * 載入時自動檢查並套用已存的 LAMMPS 類型對應
+   */
+  checkLAMMPSTypesOnLoad() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('atomcraft_lammps_type_map') || '{}');
+      let appliedCount = 0;
+      for (const a of this.structure.atoms) {
+        if (a.lammpsType && saved[a.lammpsType]) {
+          a.element = saved[a.lammpsType];
+          appliedCount++;
+        }
+      }
+      if (appliedCount > 0) {
+        this.renderer.update(this.structure);
+        this.updateUI();
+      }
+    } catch (e) {}
+  }
+
 
   /**
    * 設定 3D 畫布背景色

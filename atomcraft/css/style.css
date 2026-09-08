@@ -1050,3 +1050,185 @@ body.drag-active {
   font-size: 12px;
 }
 
+/* ========================================================
+   10. 動態軌跡播放器控制列 (Trajectory Player Bar)
+   ======================================================== */
+.trajectory-player-bar {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  background: var(--bg-panel);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-panel);
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: calc(100vw - 32px);
+  min-width: 520px;
+  pointer-events: auto;
+  animation: playerSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes playerSlideUp {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 15px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.traj-ctrl-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.traj-btn {
+  background: var(--bg-card);
+  color: var(--text-main);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 5px 9px;
+  font-size: 13px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.traj-btn:hover:not(:disabled) {
+  background: var(--primary-glow);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.traj-btn.traj-play-btn {
+  background: var(--primary);
+  color: #0f172a;
+  font-weight: 700;
+  border-color: var(--primary);
+  min-width: 32px;
+}
+
+.traj-btn.traj-play-btn:hover {
+  background: var(--primary-hover);
+  box-shadow: 0 0 10px var(--primary-glow);
+  color: #0f172a;
+}
+
+.traj-btn.active {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.traj-btn.close-btn {
+  font-size: 16px;
+  line-height: 1;
+  padding: 3px 7px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-dim);
+}
+
+.traj-btn.close-btn:hover {
+  color: var(--accent-red);
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.traj-slider-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 160px;
+}
+
+.traj-scrubber {
+  width: 100%;
+  accent-color: var(--primary);
+  cursor: pointer;
+  height: 6px;
+}
+
+.traj-meta-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+}
+
+.traj-frame-badge {
+  font-weight: 700;
+  color: var(--primary);
+  font-family: var(--font-mono);
+}
+
+.traj-info-text {
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+.traj-opt-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ========================================================
+   11. LAMMPS Type Mapping Table
+   ======================================================== */
+.lammps-type-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11.5px;
+}
+
+.lammps-type-row:last-child {
+  border-bottom: none;
+}
+
+.lammps-type-badge {
+  background: rgba(56, 189, 248, 0.15);
+  color: var(--primary);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  min-width: 55px;
+  text-align: center;
+}
+
+.lammps-type-count {
+  color: var(--text-dim);
+  font-size: 11px;
+  min-width: 65px;
+}
+
+.lammps-type-mass {
+  color: #fbbf24;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  min-width: 80px;
+}
+
+

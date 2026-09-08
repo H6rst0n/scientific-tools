@@ -128,44 +128,94 @@ const Parsers = {
   // ==========================================
   parseXYZ(text) {
     const structure = new Structure();
-    const lines = text.trim().split('\n');
-    if (lines.length < 3) return structure;
+    const rawLines = text.split(/\r?\n/);
+    if (rawLines.length < 3) return structure;
 
-    const natoms = parseInt(lines[0].trim(), 10);
-    const comment = lines[1].trim();
-    structure.title = comment || 'XYZ Structure';
+    let lineIdx = 0;
+    let frameIdx = 0;
 
-    // 檢查 Extended XYZ Lattice="ax ay az bx by bz cx cy cz"
-    const latticeMatch = comment.match(/Lattice="([^"]+)"/i);
-    if (latticeMatch) {
-      const vals = latticeMatch[1].trim().split(/\s+/).map(Number);
-      if (vals.length >= 9) {
-        structure.setCell([
-          [vals[0], vals[1], vals[2]],
-          [vals[3], vals[4], vals[5]],
-          [vals[6], vals[7], vals[8]]
-        ], [true, true, true]);
+    while (lineIdx < rawLines.length) {
+      // 尋找下一個非空行作為原子數行
+      while (lineIdx < rawLines.length && !rawLines[lineIdx].trim()) {
+        lineIdx++;
       }
-    }
+      if (lineIdx >= rawLines.length) break;
 
-    const start = 2;
-    const end = isNaN(natoms) ? lines.length : Math.min(lines.length, start + natoms);
+      const nAtomsStr = rawLines[lineIdx].trim().split(/\s+/)[0];
+      const natoms = parseInt(nAtomsStr, 10);
+      if (isNaN(natoms) || natoms <= 0) break;
+      lineIdx++;
 
-    for (let i = start; i < end; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-      const tokens = line.split(/\s+/);
-      if (tokens.length >= 4) {
-        const elem = tokens[0];
-        const x = parseFloat(tokens[1]);
-        const y = parseFloat(tokens[2]);
-        const z = parseFloat(tokens[3]);
-        if (!isNaN(x) && !isNaN(y) && !isNaN(z)) {
-          structure.addAtom(elem, x, y, z);
+      // 註解行 / 標題行
+      const comment = (lineIdx < rawLines.length) ? rawLines[lineIdx].trim() : '';
+      lineIdx++;
+
+      // 檢查 Extended XYZ Lattice="ax ay az bx by bz cx cy cz"
+      let frameCell = null;
+      const latticeMatch = comment.match(/Lattice="([^"]+)"/i);
+      if (latticeMatch) {
+        const vals = latticeMatch[1].trim().split(/\s+/).map(Number);
+        if (vals.length >= 9) {
+          frameCell = [
+            [vals[0], vals[1], vals[2]],
+            [vals[3], vals[4], vals[5]],
+            [vals[6], vals[7], vals[8]]
+          ];
         }
       }
+
+      // 讀取該影格的所有原子座標
+      const framePositions = [];
+      let atomsParsed = 0;
+
+      while (lineIdx < rawLines.length && atomsParsed < natoms) {
+        const line = rawLines[lineIdx].trim();
+        lineIdx++;
+        if (!line) continue;
+
+        const tokens = line.split(/\s+/);
+        if (tokens.length >= 4) {
+          const elem = tokens[0];
+          const x = parseFloat(tokens[1]);
+          const y = parseFloat(tokens[2]);
+          const z = parseFloat(tokens[3]);
+          if (!isNaN(x) && !isNaN(y) && !isNaN(z)) {
+            if (frameIdx === 0) {
+              structure.addAtom(elem, x, y, z);
+            }
+            framePositions.push({ x, y, z });
+            atomsParsed++;
+          }
+        }
+      }
+
+      if (frameIdx === 0) {
+        structure.title = comment || 'XYZ Structure';
+        if (frameCell) {
+          structure.setCell(frameCell, [true, true, true]);
+        }
+      }
+
+      if (framePositions.length > 0) {
+        structure.addTrajectoryFrame(framePositions, frameCell, {
+          title: `Frame ${frameIdx + 1}`,
+          comment: comment,
+          timestep: frameIdx
+        });
+      }
+
+      frameIdx++;
     }
-    structure.detectBonds();
+
+    if (structure.atoms.length > 0) {
+      structure.detectBonds();
+    }
+
+    // 若僅有單一影格，清除 trajectory 物件以保持單一結構簡潔
+    if (structure.trajectory && structure.trajectory.frames.length <= 1) {
+      structure.trajectory = null;
+    }
+
     return structure;
   },
 
@@ -659,10 +709,29 @@ const Parsers = {
   // ==========================================
   parsePDB(text) {
     const structure = new Structure();
-    const lines = text.split('\n');
+    const lines = text.split(/\r?\n/);
+    let modelCount = 0;
+    let currentModelPositions = [];
+    let isMultiModel = false;
+
+    const finishModel = () => {
+      if (currentModelPositions.length > 0) {
+        structure.addTrajectoryFrame(currentModelPositions, structure.cell, {
+          title: `Model ${modelCount}`,
+          timestep: modelCount - 1
+        });
+        currentModelPositions = [];
+      }
+    };
 
     for (const line of lines) {
-      if (line.startsWith('CRYST1')) {
+      if (line.startsWith('MODEL')) {
+        isMultiModel = true;
+        finishModel();
+        modelCount++;
+      } else if (line.startsWith('ENDMDL')) {
+        finishModel();
+      } else if (line.startsWith('CRYST1')) {
         const a = parseFloat(line.substring(6, 15));
         const b = parseFloat(line.substring(15, 24));
         const c = parseFloat(line.substring(24, 33));
@@ -681,12 +750,22 @@ const Parsers = {
           elem = line.substring(12, 16).trim().replace(/[^a-zA-Z]/g, '');
         }
         if (!isNaN(x) && !isNaN(y) && !isNaN(z)) {
-          structure.addAtom(elem, x, y, z);
+          if (modelCount <= 1 && (!isMultiModel || structure.atoms.length === currentModelPositions.length)) {
+            structure.addAtom(elem, x, y, z);
+          }
+          currentModelPositions.push({ x, y, z });
         }
       }
     }
 
+    finishModel();
+
     structure.detectBonds();
+
+    if (structure.trajectory && structure.trajectory.frames.length <= 1) {
+      structure.trajectory = null;
+    }
+
     return structure;
   },
 
@@ -887,72 +966,113 @@ const Parsers = {
 
   parseTinkerXYZ(text) {
     const structure = new Structure();
-    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
-    if (lines.length < 2) return structure;
+    const rawLines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+    if (rawLines.length < 2) return structure;
 
-    const firstTokens = lines[0].split(/\s+/);
-    const nAtoms = parseInt(firstTokens[0], 10);
-    structure.title = lines[0].replace(firstTokens[0], '').trim() || 'Tinker Structure';
-
-    let startIdx = 1;
-    // 檢查第 2 行是否為 Tinker 週期性晶胞參數 (a, b, c, alpha, beta, gamma)
-    if (lines.length > 2) {
-      const line1Tokens = lines[1].split(/\s+/);
-      if (line1Tokens.length === 6 && line1Tokens.every(t => !isNaN(Number(t)))) {
-        const a = parseFloat(line1Tokens[0]);
-        const b = parseFloat(line1Tokens[1]);
-        const c = parseFloat(line1Tokens[2]);
-        const alpha = parseFloat(line1Tokens[3]);
-        const beta = parseFloat(line1Tokens[4]);
-        const gamma = parseFloat(line1Tokens[5]);
-        if (a > 0 && b > 0 && c > 0) {
-          structure.setCellParameters(a, b, c, alpha, beta, gamma);
-          startIdx = 2;
-        }
-      }
-    }
-
+    let lineIdx = 0;
+    let frameIdx = 0;
     const bondsList = [];
     const idMap = new Map();
 
-    for (let i = startIdx; i < lines.length && structure.atoms.length < nAtoms; i++) {
-      const line = lines[i];
-      const tokens = line.split(/\s+/);
-      if (tokens.length >= 5) {
-        const atomId = parseInt(tokens[0], 10);
-        let rawElem = tokens[1];
-        let elem = rawElem.replace(/[^a-zA-Z]/g, '');
-        if (elem.length > 2) {
-          elem = elem.charAt(0);
-        } else if (elem.length === 2) {
-          const info = getElementInfo(elem);
-          if (!info || info.name === elem) {
-            elem = elem.charAt(0);
-          }
-        }
-        if (!elem) elem = 'C';
-        elem = elem.charAt(0).toUpperCase() + elem.slice(1).toLowerCase();
+    while (lineIdx < rawLines.length) {
+      const firstTokens = rawLines[lineIdx].split(/\s+/);
+      const nAtoms = parseInt(firstTokens[0], 10);
+      if (isNaN(nAtoms) || nAtoms <= 0) break;
 
-        const x = parseFloat(tokens[2]);
-        const y = parseFloat(tokens[3]);
-        const z = parseFloat(tokens[4]);
+      const frameTitle = rawLines[lineIdx].replace(firstTokens[0], '').trim() || (frameIdx === 0 ? 'Tinker Structure' : `Frame ${frameIdx + 1}`);
+      lineIdx++;
 
-        if (!isNaN(x) && !isNaN(y) && !isNaN(z)) {
-          structure.addAtom(elem, x, y, z);
-          const curIdx = structure.atoms.length - 1;
-          idMap.set(atomId, curIdx);
-
-          // 讀取相連成鍵資訊 (第 7 欄起，1-indexed)
-          if (tokens.length > 6) {
-            for (let k = 6; k < tokens.length; k++) {
-              const neighborId = parseInt(tokens[k], 10);
-              if (!isNaN(neighborId)) {
-                bondsList.push({ aId: atomId, bId: neighborId });
-              }
+      // 檢查第 2 行是否為 Tinker 週期性晶胞參數 (a, b, c, alpha, beta, gamma)
+      let frameCell = null;
+      if (lineIdx < rawLines.length) {
+        const lineTokens = rawLines[lineIdx].split(/\s+/);
+        if (lineTokens.length === 6 && lineTokens.every(t => !isNaN(Number(t)))) {
+          const a = parseFloat(lineTokens[0]);
+          const b = parseFloat(lineTokens[1]);
+          const c = parseFloat(lineTokens[2]);
+          const alpha = parseFloat(lineTokens[3]);
+          const beta = parseFloat(lineTokens[4]);
+          const gamma = parseFloat(lineTokens[5]);
+          if (a > 0 && b > 0 && c > 0) {
+            if (frameIdx === 0) {
+              structure.setCellParameters(a, b, c, alpha, beta, gamma);
             }
+            // 構建晶胞矩陣供影格記錄
+            const toRad = Math.PI / 180;
+            const aRad = alpha * toRad;
+            const bRad = beta * toRad;
+            const gRad = gamma * toRad;
+            const ax = a, ay = 0, az = 0;
+            const bx = b * Math.cos(gRad), by = b * Math.sin(gRad), bz = 0;
+            const cx = c * Math.cos(bRad);
+            const cy = c * (Math.cos(aRad) - Math.cos(bRad) * Math.cos(gRad)) / Math.sin(gRad);
+            const cz = Math.sqrt(Math.max(0, c * c - cx * cx - cy * cy));
+            frameCell = [[ax, ay, az], [bx, by, bz], [cx, cy, cz]];
+            lineIdx++;
           }
         }
       }
+
+      const framePositions = [];
+      let atomsParsed = 0;
+
+      while (lineIdx < rawLines.length && atomsParsed < nAtoms) {
+        const line = rawLines[lineIdx];
+        lineIdx++;
+        const tokens = line.split(/\s+/);
+        if (tokens.length >= 5) {
+          const atomId = parseInt(tokens[0], 10);
+          let rawElem = tokens[1];
+          let elem = rawElem.replace(/[^a-zA-Z]/g, '');
+          if (elem.length > 2) {
+            elem = elem.charAt(0);
+          } else if (elem.length === 2) {
+            const info = getElementInfo(elem);
+            if (!info || info.name === elem) {
+              elem = elem.charAt(0);
+            }
+          }
+          if (!elem) elem = 'C';
+          elem = elem.charAt(0).toUpperCase() + elem.slice(1).toLowerCase();
+
+          const x = parseFloat(tokens[2]);
+          const y = parseFloat(tokens[3]);
+          const z = parseFloat(tokens[4]);
+
+          if (!isNaN(x) && !isNaN(y) && !isNaN(z)) {
+            if (frameIdx === 0) {
+              structure.addAtom(elem, x, y, z);
+              const curIdx = structure.atoms.length - 1;
+              idMap.set(atomId, curIdx);
+
+              // 讀取相連成鍵資訊 (第 7 欄起，1-indexed)
+              if (tokens.length > 6) {
+                for (let k = 6; k < tokens.length; k++) {
+                  const neighborId = parseInt(tokens[k], 10);
+                  if (!isNaN(neighborId)) {
+                    bondsList.push({ aId: atomId, bId: neighborId });
+                  }
+                }
+              }
+            }
+            framePositions.push({ x, y, z });
+            atomsParsed++;
+          }
+        }
+      }
+
+      if (frameIdx === 0) {
+        structure.title = frameTitle;
+      }
+
+      if (framePositions.length > 0) {
+        structure.addTrajectoryFrame(framePositions, frameCell, {
+          title: frameTitle,
+          timestep: frameIdx
+        });
+      }
+
+      frameIdx++;
     }
 
     if (bondsList.length > 0) {
@@ -979,6 +1099,10 @@ const Parsers = {
       structure.bonds = finalBonds;
     } else {
       structure.detectBonds();
+    }
+
+    if (structure.trajectory && structure.trajectory.frames.length <= 1) {
+      structure.trajectory = null;
     }
 
     return structure;
@@ -1009,6 +1133,10 @@ const Parsers = {
       out += `${idStr}  ${elemStr} ${xStr} ${yStr} ${zStr} ${typeStr}${connStr}\n`;
     }
     return out;
+  },
+
+  massToElement(mass) {
+    return inferElementFromMass(mass);
   },
 
   // ==========================================
@@ -1101,6 +1229,7 @@ const Parsers = {
       ], [true, true, true]);
     }
 
+    structure.masses = masses;
     structure.detectBonds();
     return structure;
   },
@@ -1149,36 +1278,82 @@ const Parsers = {
     return text.includes('ITEM: TIMESTEP') && text.includes('ITEM: NUMBER OF ATOMS');
   },
 
-  parseLAMMPSDump(text) {
+  parseLAMMPSDump(text, typeMapping = null) {
     const structure = new Structure();
-    const lines = text.split('\n');
+    const lines = text.split(/\r?\n/);
     let section = '';
     let xlo = 0, xhi = 0, ylo = 0, yhi = 0, zlo = 0, zhi = 0;
+    let xy = 0, xz = 0, yz = 0;
+    let isTriclinic = false;
     let boxLineCount = 0;
     let atomColumns = [];
     let isFractional = false;
+    let currentTimestep = 0;
+    let frameIdx = 0;
+    let currentFramePositions = [];
+    let currentFrameCell = null;
+    const uniqueTypes = new Set();
+
+    const typeDefaults = ['C', 'H', 'O', 'N', 'Li', 'Na', 'Si', 'Fe', 'Cu', 'Pt', 'Au', 'S', 'P', 'F', 'Cl'];
+
+    const finishCurrentFrame = () => {
+      if (currentFramePositions.length > 0) {
+        structure.addTrajectoryFrame(currentFramePositions, currentFrameCell, {
+          timestep: currentTimestep,
+          title: `Timestep ${currentTimestep}`
+        });
+        currentFramePositions = [];
+        frameIdx++;
+      }
+    };
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
 
       if (line.startsWith('ITEM: TIMESTEP')) {
+        finishCurrentFrame();
         section = 'timestep';
       } else if (line.startsWith('ITEM: NUMBER OF ATOMS')) {
         section = 'natoms';
       } else if (line.startsWith('ITEM: BOX BOUNDS')) {
         section = 'box';
         boxLineCount = 0;
+        isTriclinic = line.includes('xy') || line.includes('xz') || line.includes('yz');
       } else if (line.startsWith('ITEM: ATOMS')) {
         section = 'atoms';
         atomColumns = line.replace('ITEM: ATOMS', '').trim().split(/\s+/);
         isFractional = atomColumns.includes('xs') || atomColumns.includes('ys') || atomColumns.includes('zs');
+      } else if (section === 'timestep') {
+        currentTimestep = parseInt(line, 10) || 0;
       } else if (section === 'box') {
         const p = line.split(/\s+/).map(Number);
-        if (boxLineCount === 0) { xlo = p[0]; xhi = p[1]; }
-        else if (boxLineCount === 1) { ylo = p[0]; yhi = p[1]; }
-        else if (boxLineCount === 2) { zlo = p[0]; zhi = p[1]; }
+        if (boxLineCount === 0) {
+          xlo = p[0]; xhi = p[1];
+          if (isTriclinic && p.length >= 3) xy = p[2];
+        } else if (boxLineCount === 1) {
+          ylo = p[0]; yhi = p[1];
+          if (isTriclinic && p.length >= 3) xz = p[2];
+        } else if (boxLineCount === 2) {
+          zlo = p[0]; zhi = p[1];
+          if (isTriclinic && p.length >= 3) yz = p[2];
+        }
         boxLineCount++;
+        if (boxLineCount === 3) {
+          const lx = xhi - xlo;
+          const ly = yhi - ylo;
+          const lz = zhi - zlo;
+          if (lx > 0 && ly > 0 && lz > 0) {
+            currentFrameCell = [
+              [lx, 0, 0],
+              [xy, ly, 0],
+              [xz, yz, lz]
+            ];
+            if (frameIdx === 0) {
+              structure.setCell(currentFrameCell, [true, true, true]);
+            }
+          }
+        }
       } else if (section === 'atoms') {
         const p = line.split(/\s+/);
         if (p.length < atomColumns.length) continue;
@@ -1188,11 +1363,16 @@ const Parsers = {
           return idx !== -1 ? p[idx] : undefined;
         };
 
+        const typeInt = parseInt(getCol('type') || '1', 10);
+        if (!isNaN(typeInt)) uniqueTypes.add(typeInt);
+
         let elem = getCol('element') || getCol('name');
         if (!elem) {
-          const type = parseInt(getCol('type') || '1', 10);
-          const typeDefaults = ['C', 'H', 'O', 'N', 'Li', 'Na', 'Si', 'Fe'];
-          elem = typeDefaults[type - 1] || `T${type}`;
+          if (typeMapping && typeMapping[typeInt]) {
+            elem = typeMapping[typeInt];
+          } else {
+            elem = typeDefaults[typeInt - 1] || `T${typeInt}`;
+          }
         }
 
         let x = 0, y = 0, z = 0;
@@ -1213,19 +1393,27 @@ const Parsers = {
           z = parseFloat(getCol('z') || getCol('zu') || getCol('zsu') || '0');
         }
 
-        structure.addAtom(elem, x, y, z);
+        if (frameIdx === 0) {
+          const atom = structure.addAtom(elem, x, y, z);
+          atom.lammpsType = typeInt;
+        }
+        currentFramePositions.push({ x, y, z });
       }
     }
 
-    if (xhi > xlo && yhi > ylo && zhi > zlo) {
-      structure.setCell([
-        [xhi - xlo, 0, 0],
-        [0, yhi - ylo, 0],
-        [0, 0, zhi - zlo]
-      ], [true, true, true]);
+    finishCurrentFrame();
+
+    structure.lammpsTypes = Array.from(uniqueTypes).sort((a, b) => a - b);
+    structure.title = `LAMMPS Trajectory (${structure.trajectory ? structure.trajectory.frames.length : 1} frames)`;
+
+    if (structure.atoms.length > 0) {
+      structure.detectBonds();
     }
 
-    structure.detectBonds();
+    if (structure.trajectory && structure.trajectory.frames.length <= 1) {
+      structure.trajectory = null;
+    }
+
     return structure;
   }
 };

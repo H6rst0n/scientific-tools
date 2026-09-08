@@ -1246,9 +1246,204 @@ Si  2.500000  2.500000  2.500000`;
       assert(parsedSlab.cell !== null, 'Lattice cell parsed for slab');
       assert(parsedSlab.bonds.length === 1, 'C-F bond loaded');
 
+      log('=== 37. Multi-frame Dynamic Trajectory Parsing & Playback Test ===');
+      // 1. 標準多影格 XYZ (3 幀水分子振動軌跡)
+      const multiXYZ = `3
+Frame 1: Initial state
+O   0.000000  0.000000  0.117000
+H   0.000000  0.757000 -0.469000
+H   0.000000 -0.757000 -0.469000
+3
+Frame 2: Vibration step 1
+O   0.000000  0.000000  0.125000
+H   0.000000  0.780000 -0.480000
+H   0.000000 -0.780000 -0.480000
+3
+Frame 3: Vibration step 2
+O   0.000000  0.000000  0.130000
+H   0.000000  0.810000 -0.490000
+H   0.000000 -0.810000 -0.490000`;
+
+      const trajStruct = Parsers.parseXYZ(multiXYZ);
+      assert(trajStruct.atoms.length === 3, 'Multi-frame XYZ loaded 3 atoms');
+      assert(trajStruct.trajectory !== null, 'Trajectory container initialized');
+      assert(trajStruct.getFrameCount() === 3, 'Trajectory has exactly 3 frames');
+      assertNear(trajStruct.atoms[0].z, 0.117, 1e-4, 'Frame 1 Oxygen Z is 0.117');
+
+      // 切換至 Frame 2
+      trajStruct.setFrame(1);
+      assertNear(trajStruct.atoms[0].z, 0.125, 1e-4, 'Frame 2 Oxygen Z switched to 0.125');
+      assertNear(trajStruct.atoms[1].y, 0.780, 1e-4, 'Frame 2 Hydrogen Y switched to 0.780');
+
+      // 切換至 Frame 3
+      trajStruct.setFrame(2);
+      assertNear(trajStruct.atoms[0].z, 0.130, 1e-4, 'Frame 3 Oxygen Z switched to 0.130');
+      assertNear(trajStruct.atoms[1].y, 0.810, 1e-4, 'Frame 3 Hydrogen Y switched to 0.810');
+
+      // GPU InstancedMesh updateFramePositions 快速更新測試
+      const trajRenderer = new MoleculeRenderer(document.createElement('div'));
+      trajRenderer.update(trajStruct);
+      assert(trajRenderer.atomMesh !== null, 'Renderer initialized atomMesh for trajectory');
+      trajStruct.setFrame(1);
+      trajRenderer.updateFramePositions(trajStruct);
+      const instMat = new THREE.Matrix4();
+      trajRenderer.atomMesh.getMatrixAt(0, instMat);
+      const instPos = new THREE.Vector3();
+      instPos.setFromMatrixPosition(instMat);
+      assertNear(instPos.z, 0.125, 1e-4, 'updateFramePositions updated atom 0 instance matrix Z position to 0.125');
+
+      // 2. 多 MODEL PDB 軌跡測試
+      const multiPDB = `MODEL        1
+ATOM      1  N   ALA A   1       1.000   1.000   1.000  1.00  0.00           N
+ATOM      2  CA  ALA A   1       2.000   2.000   2.000  1.00  0.00           C
+ENDMDL
+MODEL        2
+ATOM      1  N   ALA A   1       1.500   1.500   1.500  1.00  0.00           N
+ATOM      2  CA  ALA A   1       2.500   2.500   2.500  1.00  0.00           C
+ENDMDL`;
+      const pdbTraj = Parsers.parsePDB(multiPDB);
+      assert(pdbTraj.getFrameCount() === 2, 'Parsed 2 frames from multi-MODEL PDB');
+      assertNear(pdbTraj.atoms[0].x, 1.0, 1e-3, 'PDB Frame 1 coordinate X is 1.0');
+      pdbTraj.setFrame(1);
+      assertNear(pdbTraj.atoms[0].x, 1.5, 1e-3, 'PDB Frame 2 coordinate X switched to 1.5');
+
+      // 3. Tinker .arc 多影格軌跡測試
+      const tinkerArc = ` 2  Tinker Frame 1
+     1  C       0.000000    0.000000    0.000000     1     2
+     2  O       0.000000    0.000000    1.200000     2     1
+ 2  Tinker Frame 2
+     1  C       0.000000    0.000000    0.000000     1     2
+     2  O       0.000000    0.000000    1.250000     2     1`;
+      const arcTraj = Parsers.parseTinkerXYZ(tinkerArc);
+      assert(arcTraj.getFrameCount() === 2, 'Parsed 2 frames from Tinker ARC trajectory');
+      assertNear(arcTraj.atoms[1].z, 1.20, 1e-3, 'Tinker Arc Frame 1 O atom Z is 1.20');
+      arcTraj.setFrame(1);
+      assertNear(arcTraj.atoms[1].z, 1.25, 1e-3, 'Tinker Arc Frame 2 O atom Z is 1.25');
+
+      log('=== 38. LAMMPS Data Mass Extraction & Element Type Mapping Test ===');
+      // 1. inferElementFromMass 智能元素質量推斷
+      assert(inferElementFromMass(63.546) === 'Cu', 'inferElementFromMass(63.546) -> Cu (Copper)');
+      assert(inferElementFromMass(195.08) === 'Pt', 'inferElementFromMass(195.08) -> Pt (Platinum)');
+      assert(inferElementFromMass(15.999) === 'O', 'inferElementFromMass(15.999) -> O (Oxygen)');
+      assert(inferElementFromMass(1.008) === 'H', 'inferElementFromMass(1.008) -> H (Hydrogen)');
+      assert(inferElementFromMass(12.011) === 'C', 'inferElementFromMass(12.011) -> C (Carbon)');
+      assert(inferElementFromMass(28.085) === 'Si', 'inferElementFromMass(28.085) -> Si (Silicon)');
+      assert(inferElementFromMass(18.998) === 'F', 'inferElementFromMass(18.998) -> F (Fluorine)');
+
+      // 2. LAMMPS Data 檔案 Masses 解析
+      const lammpsDataMassText = `LAMMPS data file for Cu-Water system
+
+3 atoms
+3 atom types
+
+0.0 20.0 xlo xhi
+0.0 20.0 ylo yhi
+0.0 20.0 zlo zhi
+
+Masses
+
+1 63.546  # Cu
+2 15.999  # O
+3 1.008   # H
+
+Atoms # atomic
+
+1 1 0.000000 0.000000 0.000000
+2 2 5.000000 5.000000 5.000000
+3 3 5.000000 5.000000 6.000000`;
+
+      const parsedLammpsData = Parsers.parseLAMMPSData(lammpsDataMassText);
+      assert(parsedLammpsData.atoms.length === 3, 'LAMMPS Data parsed 3 atoms');
+      assert(parsedLammpsData.atoms[0].element === 'Cu', 'Atom 1 correctly mapped to Cu from Masses');
+      assert(parsedLammpsData.atoms[1].element === 'O', 'Atom 2 correctly mapped to O from Masses');
+      assert(parsedLammpsData.atoms[2].element === 'H', 'Atom 3 correctly mapped to H from Masses');
+      assert(parsedLammpsData.masses[1] === 'Cu', 'Structure masses dict saved type 1 as Cu');
+
+      // 3. LAMMPS Dump 軌跡與 TypeMapping 聯合解析
+      const lammpsDumpTrajText = `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+3
+ITEM: BOX BOUNDS pp pp pp
+0.0 20.0
+0.0 20.0
+0.0 20.0
+ITEM: ATOMS id type x y z
+1 1 0.000 0.000 0.000
+2 2 5.000 5.000 5.000
+3 3 5.000 5.000 6.000
+ITEM: TIMESTEP
+100
+ITEM: NUMBER OF ATOMS
+3
+ITEM: BOX BOUNDS pp pp pp
+0.0 20.0
+0.0 20.0
+0.0 20.0
+ITEM: ATOMS id type x y z
+1 1 0.100 0.100 0.100
+2 2 5.050 5.050 5.050
+3 3 5.050 5.050 6.100`;
+
+      const parsedDump = Parsers.parseLAMMPSDump(lammpsDumpTrajText, { 1: 'Cu', 2: 'O', 3: 'H' });
+      assert(parsedDump.getFrameCount() === 2, 'LAMMPS Dump parsed 2 timesteps');
+      assert(parsedDump.atoms[0].element === 'Cu', 'Dump Atom 1 mapped to Cu via typeMapping');
+      assert(parsedDump.atoms[1].element === 'O', 'Dump Atom 2 mapped to O via typeMapping');
+      assert(parsedDump.atoms[2].element === 'H', 'Dump Atom 3 mapped to H via typeMapping');
+      assertNear(parsedDump.atoms[0].x, 0.0, 1e-3, 'Timestep 0 Atom 1 X is 0.0');
+      parsedDump.setFrame(1);
+      assertNear(parsedDump.atoms[0].x, 0.1, 1e-3, 'Timestep 100 Atom 1 X switched to 0.1');
+
+      log('=== 39. Per-Atom Mixed Display Styles & Range Parser Test ===');
+      const testApp = {
+        structure: new Structure()
+      };
+      // 加入 10 個原子：前 4 個為 Cu，中間 3 個為 O，後 3 個為 H
+      for (let i = 0; i < 4; i++) testApp.structure.addAtom('Cu', i * 2.5, 0, 0);
+      for (let i = 0; i < 3; i++) testApp.structure.addAtom('O', i * 2.5, 4, 0);
+      for (let i = 0; i < 3; i++) testApp.structure.addAtom('H', i * 2.5, 6, 0);
+
+      // 1. parseRange 測試
+      const range1 = testApp.structure.parseRange('1-4');
+      assert(range1.size === 4 && range1.has(0) && range1.has(3) && !range1.has(4), 'parseRange("1-4") returned 0-indexed 0, 1, 2, 3');
+
+      const range2 = testApp.structure.parseRange('Cu');
+      assert(range2.size === 4 && range2.has(0) && range2.has(1) && range2.has(2) && range2.has(3), 'parseRange("Cu") matched all 4 Cu atoms');
+
+      const range3 = testApp.structure.parseRange('5-7, H');
+      assert(range3.size === 6, 'parseRange("5-7, H") matched 3 Oxygen and 3 Hydrogen atoms (total 6)');
+
+
+      // 2. setAtomRenderStyle 混合顯示測試
+      testApp.structure.setAtomRenderStyle([0, 1, 2, 3], 'spacefill');
+      testApp.structure.setAtomRenderStyle([4, 5, 6], 'ball_and_stick');
+      testApp.structure.setAtomRenderStyle([7, 8, 9], 'stick');
+
+      const mixRenderer = new MoleculeRenderer(document.createElement('div'));
+      mixRenderer.setStyle('ball_and_stick');
+
+      assert(mixRenderer.getEffectiveStyle(testApp.structure.atoms[0]) === 'spacefill', 'Cu atoms have spacefill effective style');
+      assert(mixRenderer.getEffectiveStyle(testApp.structure.atoms[4]) === 'ball_and_stick', 'O atoms have ball_and_stick effective style');
+      assert(mixRenderer.getEffectiveStyle(testApp.structure.atoms[7]) === 'stick', 'H atoms have stick effective style');
+
+      // 3. 混合半徑計算
+      const rCu = mixRenderer.getAtomRadius('Cu', testApp.structure.atoms[0]);
+      const rO = mixRenderer.getAtomRadius('O', testApp.structure.atoms[4]);
+      const rH = mixRenderer.getAtomRadius('H', testApp.structure.atoms[7]);
+      assert(rCu > 1.2, `Cu in Spacefill has large VDW radius (${rCu.toFixed(2)} Å)`);
+      assertNear(rH, 0.22, 1e-3, 'H in Stick has 0.22 Å stick radius');
+
+      // 4. 化學鍵半徑判斷 (Spacefill-Spacefill 間消除鍵，Stick 間顯示棍)
+      const bRadSpacefill = mixRenderer.getBondRadiusForPair(testApp.structure.atoms[0], testApp.structure.atoms[1]);
+      assert(bRadSpacefill === 0, 'Internal bonds between two Spacefill atoms are hidden (radius 0)');
+
+      const bRadStick = mixRenderer.getBondRadiusForPair(testApp.structure.atoms[7], testApp.structure.atoms[8]);
+      assert(bRadStick === 0.16, 'Bonds between Stick atoms have 0.16 Å radius');
+
       log(`\n========================================`);
       log(`TEST SUMMARY: ${passed} PASSED, ${failed} FAILED`);
       log(`========================================`);
+
     } catch (e) {
       log(`TEST EXCEPTION: ${e.message}\n${e.stack}`);
     }

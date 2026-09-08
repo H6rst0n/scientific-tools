@@ -529,14 +529,43 @@ class InteractionController {
       return;
     }
 
-    // 4. Space 或 Ctrl + E: 觸發 VSEPR 掃把整理 🧹
-    if (e.key === ' ' || e.code === 'Space' || ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'e' || e.code === 'KeyE'))) {
+    // 4. 方向鍵 ← / →: 軌跡影格步進 (Trajectory Step Frame)
+    if (e.key === 'ArrowLeft' || e.code === 'ArrowLeft') {
+      if (this.structure && this.structure.getFrameCount() > 1) {
+        e.preventDefault();
+        this.app.stepFrame(-1);
+        return;
+      }
+    }
+    if (e.key === 'ArrowRight' || e.code === 'ArrowRight') {
+      if (this.structure && this.structure.getFrameCount() > 1) {
+        e.preventDefault();
+        this.app.stepFrame(1);
+        return;
+      }
+    }
+
+    // 5. Space: 若有動態軌跡則播放/暫停，否則觸發 VSEPR 掃把整理 🧹
+    if (e.key === ' ' || e.code === 'Space') {
+      if (!e.ctrlKey && !e.metaKey && this.structure && this.structure.getFrameCount() > 1) {
+        e.preventDefault();
+        this.app.togglePlayTrajectory();
+        return;
+      }
+      if (!e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        this.app.runVSEPRClean();
+        return;
+      }
+    }
+
+    if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'e' || e.code === 'KeyE')) {
       e.preventDefault();
       this.app.runVSEPRClean();
       return;
     }
 
-    // 5. Ctrl + A: 全選
+    // 6. Ctrl + A: 全選
     if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'a' || e.code === 'KeyA')) {
       e.preventDefault();
       for (const a of this.structure.atoms) a.selected = true;
@@ -545,12 +574,12 @@ class InteractionController {
       return;
     }
 
-    // 6. Escape: 全面退出視窗、退出微調面板、關閉外觀面板、退出筆刷模式、或取消所有選取
+    // 7. Escape: 全面退出視窗、退出微調面板、關閉外觀面板、退出筆刷模式、或取消所有選取
     if (isEscape) {
       if (e.preventDefault) e.preventDefault();
       if (e.stopPropagation) e.stopPropagation();
 
-      // (1) 優先關閉開啟中的模態視窗 (元素週期表、快捷鍵說明、匯出等)
+      // (1) 優先關閉開啟中的模態視窗 (元素週期表、快捷鍵說明、匯出、LAMMPS 對應等)
       const modalPtable = document.getElementById('modal-ptable');
       if (modalPtable && modalPtable.classList.contains('show')) {
         modalPtable.classList.remove('show');
@@ -566,8 +595,14 @@ class InteractionController {
         modalExport.classList.remove('show');
         return;
       }
+      const modalLammps = document.getElementById('modal-lammps-types');
+      if (modalLammps && modalLammps.classList.contains('show')) {
+        modalLammps.classList.remove('show');
+        return;
+      }
 
       // (2) 關閉表面切割懸浮面板
+
       const cleaverDock = document.getElementById('modal-cleaver');
       if (cleaverDock && cleaverDock.classList.contains('show')) {
         if (this.app && this.app.closeCleaverModal) {

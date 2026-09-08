@@ -233,6 +233,39 @@
       </div>
     </div>
 
+    <!-- 動態軌跡播放器控制列 (MD / Optimization / NEB / Scan Trajectory Player) -->
+    <div class="trajectory-player-bar" id="trajectory-player-bar" style="display: none;">
+      <div class="traj-ctrl-group">
+        <button class="traj-btn" id="btn-traj-first" title="跳至第一影格 (Home)">⏮</button>
+        <button class="traj-btn" id="btn-traj-prev" title="上一影格 (← 鍵)">◀</button>
+        <button class="traj-btn traj-play-btn" id="btn-traj-play" title="播放 / 暫停 (空白鍵)">▶</button>
+        <button class="traj-btn" id="btn-traj-next" title="下一影格 (→ 鍵)">▶</button>
+        <button class="traj-btn" id="btn-traj-last" title="跳至最後影格 (End)">⏭</button>
+      </div>
+
+      <div class="traj-slider-group">
+        <input type="range" id="slider-traj-frame" min="0" max="0" value="0" step="1" class="traj-scrubber">
+        <div class="traj-meta-info">
+          <span id="label-traj-frame" class="traj-frame-badge">Frame 1 / 1</span>
+          <span id="label-traj-info" class="traj-info-text"></span>
+        </div>
+      </div>
+
+      <div class="traj-opt-group">
+        <select id="select-traj-speed" class="dropdown-select small" title="播放速率">
+          <option value="0.25">0.25×</option>
+          <option value="0.5">0.5×</option>
+          <option value="1" selected>1.0×</option>
+          <option value="2">2.0×</option>
+          <option value="5">5.0×</option>
+          <option value="10">10.0×</option>
+        </select>
+        <button class="traj-btn active" id="btn-traj-loop" title="循環播放切換">🔁</button>
+        <button class="traj-btn" id="btn-traj-load-data" title="載入對應 LAMMPS Data 檔以自動對應原子元素" style="display: none; font-size: 11px; padding: 3px 6px;">📂 載入 Data 檔</button>
+        <button class="traj-btn close-btn" id="btn-traj-close" title="隱藏軌跡播放列">&times;</button>
+      </div>
+    </div>
+
     <!-- 視角快速對齊控制 (View Gizmo Controls) -->
     <div class="view-controls">
       <button class="view-btn" data-view="x" title="沿 X 軸正視">X</button>
@@ -603,6 +636,42 @@
           <button class="btn-header small" id="btn-apply-atom-radius">套用</button>
         </div>
       </div>
+
+      <hr style="border: 0; border-top: 1px solid var(--border); margin: 10px 0;">
+
+      <!-- 4. 個別選中 / 範圍指定 混合顯示模式 (Mixed Display Styles) -->
+      <div class="form-group">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+          <label style="font-size: 11px; font-weight: 600; color: #fff;">原子 / 範圍 混合顯示模式 (Mixed Styles)</label>
+          <span style="font-size: 10px; color: var(--text-dim);">支援多模式混搭</span>
+        </div>
+        
+        <!-- 當前選中原子的樣式按鈕 -->
+        <div style="font-size: 10px; color: var(--text-muted); margin-bottom: 4px;">套用至當前選中原子：</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 8px;">
+          <button class="btn-header small" id="btn-style-spacefill" title="將選中原子設為 CPK 空間填充">🔘 CPK (Spacefill)</button>
+          <button class="btn-header small" id="btn-style-ballstick" title="將選中原子設為 球棍模型">🪄 球棍 (Ball & Stick)</button>
+          <button class="btn-header small" id="btn-style-stick" title="將選中原子設為 棍狀模型">🥢 棍狀 (Stick)</button>
+          <button class="btn-header small" id="btn-style-wireframe" title="將選中原子設為 線框模型">🕸️ 線框 (Wireframe)</button>
+          <button class="btn-header small" id="btn-style-hidden" title="將選中原子暫時隱藏">👁️‍🗨️ 隱藏 (Hidden)</button>
+          <button class="btn-header small" id="btn-style-inherit" title="恢復繼承全域模式">↩️ 繼承全域</button>
+        </div>
+
+        <!-- 範圍 / 元素 批次指定樣式 (例如 1-252 為 CPK, 253-1022 為 球棍) -->
+        <div style="font-size: 10px; color: var(--text-muted); margin-bottom: 3px;">按序號範圍或元素批次套用：</div>
+        <div style="display: flex; gap: 4px; margin-bottom: 4px;">
+          <input type="text" id="input-style-range" placeholder="例如: 1-252 或 253-1022 或 Cu, Pt" class="form-input" style="flex: 1; font-size: 11px; padding: 3px 6px; height: 26px;">
+          <select id="select-range-style" class="dropdown-select small" style="width: 100px;">
+            <option value="spacefill">CPK 填充</option>
+            <option value="ball_and_stick" selected>球棍模型</option>
+            <option value="stick">棍狀模型</option>
+            <option value="wireframe">線框模型</option>
+            <option value="hidden">隱藏</option>
+            <option value="inherit">繼承全域</option>
+          </select>
+        </div>
+        <button class="btn-block" id="btn-apply-range-style" style="margin: 0; font-size: 11px; padding: 4px 6px;">⚡ 套用模式至範圍/元素</button>
+      </div>
     </div>
   </div>
 
@@ -629,12 +698,14 @@
           <tr><td style="padding: 5px 0;"><b>替換筆刷模式</b></td><td>點擊週期表啟用筆刷，點擊原子直接置換並自動補氫，按 Esc 退出</td></tr>
           <tr><td style="padding: 5px 0;"><b>Alt + 左鍵拖曳</b></td><td>旋轉選中的原子群 (Rotate Selected)</td></tr>
           <tr><td style="padding: 5px 0;"><b>Alt + 右鍵拖曳</b></td><td>平移選中的原子群 (Translate Selected)</td></tr>
+          <tr><td style="padding: 5px 0;"><b>← / → 方向鍵</b></td><td>動態軌跡上一幀 / 下一幀 (Step Frame)</td></tr>
+          <tr><td style="padding: 5px 0;"><b>Space (軌跡載入時)</b></td><td>播放 / 暫停 動態軌跡 (Play / Pause)</td></tr>
           <tr><td style="padding: 5px 0;"><b>Ctrl + Z / Ctrl + Y</b></td><td>復原 (Undo) / 重做 (Redo)</td></tr>
           <tr><td style="padding: 5px 0;"><b>Space / Ctrl + E</b></td><td>🧹 觸發 VSEPR 掃把幾何整理</td></tr>
           <tr><td style="padding: 5px 0;"><b>H / Shift + H</b></td><td>自動補氫 (+H) / 移除氫 (-H)</td></tr>
           <tr><td style="padding: 5px 0;"><b>Ctrl + A</b></td><td>全選所有原子</td></tr>
           <tr><td style="padding: 5px 0;"><b>Delete / Backspace</b></td><td>刪除選中的原子</td></tr>
-          <tr><td style="padding: 5px 0;"><b>直接拖曳檔案進視窗</b></td><td>支援 XYZ, GJF, ORCA, POSCAR, CIF, PDB</td></tr>
+          <tr><td style="padding: 5px 0;"><b>直接拖曳檔案進視窗</b></td><td>支援 XYZ, ARC, LAMMPS (Data+Dump), GJF, ORCA, POSCAR, CIF, PDB</td></tr>
         </table>
       </div>
       <div class="modal-footer">
@@ -642,6 +713,45 @@
       </div>
     </div>
   </div>
+
+  <!-- ================= 10. LAMMPS 原子類型與元素對應設定彈窗 ================= -->
+  <div class="modal-overlay" id="modal-lammps-types">
+    <div class="modal-card" style="width: 520px; max-width: 95vw;">
+      <div class="modal-header">
+        <h3 style="display: flex; align-items: center; gap: 8px;">
+          <span>⚙️ LAMMPS 原子類型與元素對應 (LAMMPS Type Mapping)</span>
+        </h3>
+        <button class="modal-close" id="btn-close-lammps-modal">&times;</button>
+      </div>
+      <div class="modal-body" style="font-size: 12px; line-height: 1.6;">
+        <div style="background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; color: #bae6fd;">
+          💡 <b>自動讀取 Data 檔</b>：點擊下方按鈕載入對應的 <code>.data</code> 檔，系統將自動提取 <code>Masses</code> 質量區段並精確對應所有化學元素！
+        </div>
+
+        <div style="display: flex; gap: 8px; margin-bottom: 12px; align-items: center;">
+          <button class="btn-header primary" id="btn-lammps-pick-data" style="flex: 1;">📂 載入對應 LAMMPS Data 檔 (*.data)</button>
+          <input type="file" id="input-lammps-data-file" style="display: none;" accept=".data,.lammps,*.data*">
+        </div>
+
+        <div style="font-weight: 600; color: #fff; margin-bottom: 6px;">手動指定或微調各 Type 對應元素：</div>
+        <div id="lammps-type-mapping-table" style="max-height: 240px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; padding: 6px; background: rgba(0, 0, 0, 0.2);">
+          <!-- 動態生成各 Type 行 -->
+        </div>
+
+        <div style="margin-top: 10px; display: flex; align-items: center; gap: 6px;">
+          <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim);">
+            <input type="checkbox" id="check-lammps-remember" checked style="cursor: pointer;">
+            記住此映射設定 (下次載入相同 Type 自動套用)
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-header" id="btn-cancel-lammps-modal">取消</button>
+        <button class="btn-header primary" id="btn-apply-lammps-mapping">✓ 套用元素映射</button>
+      </div>
+    </div>
+  </div>
+
 
   <!-- ================= 載入函式庫與核心模組 ================= -->
   <!-- 1. Three.js 核心與軌道控制器 (本地離線相容) -->

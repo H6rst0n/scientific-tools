@@ -211,17 +211,84 @@ class MoleculeRenderer {
   }
 
   /**
+   * 設定 3D 畫布背景色
+   */
+  setBackgroundColor(colorHex) {
+    this.backgroundColor = colorHex;
+    if (this.scene) {
+      this.scene.background = new THREE.Color(colorHex);
+    }
+  }
+
+  /**
+   * 設定空間填充 (CPK Spacefill) 縮放倍率
+   */
+  setSpacefillScale(scale) {
+    this.spacefillScale = scale;
+    if (this.currentStructure) {
+      this.update(this.currentStructure);
+    }
+  }
+
+  /**
+   * 設定特定元素的全域覆寫樣式 (顏色與尺寸縮放)
+   */
+  setElementOverride(sym, override) {
+    if (!this.elementOverrides[sym]) this.elementOverrides[sym] = {};
+    Object.assign(this.elementOverrides[sym], override);
+  }
+
+  /**
+   * 清除特定元素的全域覆寫樣式
+   */
+  clearElementOverride(sym) {
+    if (sym) {
+      delete this.elementOverrides[sym];
+    } else {
+      this.elementOverrides = {};
+    }
+  }
+
+  /**
+   * 取得原子的顯示顏色 (優先順序：個別原子 customColor > 元素覆寫 color > 元素資料庫預設 color)
+   */
+  getAtomColor(elem, atom = null) {
+    if (atom && atom.customColor) {
+      return atom.customColor;
+    }
+    const elemOverride = this.elementOverrides[elem];
+    if (elemOverride && elemOverride.color) {
+      return elemOverride.color;
+    }
+    return getElementInfo(elem).color;
+  }
+
+
+  /**
+   * 取得原子有效渲染樣式 (優先讀取個別原子設定，回退至全域樣式)
+   */
+  getEffectiveStyle(atom = null) {
+    if (atom && atom.renderStyle && atom.renderStyle !== 'inherit') {
+      return atom.renderStyle;
+    }
+    return this.style || 'ball_and_stick';
+  }
+
+  /**
    * 取得原子顯示半徑 (Å)
    */
   getAtomRadius(elem, atom = null) {
     const info = getElementInfo(elem);
+    const effStyle = this.getEffectiveStyle(atom);
     let r = 0.3;
-    if (this.style === 'spacefill') {
+    if (effStyle === 'spacefill') {
       r = info.vdwRadius * 0.75 * this.spacefillScale;
-    } else if (this.style === 'stick') {
+    } else if (effStyle === 'stick') {
       r = 0.22;
-    } else if (this.style === 'wireframe') {
+    } else if (effStyle === 'wireframe') {
       r = 0.10;
+    } else if (effStyle === 'hidden') {
+      r = 0.0001;
     } else {
       // ball_and_stick
       r = Math.max(0.25, info.covRadius * 0.42);
@@ -241,67 +308,30 @@ class MoleculeRenderer {
   }
 
   /**
-   * 取得原子顯示顏色
+   * 取得成對原子的化學鍵顯示半徑 (Å)
+   * 若兩端均為 CPK 空間填充 (spacefill)，自動隱藏內部鍵結以保持整潔
    */
-  getAtomColor(elem, atom = null) {
-    // 1. 個別原子單獨自訂顏色 (優先級最高)
-    if (atom && atom.customColor) {
-      return atom.customColor;
+  getBondRadiusForPair(atomA, atomB) {
+    const styleA = this.getEffectiveStyle(atomA);
+    const styleB = this.getEffectiveStyle(atomB);
+
+    if (styleA === 'spacefill' && styleB === 'spacefill') {
+      return 0;
     }
-    // 2. 全域特定元素自訂顏色
-    const elemOverride = this.elementOverrides[elem];
-    if (elemOverride && elemOverride.color) {
-      return elemOverride.color;
+    if (styleA === 'hidden' || styleB === 'hidden') {
+      return 0;
     }
-    // 3. 預設 CPK 元素色彩
-    const info = getElementInfo(elem);
-    return info.color;
+    if (styleA === 'wireframe' && styleB === 'wireframe') {
+      return 0.04;
+    }
+    if (styleA === 'stick' || styleB === 'stick') {
+      return 0.16;
+    }
+    return 0.10; // ball_and_stick default
   }
 
   /**
-   * 設定場景背景顏色
-   */
-  setBackgroundColor(colorHex) {
-    this.backgroundColor = colorHex;
-    if (this.scene) {
-      this.scene.background = new THREE.Color(colorHex);
-    }
-  }
-
-  /**
-   * 設定空間填充縮放倍率
-   */
-  setSpacefillScale(scale) {
-    this.spacefillScale = Math.max(0.1, Math.min(3.0, Number(scale) || 1.0));
-    if (this.currentStructure) {
-      this.update(this.currentStructure);
-    }
-  }
-
-  /**
-   * 設定特定元素的全域顏色或尺寸覆寫
-   */
-  setElementOverride(elem, opts = {}) {
-    if (!this.elementOverrides[elem]) this.elementOverrides[elem] = {};
-    if (opts.color !== undefined) this.elementOverrides[elem].color = opts.color;
-    if (opts.radiusScale !== undefined) this.elementOverrides[elem].radiusScale = opts.radiusScale;
-    if (this.currentStructure) {
-      this.update(this.currentStructure);
-    }
-  }
-
-  /**
-   * 清除特定元素的全域樣式覆寫
-   */
-  clearElementOverride(elem) {
-    delete this.elementOverrides[elem];
-    if (this.currentStructure) {
-      this.update(this.currentStructure);
-    }
-  }
-
-  /**
-   * 取得化學鍵顯示半徑 (Å)
+   * 取得全域化學鍵預設半徑 (Å)
    */
   getBondRadius() {
     if (this.style === 'spacefill') return 0;
@@ -403,115 +433,244 @@ class MoleculeRenderer {
     this.scene.add(this.atomMesh);
 
     // 4. 建立化學鍵 InstancedMesh
-    if (this.style !== 'spacefill') {
-      const bonds = structure.bonds.length > 0 ? structure.bonds : structure.detectBonds();
-      const nBonds = bonds.length;
-      const bondRadius = this.getBondRadius();
+    const bonds = structure.bonds.length > 0 ? structure.bonds : structure.detectBonds();
+    const nBonds = bonds.length;
 
-      if (nBonds > 0) {
-        const renderedBonds = new Set();
-        const maxPossibleBonds = Math.max(nBonds * totalReplicas * 6, 200);
-        this.bondMesh = new THREE.InstancedMesh(this.cylinderGeo, this.bondMaterial, maxPossibleBonds);
-        this.bondMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    if (nBonds > 0) {
+      const renderedBonds = new Set();
+      const maxPossibleBonds = Math.max(nBonds * totalReplicas * 6, 200);
+      this.bondMesh = new THREE.InstancedMesh(this.cylinderGeo, this.bondMaterial, maxPossibleBonds);
+      this.bondMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
-        let bondInstIdx = 0;
-        const bondColor = new THREE.Color(0x94a3b8);
-        const hbColor = new THREE.Color(0x38bdf8); // 氫鍵亮青色
+      let bondInstIdx = 0;
+      const bondColor = new THREE.Color(0x94a3b8);
+      const hbColor = new THREE.Color(0x38bdf8); // 氫鍵亮青色
 
-        for (let ia = 0; ia < na; ia++) {
-          for (let ib = 0; ib < nb; ib++) {
-            for (let ic = 0; ic < nc; ic++) {
-              const shiftAX = hasCell ? ia * cell[0][0] + ib * cell[1][0] + ic * cell[2][0] : 0;
-              const shiftAY = hasCell ? ia * cell[0][1] + ib * cell[1][1] + ic * cell[2][1] : 0;
-              const shiftAZ = hasCell ? ia * cell[0][2] + ib * cell[1][2] + ic * cell[2][2] : 0;
+      for (let ia = 0; ia < na; ia++) {
+        for (let ib = 0; ib < nb; ib++) {
+          for (let ic = 0; ic < nc; ic++) {
+            const shiftAX = hasCell ? ia * cell[0][0] + ib * cell[1][0] + ic * cell[2][0] : 0;
+            const shiftAY = hasCell ? ia * cell[0][1] + ib * cell[1][1] + ic * cell[2][1] : 0;
+            const shiftAZ = hasCell ? ia * cell[0][2] + ib * cell[1][2] + ic * cell[2][2] : 0;
 
-              for (let b = 0; b < nBonds; b++) {
-                const bond = bonds[b];
-                if (bond.order === 0) continue; // 無鍵結不繪製
+            for (let b = 0; b < nBonds; b++) {
+              const bond = bonds[b];
+              if (bond.order === 0) continue; // 無鍵結不繪製
 
-                const atomA = structure.atoms[bond.a];
-                const atomB = structure.atoms[bond.b];
-                if (!atomA || !atomB) continue;
+              const atomA = structure.atoms[bond.a];
+              const atomB = structure.atoms[bond.b];
+              if (!atomA || !atomB) continue;
 
-                const [offA, offB, offC] = bond.offset || [0, 0, 0];
-                const ja = ia + offA;
-                const jb = ib + offB;
-                const jc = ic + offC;
+              const [offA, offB, offC] = bond.offset || [0, 0, 0];
+              const ja = ia + offA;
+              const jb = ib + offB;
+              const jc = ic + offC;
 
-                // 跨胞鍵：當相鄰原子落在視覺擴胞範圍內時，繪製連接兩晶胞的鍵結
-                if (hasCell) {
-                  if (ja < 0 || ja >= na || jb < 0 || jb >= nb || jc < 0 || jc >= nc) {
-                    continue;
-                  }
+              // 跨胞鍵：當相鄰原子落在視覺擴胞範圍內時，繪製連接兩晶胞的鍵結
+              if (hasCell) {
+                if (ja < 0 || ja >= na || jb < 0 || jb >= nb || jc < 0 || jc >= nc) {
+                  continue;
                 }
+              }
 
-                // 去除週期重複鍵
-                const key1 = `${ia},${ib},${ic},${bond.a}_${ja},${jb},${jc},${bond.b}`;
-                const key2 = `${ja},${jb},${jc},${bond.b}_${ia},${ib},${ic},${bond.a}`;
-                if (renderedBonds.has(key1) || renderedBonds.has(key2)) continue;
-                renderedBonds.add(key1);
+              // 去除週期重複鍵
+              const key1 = `${ia},${ib},${ic},${bond.a}_${ja},${jb},${jc},${bond.b}`;
+              const key2 = `${ja},${jb},${jc},${bond.b}_${ia},${ib},${ic},${bond.a}`;
+              if (renderedBonds.has(key1) || renderedBonds.has(key2)) continue;
+              renderedBonds.add(key1);
 
-                const shiftBX = hasCell ? ja * cell[0][0] + jb * cell[1][0] + jc * cell[2][0] : 0;
-                const shiftBY = hasCell ? ja * cell[0][1] + jb * cell[1][1] + jc * cell[2][1] : 0;
-                const shiftBZ = hasCell ? ja * cell[0][2] + jb * cell[1][2] + jc * cell[2][2] : 0;
+              const bondRadius = this.getBondRadiusForPair(atomA, atomB);
+              if (bondRadius <= 0) continue;
 
-                const pA = new THREE.Vector3(atomA.x + shiftAX, atomA.y + shiftAY, atomA.z + shiftAZ);
-                const pB = new THREE.Vector3(atomB.x + shiftBX, atomB.y + shiftBY, atomB.z + shiftBZ);
+              const shiftBX = hasCell ? ja * cell[0][0] + jb * cell[1][0] + jc * cell[2][0] : 0;
+              const shiftBY = hasCell ? ja * cell[0][1] + jb * cell[1][1] + jc * cell[2][1] : 0;
+              const shiftBZ = hasCell ? ja * cell[0][2] + jb * cell[1][2] + jc * cell[2][2] : 0;
 
-                const len = pA.distanceTo(pB);
-                if (len < 0.1 || len > 20.0) continue;
+              const pA = new THREE.Vector3(atomA.x + shiftAX, atomA.y + shiftAY, atomA.z + shiftAZ);
+              const pB = new THREE.Vector3(atomB.x + shiftBX, atomB.y + shiftBY, atomB.z + shiftBZ);
 
-                const order = bond.order || 1;
-                const bondDir = new THREE.Vector3().subVectors(pB, pA).normalize();
-                const up = Math.abs(bondDir.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
-                const perp = new THREE.Vector3().crossVectors(up, bondDir).normalize();
+              const len = pA.distanceTo(pB);
+              if (len < 0.1 || len > 20.0) continue;
 
-                const renderCylinder = (posA, posB, r, col) => {
-                  if (bondInstIdx >= maxPossibleBonds) return;
-                  dummy.position.copy(posA);
-                  dummy.scale.set(r, r, len);
-                  dummy.lookAt(posB);
-                  dummy.updateMatrix();
-                  this.bondMesh.setMatrixAt(bondInstIdx, dummy.matrix);
-                  this.bondMesh.setColorAt(bondInstIdx, col);
-                  bondInstIdx++;
-                };
+              const order = bond.order || 1;
+              const bondDir = new THREE.Vector3().subVectors(pB, pA).normalize();
+              const up = Math.abs(bondDir.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+              const perp = new THREE.Vector3().crossVectors(up, bondDir).normalize();
 
-                if (order === 2) {
-                  // 雙鍵：平行兩根圓柱
-                  const offsetDist = bondRadius * 1.25;
-                  const offVec = perp.clone().multiplyScalar(offsetDist);
-                  renderCylinder(pA.clone().add(offVec), pB.clone().add(offVec), bondRadius * 0.72, bondColor);
-                  renderCylinder(pA.clone().sub(offVec), pB.clone().sub(offVec), bondRadius * 0.72, bondColor);
-                } else if (order === 3) {
-                  // 三鍵：中央單柱 + 兩側雙柱
-                  const offsetDist = bondRadius * 1.5;
-                  const offVec = perp.clone().multiplyScalar(offsetDist);
-                  renderCylinder(pA, pB, bondRadius * 0.65, bondColor);
-                  renderCylinder(pA.clone().add(offVec), pB.clone().add(offVec), bondRadius * 0.65, bondColor);
-                  renderCylinder(pA.clone().sub(offVec), pB.clone().sub(offVec), bondRadius * 0.65, bondColor);
-                } else if (order === 'hb') {
-                  // 氫鍵：亮青色細柱
-                  renderCylinder(pA, pB, bondRadius * 0.55, hbColor);
-                } else {
-                  // 單鍵 (預設)
-                  renderCylinder(pA, pB, bondRadius, bondColor);
-                }
+              const renderCylinder = (posA, posB, r, col) => {
+                if (bondInstIdx >= maxPossibleBonds) return;
+                dummy.position.copy(posA);
+                dummy.scale.set(r, r, len);
+                dummy.lookAt(posB);
+                dummy.updateMatrix();
+                this.bondMesh.setMatrixAt(bondInstIdx, dummy.matrix);
+                this.bondMesh.setColorAt(bondInstIdx, col);
+                bondInstIdx++;
+              };
+
+              if (order === 2) {
+                // 雙鍵：平行兩根圓柱
+                const offsetDist = bondRadius * 1.25;
+                const offVec = perp.clone().multiplyScalar(offsetDist);
+                renderCylinder(pA.clone().add(offVec), pB.clone().add(offVec), bondRadius * 0.72, bondColor);
+                renderCylinder(pA.clone().sub(offVec), pB.clone().sub(offVec), bondRadius * 0.72, bondColor);
+              } else if (order === 3) {
+                // 三鍵：中央單柱 + 兩側雙柱
+                const offsetDist = bondRadius * 1.5;
+                const offVec = perp.clone().multiplyScalar(offsetDist);
+                renderCylinder(pA, pB, bondRadius * 0.65, bondColor);
+                renderCylinder(pA.clone().add(offVec), pB.clone().add(offVec), bondRadius * 0.65, bondColor);
+                renderCylinder(pA.clone().sub(offVec), pB.clone().sub(offVec), bondRadius * 0.65, bondColor);
+              } else if (order === 'hb') {
+                // 氫鍵：亮青色細柱
+                renderCylinder(pA, pB, bondRadius * 0.55, hbColor);
+              } else {
+                // 單鍵 (預設)
+                renderCylinder(pA, pB, bondRadius, bondColor);
               }
             }
           }
         }
-
-        this.bondMesh.count = bondInstIdx;
-        this.bondMesh.instanceMatrix.needsUpdate = true;
-        if (this.bondMesh.instanceColor) this.bondMesh.instanceColor.needsUpdate = true;
-        this.scene.add(this.bondMesh);
       }
+
+      this.bondMesh.instanceMatrix.needsUpdate = true;
+      if (this.bondMesh.instanceColor) this.bondMesh.instanceColor.needsUpdate = true;
+      this.scene.add(this.bondMesh);
     }
 
-    // 5. 繪製晶胞線框 (Lattice Wireframe)
-    if (this.showCellBox && hasCell) {
-      this.drawLatticeBox(structure.cell);
+    // 5. 繪製週期性晶胞框線 (Unit Cell Wireframe)
+    if (this.showCellBox && cell) {
+      this.drawCellBox(cell, na, nb, nc);
+    }
+  }
+
+  /**
+   * 極速 GPU 就地座標刷新（用於動態軌跡流暢播放，不需重新建立 Geometry/Material）
+   */
+  updateFramePositions(structure) {
+    if (!structure || !this.atomMesh) {
+      this.update(structure);
+      return;
+    }
+    const nAtoms = structure.atoms.length;
+    const [na, nb, nc] = structure.cell ? this.visualReplicas : [1, 1, 1];
+    const totalReplicas = na * nb * nc;
+    if (this.atomMesh.count !== nAtoms * totalReplicas) {
+      this.update(structure);
+      return;
+    }
+
+    const dummy = new THREE.Object3D();
+    const cell = structure.cell;
+    const hasCell = !!cell;
+    let instIdx = 0;
+
+    for (let ia = 0; ia < na; ia++) {
+      for (let ib = 0; ib < nb; ib++) {
+        for (let ic = 0; ic < nc; ic++) {
+          const shiftX = hasCell ? ia * cell[0][0] + ib * cell[1][0] + ic * cell[2][0] : 0;
+          const shiftY = hasCell ? ia * cell[0][1] + ib * cell[1][1] + ic * cell[2][1] : 0;
+          const shiftZ = hasCell ? ia * cell[0][2] + ib * cell[1][2] + ic * cell[2][2] : 0;
+
+          for (let i = 0; i < nAtoms; i++) {
+            const a = structure.atoms[i];
+            const r = this.getAtomRadius(a.element, a);
+            dummy.position.set(a.x + shiftX, a.y + shiftY, a.z + shiftZ);
+            dummy.scale.set(r, r, r);
+            dummy.rotation.set(0, 0, 0);
+            dummy.updateMatrix();
+            this.atomMesh.setMatrixAt(instIdx, dummy.matrix);
+            instIdx++;
+          }
+        }
+      }
+    }
+    this.atomMesh.instanceMatrix.needsUpdate = true;
+
+    // 更新化學鍵位置
+    if (this.bondMesh && structure.bonds && structure.bonds.length > 0) {
+      const bonds = structure.bonds;
+      const nBonds = bonds.length;
+      let bondInstIdx = 0;
+
+      for (let ia = 0; ia < na; ia++) {
+        for (let ib = 0; ib < nb; ib++) {
+          for (let ic = 0; ic < nc; ic++) {
+            const shiftAX = hasCell ? ia * cell[0][0] + ib * cell[1][0] + ic * cell[2][0] : 0;
+            const shiftAY = hasCell ? ia * cell[0][1] + ib * cell[1][1] + ic * cell[2][1] : 0;
+            const shiftAZ = hasCell ? ia * cell[0][2] + ib * cell[1][2] + ic * cell[2][2] : 0;
+
+            for (let b = 0; b < nBonds; b++) {
+              const bond = bonds[b];
+              if (bond.order === 0) continue;
+              const atomA = structure.atoms[bond.a];
+              const atomB = structure.atoms[bond.b];
+              if (!atomA || !atomB) continue;
+
+              const [offA, offB, offC] = bond.offset || [0, 0, 0];
+              const ja = ia + offA, jb = ib + offB, jc = ic + offC;
+              if (hasCell && (ja < 0 || ja >= na || jb < 0 || jb >= nb || jc < 0 || jc >= nc)) continue;
+
+              const bondRadius = this.getBondRadiusForPair(atomA, atomB);
+              if (bondRadius <= 0) continue;
+
+              const shiftBX = hasCell ? ja * cell[0][0] + jb * cell[1][0] + jc * cell[2][0] : 0;
+              const shiftBY = hasCell ? ja * cell[0][1] + jb * cell[1][1] + jc * cell[2][1] : 0;
+              const shiftBZ = hasCell ? ja * cell[0][2] + jb * cell[1][2] + jc * cell[2][2] : 0;
+
+              const pA = new THREE.Vector3(atomA.x + shiftAX, atomA.y + shiftAY, atomA.z + shiftAZ);
+              const pB = new THREE.Vector3(atomB.x + shiftBX, atomB.y + shiftBY, atomB.z + shiftBZ);
+              const len = pA.distanceTo(pB);
+              if (len < 0.1 || len > 20.0) continue;
+
+              const order = bond.order || 1;
+              const bondDir = new THREE.Vector3().subVectors(pB, pA).normalize();
+              const up = Math.abs(bondDir.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+              const perp = new THREE.Vector3().crossVectors(up, bondDir).normalize();
+
+              const updateCylinder = (posA, posB, r) => {
+                if (bondInstIdx >= this.bondMesh.count) return;
+                dummy.position.copy(posA);
+                dummy.scale.set(r, r, len);
+                dummy.lookAt(posB);
+                dummy.updateMatrix();
+                this.bondMesh.setMatrixAt(bondInstIdx, dummy.matrix);
+                bondInstIdx++;
+              };
+
+              if (order === 2) {
+                const offsetDist = bondRadius * 1.25;
+                const offVec = perp.clone().multiplyScalar(offsetDist);
+                updateCylinder(pA.clone().add(offVec), pB.clone().add(offVec), bondRadius * 0.72);
+                updateCylinder(pA.clone().sub(offVec), pB.clone().sub(offVec), bondRadius * 0.72);
+              } else if (order === 3) {
+                const offsetDist = bondRadius * 1.5;
+                const offVec = perp.clone().multiplyScalar(offsetDist);
+                updateCylinder(pA, pB, bondRadius * 0.65);
+                updateCylinder(pA.clone().add(offVec), pB.clone().add(offVec), bondRadius * 0.65);
+                updateCylinder(pA.clone().sub(offVec), pB.clone().sub(offVec), bondRadius * 0.65);
+              } else if (order === 'hb') {
+                updateCylinder(pA, pB, bondRadius * 0.55);
+              } else {
+                updateCylinder(pA, pB, bondRadius);
+              }
+            }
+          }
+        }
+      }
+      this.bondMesh.instanceMatrix.needsUpdate = true;
+    }
+
+    // 更新選取高亮光圈位置
+    if (this.selectionGroup && this.selectionGroup.children.length > 0) {
+      let selIdx = 0;
+      for (let i = 0; i < nAtoms; i++) {
+        const a = structure.atoms[i];
+        if (a.selected && selIdx < this.selectionGroup.children.length) {
+          this.selectionGroup.children[selIdx].position.set(a.x, a.y, a.z);
+          selIdx++;
+        }
+      }
     }
   }
 
