@@ -222,9 +222,50 @@ header .spacer { flex: 1; }
 .axis-title { font-weight: 600; fill: #212121; text-anchor: middle; cursor: move; user-select: none; }
 .axis-title:hover { fill: #1a237e; }
 .chart-legend { cursor: move; user-select: none; }
-.legend-box { fill: rgba(255,255,255,0.95); stroke: #cfd8dc; stroke-width: 1px; rx: 4px; ry: 4px; }
-.legend-text { fill: #333333; cursor: pointer; user-select: none; }
+.legend-box { rx: 4px; ry: 4px; }
+.legend-item { cursor: pointer; }
+.legend-item:hover text { fill: #1a237e; font-weight: 600; }
+.legend-text { cursor: pointer; user-select: none; }
+.legend-resize-handle { cursor: se-resize; opacity: 0.65; transition: opacity 0.15s; }
 .plot-box-frame { pointer-events: none; }
+.metric-gap-shade { pointer-events: none; }
+.metric-gap-text { font-weight: 600; fill: #1565c0; user-select: none; }
+.metric-gap-text-group { cursor: move; user-select: none; }
+.metric-gap-text-group:hover text { fill: #0d47a1 !important; font-weight: 700; }
+.metric-dband-line { pointer-events: none; }
+.metric-dband-text { font-weight: 700; user-select: none; }
+.draggable-text-group, .metric-gap-text-group, .metric-dband-text-group {
+  cursor: move; user-select: none;
+}
+.draggable-text-group:hover text,
+.metric-gap-text-group:hover text,
+.metric-dband-text-group:hover text {
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+}
+.subplot-metric-badge { cursor: move; user-select: none; }
+.subplot-metric-badge:hover > rect.badge-bg {
+  stroke: #1a237e !important; stroke-width: 1.2px !important;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.14));
+}
+.badge-resize-handle, .diff-resize-handle, .legend-resize-handle {
+  cursor: se-resize; opacity: 0; transition: opacity 0.18s ease; pointer-events: all;
+}
+.subplot-metric-badge:hover .badge-resize-handle,
+.metric-diff-badge:hover .diff-resize-handle,
+.chart-legend:hover .legend-resize-handle {
+  opacity: 0.85;
+}
+.badge-resize-handle:hover, .diff-resize-handle:hover, .legend-resize-handle:hover {
+  opacity: 1 !important;
+}
+.badge-line { cursor: pointer; }
+.badge-line:hover { fill: #1a237e !important; font-weight: 700 !important; }
+.metric-diff-badge { cursor: move; user-select: none; }
+.metric-diff-badge:hover > rect.diff-bg {
+  stroke: #1565c0 !important; stroke-width: 1.4px !important;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.18));
+}
+.diff-line-title:hover, .diff-line-val:hover { fill: #0d47a1 !important; }
 
 /* 邊距拖曳邊界 (Plot Edge Hit Areas - 仿照 energy-profile-plotter 靈敏度) */
 .plot-edge-hit {
@@ -244,13 +285,35 @@ header .spacer { flex: 1; }
   ry: 2px;
   transition: transform 0.1s;
 }
-.corner-handle:hover {
-  fill: #2563eb;
-  transform: scale(1.25);
+/* ====== Toast Notification ====== */
+#toast {
+  position: fixed; bottom: 24px; right: 24px;
+  background: rgba(26, 35, 126, 0.95); color: #ffffff;
+  padding: 10px 18px; border-radius: 6px; font-size: 13px; font-weight: 500;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  z-index: 10000; pointer-events: none;
+  opacity: 0; transform: translateY(12px);
+  transition: all 0.25s ease-out;
+  display: flex; align-items: center; gap: 8px;
+}
+#toast.show {
+  opacity: 1; transform: translateY(0);
 }
 
+/* ====== Drag and Drop Overlay ====== */
+#drag-drop-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(26, 35, 126, 0.88); color: white;
+  display: none; flex-direction: column; align-items: center; justify-content: center;
+  z-index: 9999; pointer-events: none;
+  backdrop-filter: blur(5px);
+}
+#drag-drop-overlay svg { width: 68px; height: 68px; margin-bottom: 14px; stroke: #90caf9; }
+#drag-drop-overlay h2 { font-size: 22px; font-weight: 600; letter-spacing: 0.5px; }
+#drag-drop-overlay p { font-size: 14px; opacity: 0.9; margin-top: 8px; }
+
 /* Hidden file inputs */
-#hidden-folder-input { display: none; }
+#input-folder, #input-files { display: none; }
 </style>
 </head>
 <body>
@@ -269,12 +332,19 @@ header .spacer { flex: 1; }
   <div class="spacer"></div>
 
   <div class="header-group">
-    <!-- 選擇目錄核心按鈕 (僅限目錄) -->
-    <button class="btn btn-primary" id="btn-load-folder" title="選取包含 DOSCAR 與 POSCAR 的計算目錄">
+    <!-- 選擇目錄與檔案按鈕 -->
+    <button class="btn btn-primary" id="btn-load-folder" title="選取包含 DOSCAR 或 vasprun.xml 的計算目錄">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
       </svg>
       載入計算目錄
+    </button>
+    <button class="btn" id="btn-load-files" title="直接選取 DOSCAR、POSCAR 或 vasprun.xml 檔案">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+      </svg>
+      載入檔案
     </button>
     <button class="btn" id="btn-load-demo" title="載入 Fe2O3 雙自旋示範體系快速預覽效果">
       示範數據
@@ -325,9 +395,12 @@ header .spacer { flex: 1; }
 
     <!-- TAB 2: 數據組目錄列表 -->
     <div class="tab-content hidden" id="tab-datasets">
-      <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span style="font-size: 12px; font-weight: 600; color: var(--accent);">已載入之 VASP 計算目錄</span>
-        <button class="btn-panel btn-sm" id="btn-add-another-folder">+ 載入更多目錄</button>
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
+        <span style="font-size: 12px; font-weight: 600; color: var(--accent);">已載入之 VASP 計算</span>
+        <div style="display: flex; gap: 4px;">
+          <button class="btn-panel btn-sm" id="btn-add-another-folder" title="載入計算資料夾">+ 載入目錄</button>
+          <button class="btn-panel btn-sm" id="btn-add-another-files" title="選取 DOSCAR / vasprun.xml 檔案">+ 載入檔案</button>
+        </div>
       </div>
       <div id="datasets-list-container">
         <!-- 動態渲染數據組卡片 -->
@@ -484,10 +557,30 @@ header .spacer { flex: 1; }
           <label>顯示圖例</label>
           <input type="checkbox" id="opt-show-legend" checked>
         </div>
+        <div class="control-row">
+          <label>圖例邊框</label>
+          <input type="checkbox" id="opt-legend-border" checked>
+        </div>
+        <div class="control-row">
+          <label>圖例邊框顏色</label>
+          <input type="color" id="opt-legend-border-color" value="#cfd8dc" style="padding:0; height:24px; width:45px;">
+        </div>
+        <div class="control-row">
+          <label>圖例邊框粗細</label>
+          <input type="number" id="opt-legend-border-width" value="1.0" min="0.5" max="5.0" step="0.5">
+        </div>
+        <div class="control-row">
+          <label>圖例背景透明度</label>
+          <div style="display: flex; align-items: center; gap: 6px; flex: 1;">
+            <input type="range" id="opt-legend-bg-opacity" min="0.0" max="1.0" step="0.05" value="0.95" style="flex: 1;">
+            <span id="label-legend-bg-opacity" style="font-size: 11px; width: 32px; text-align: right;">0.95</span>
+          </div>
+        </div>
         <div style="font-size:10px; color:#5c6bc0; line-height:1.45; margin-top:6px; background:#e8eaf6; padding:6px; border-radius:4px;">
           🖱️ <strong>微調操作指引：</strong><br>
           • <strong>調整圖表座標軸邊界</strong>：直接用滑鼠拖曳右側畫布中的<strong>四週藍色感應邊界或四角錨點</strong>！<br>
-          • <strong>自訂圖例與軸標題</strong>：直接按住滑鼠<strong>拖曳圖例或軸標題</strong>至任意位置。
+          • <strong>調整圖例大小與名稱</strong>：拖曳圖例右下角<strong>控制點</strong>調整尺寸（雙擊控制點還原自動大小）；<strong>雙擊圖例項目</strong>可直接重新命名！<br>
+          • <strong>自訂位置</strong>：直接按住滑鼠<strong>拖曳圖例或軸標題</strong>至任意位置。
         </div>
       </div>
     </div>
@@ -513,7 +606,7 @@ header .spacer { flex: 1; }
 
       <!-- 科研指標勾選 -->
       <div class="card">
-        <div class="card-header"><span class="card-title">進階物理特徵自動標註</span></div>
+        <div class="card-header"><span class="card-title">進階物理特徵自動計算</span></div>
         <div style="display: flex; flex-direction: column; gap: 8px; font-size: 11px;">
           <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
             <input type="checkbox" id="opt-mark-fermi" checked>
@@ -531,8 +624,16 @@ header .spacer { flex: 1; }
 
         <div id="dband-target-box" style="display: none; margin-top: 10px; background: #fafafa; padding: 8px; border-radius: 4px; border: 1px solid #eee;">
           <div class="control-row">
-            <label>計算目標曲線</label>
+            <label>計算目標</label>
             <select id="select-dband-curve"></select>
+          </div>
+          <div class="control-row">
+            <label>自旋計算模式</label>
+            <select id="select-dband-spin-mode">
+              <option value="total" selected>全自旋加總 (↑+↓，頂刊推薦)</option>
+              <option value="up">僅自旋向上 (↑)</option>
+              <option value="split">拆分顯示 (↑ 與 ↓)</option>
+            </select>
           </div>
           <div class="control-row">
             <label>積分能量上限</label>
@@ -540,6 +641,34 @@ header .spacer { flex: 1; }
           </div>
           <div id="dband-result-text" style="font-size: 11px; font-weight: 600; color: #1a237e; margin-top: 4px;">
             ε_d = -- eV
+          </div>
+        </div>
+      </div>
+
+      <!-- 視覺化圖面呈現開關 -->
+      <div class="card">
+        <div class="card-header"><span class="card-title">圖面呈現方式勾選</span></div>
+        <div style="display: flex; flex-direction: column; gap: 8px; font-size: 11px;">
+          <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
+            <input type="checkbox" id="opt-show-metric-badge" checked>
+            <strong>方案 A：子圖資訊浮水印小卡 (Info Inset)</strong>
+          </label>
+          <div style="font-size: 10px; color: #757575; margin-left: 20px;">
+            在各子圖角落顯示半透明標籤，註明各數據集的 Eg 與 ε_d。
+          </div>
+          <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; margin-top: 4px;">
+            <input type="checkbox" id="opt-show-metric-canvas" checked>
+            <strong>方案 B：畫布實體物理標註 (Canvas Annotations)</strong>
+          </label>
+          <div style="font-size: 10px; color: #757575; margin-left: 20px;">
+            在畫布上直接繪製能隙陰影區間帶與 d 帶中心垂直彩色虛線。
+          </div>
+          <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; margin-top: 4px;">
+            <input type="checkbox" id="opt-show-metric-diff" checked>
+            <strong>方案 C：多組數據差值對比卡 (Differential Summary)</strong>
+          </label>
+          <div style="font-size: 10px; color: #757575; margin-left: 20px;">
+            載入 2 組以上數據時，自動計算並展示改質位移量 (Δε_d 與 ΔEg)。
           </div>
         </div>
       </div>
@@ -569,16 +698,38 @@ header .spacer { flex: 1; }
           <line x1="12" y1="11" x2="12" y2="17"/>
           <line x1="9" y1="14" x2="15" y2="14"/>
         </svg>
-        <h3>尚未載入 VASP 計算目錄</h3>
-        <p>點擊上方「<strong>載入計算目錄</strong>」選取包含 <code>DOSCAR</code> 與 <code>POSCAR</code> 的資料夾，或點擊「<strong>示範數據</strong>」體驗功能。</p>
-        <button class="btn btn-primary" id="btn-empty-load">選取計算目錄</button>
+        <h3>尚未載入 VASP 計算數據</h3>
+        <p>請點擊下方按鈕選取包含 <code>DOSCAR</code> 或 <code>vasprun.xml</code> 的資料夾/檔案，亦可直接<strong>將檔案拖曳至此視窗</strong>。</p>
+        <div style="display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; justify-content: center;">
+          <button class="btn btn-primary" id="btn-empty-load-folder">📁 選取計算目錄</button>
+          <button class="btn btn-panel" id="btn-empty-load-files" style="border: 1px solid var(--accent); color: var(--accent); font-weight: 600;">📄 選取計算檔案</button>
+          <button class="btn btn-panel" id="btn-empty-load-demo">🧪 載入示範數據</button>
+        </div>
+        <div style="margin-top: 14px; font-size: 11px; color: var(--text-light); opacity: 0.85;">
+          💡 支援直接拖放資料夾、DOSCAR + POSCAR 或 vasprun.xml
+        </div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- 隱藏目錄上傳 input (針對不支援 showDirectoryPicker 的瀏覽器備援) -->
-<input type="file" id="hidden-folder-input" webkitdirectory directory multiple>
+<!-- 全螢幕拖放提示遮罩 -->
+<div id="drag-drop-overlay">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+    <polyline points="17 8 12 3 7 8"/>
+    <line x1="12" y1="3" x2="12" y2="15"/>
+  </svg>
+  <h2>放開滑鼠以載入 VASP 計算數據</h2>
+  <p>支援資料夾目錄、DOSCAR、POSCAR、CONTCAR 及 vasprun.xml</p>
+</div>
+
+<!-- 浮動提示 Toast -->
+<div id="toast"></div>
+
+<!-- 隱藏原生檔案上傳 input (同步直接觸發，零阻擋) -->
+<input type="file" id="input-folder" webkitdirectory directory multiple>
+<input type="file" id="input-files" multiple accept=".xml,.txt,*,.*">
 
 <script>
 /**
@@ -606,6 +757,13 @@ const State = {
     dosstep: null,
     showGrid: true,
     showLegend: true,
+    legendBorder: true,
+    legendBorderColor: '#cfd8dc',
+    legendBorderWidth: 1.0,
+    legendBgOpacity: 0.95,
+    legendTitles: {},
+    legendCustomWidth: null,
+    legendCustomHeight: null,
     showBoxFrame: true, // 四方黑框
     frameLineWidth: 1.2,
     fontFamily: 'Segoe UI, -apple-system, sans-serif',
@@ -621,8 +779,22 @@ const State = {
     markFermi: true,
     calcBandGap: false,
     calcDband: false,
-    dbandCurveId: null,
-    dbandEmax: 0.0
+    dbandCurveId: 'auto',
+    dbandEmax: 0.0,
+    dbandSpinMode: 'total', // 'total' (↑+↓), 'up' (↑), 'split' (↑ & ↓)
+    showMetricBadge: true,
+    showMetricCanvas: true,
+    showMetricDiff: true,
+    fermiTextOffset: {}, // subplotId -> { dx, dy }
+    gapTextOffset: {}, // subplotId -> { dx, dy }
+    dbandTextOffset: {}, // `${subplotId}_${curveId}` -> { dx, dy }
+    badgePositions: {}, // subplotId -> { x, y }
+    badgeSizes: {}, // subplotId -> { width, height }
+    customBadgeLines: {}, // subplotId -> array of custom strings
+    diffBadgePos: null, // { x, y } 可拖曳
+    diffBadgeSize: null, // { width, height } 可縮放
+    customDiffTitle: null,
+    customDiffText: null
   }
 };
 
@@ -636,23 +808,34 @@ const PALETTE = [
 // ====== VASP 檔案解析器 (Parser) ======
 const VaspParser = {
   parsePoscar(text) {
-    const lines = text.trim().split(/\r?\n/);
+    if (!text || typeof text !== 'string') return null;
+    const rawLines = text.split(/\r?\n/);
+    const lines = [];
+    for (let i = 0; i < rawLines.length; i++) {
+      const trimmed = rawLines[i].trim();
+      if (trimmed.length > 0) lines.push(trimmed);
+    }
     if (lines.length < 7) throw new Error("POSCAR 格式無效，內容行數過短。");
     
-    let elemTokens = lines[5].trim().split(/\s+/);
-    let countTokens = lines[6].trim().split(/\s+/).map(Number);
+    // Line 5 (6th line)
+    let elemTokens = lines[5].split(/\s+/).map(t => t.replace(/[#!].*$/, '').trim()).filter(t => t.length > 0);
+    let countTokens = lines[6].split(/\s+/).map(t => t.replace(/[#!].*$/, '').trim()).filter(t => t.length > 0).map(Number);
 
+    // VASP 4 format check (if line 5 has counts instead of element symbols)
     if (elemTokens.every(t => !isNaN(parseFloat(t)))) {
       countTokens = elemTokens.map(Number);
       elemTokens = countTokens.map((_, i) => `El${i+1}`);
+    } else {
+      countTokens = countTokens.filter(x => typeof x === 'number' && !isNaN(x) && x > 0);
+      elemTokens = elemTokens.slice(0, countTokens.length);
     }
 
     const elements = [];
     const atoms = [];
     let atomIdx = 1;
     for (let i = 0; i < elemTokens.length; i++) {
-      const sym = elemTokens[i];
-      const count = countTokens[i];
+      const sym = elemTokens[i] || `El${i+1}`;
+      const count = countTokens[i] || 1;
       elements.push({ symbol: sym, count: count, startIndex: atomIdx, endIndex: atomIdx + count - 1 });
       for (let c = 0; c < count; c++) {
         atoms.push({ index: atomIdx, element: sym });
@@ -664,25 +847,36 @@ const VaspParser = {
   },
 
   parseDoscar(text) {
-    const lines = text.trim().split(/\r?\n/);
-    if (lines.length < 7) throw new Error("DOSCAR 內容不足或為空。");
+    if (!text || typeof text !== 'string') throw new Error("DOSCAR 內容為空。");
+    const rawLines = text.split(/\r?\n/);
+    const lines = [];
+    for (let i = 0; i < rawLines.length; i++) {
+      const trimmed = rawLines[i].trim();
+      if (trimmed.length > 0) lines.push(trimmed);
+    }
+    if (lines.length < 7) throw new Error("DOSCAR 內容不足或格式不完整。");
 
-    const line1Tokens = lines[0].trim().split(/\s+/).map(Number);
-    const nions = line1Tokens[0];
+    const line1Tokens = lines[0].split(/\s+/).map(Number);
+    const nions = line1Tokens[0] || 1;
 
-    const line6Tokens = lines[5].trim().split(/\s+/);
+    const line6Tokens = lines[5].split(/\s+/);
     const emax = parseFloat(line6Tokens[0]);
     const emin = parseFloat(line6Tokens[1]);
     const nedos = parseInt(line6Tokens[2], 10);
     const efermi = parseFloat(line6Tokens[3]);
 
+    if (isNaN(nedos) || nedos <= 0) {
+      throw new Error(`無法解析 DOSCAR 的 NEDOS 網格點數 (讀取值: ${line6Tokens[2]})`);
+    }
+
     let lineIdx = 6;
     const tdosLines = [];
     for (let i = 0; i < nedos && lineIdx < lines.length; i++) {
-      tdosLines.push(lines[lineIdx++].trim().split(/\s+/).map(Number));
+      const row = lines[lineIdx++].split(/\s+/).map(Number);
+      tdosLines.push(row);
     }
 
-    if (tdosLines.length === 0) throw new Error("無法讀取 DOSCAR 中的 TDOS 網格。");
+    if (tdosLines.length === 0) throw new Error("無法讀取 DOSCAR 中的 TDOS 網格數據。");
 
     const tdosColCount = tdosLines[0].length;
     const ispin = (tdosColCount >= 5) ? 2 : 1;
@@ -694,11 +888,11 @@ const VaspParser = {
       const row = tdosLines[i];
       energyGrid.push(row[0]);
       if (ispin === 1) {
-        tdosUp.push(row[1]);
+        tdosUp.push(row[1] || 0);
         tdosDown.push(0);
       } else {
-        tdosUp.push(row[1]);
-        tdosDown.push(row[2]);
+        tdosUp.push(row[1] || 0);
+        tdosDown.push(row[2] || 0);
       }
     }
 
@@ -707,12 +901,12 @@ const VaspParser = {
     let lorbit = 10;
 
     while (lineIdx < lines.length && currentAtom <= nions) {
-      const headerLine = lines[lineIdx++].trim();
+      const headerLine = lines[lineIdx++];
       if (!headerLine) continue;
 
       const ionRows = [];
       for (let i = 0; i < nedos && lineIdx < lines.length; i++) {
-        const row = lines[lineIdx++].trim().split(/\s+/).map(Number);
+        const row = lines[lineIdx++].split(/\s+/).map(Number);
         ionRows.push(row);
       }
 
@@ -731,6 +925,139 @@ const VaspParser = {
     return {
       nions, emax, emin, nedos, efermi, ispin, lorbit,
       energyGrid, tdos: { up: tdosUp, down: tdosDown },
+      pdos, hasPdos: Object.keys(pdos).length > 0
+    };
+  },
+
+  parseVasprunXml(xmlText) {
+    if (!xmlText || typeof xmlText !== 'string') throw new Error("vasprun.xml 內容為空。");
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xmlText, 'application/xml');
+    if (doc.querySelector('parsererror')) {
+      throw new Error("無法解析 vasprun.xml，XML 格式損壞或不完整。");
+    }
+
+    // 1. ISPIN
+    let ispin = 1;
+    const ispinEl = doc.querySelector('i[name="ISPIN"]') || doc.querySelector('separator[name="electronic"] i[name="ISPIN"]');
+    if (ispinEl && parseInt(ispinEl.textContent.trim(), 10) === 2) {
+      ispin = 2;
+    }
+
+    // 2. E-Fermi
+    let efermi = 0.0;
+    const efEl = doc.querySelector('dos > i[name="efermi"]') || doc.querySelector('i[name="efermi"]');
+    if (efEl) {
+      efermi = parseFloat(efEl.textContent.trim());
+    }
+
+    // 3. Elements and Atoms from <array name="atomtypes">
+    const atomTypeElements = [];
+    const atomTypeRows = doc.querySelectorAll('array[name="atomtypes"] set rc');
+    atomTypeRows.forEach(rc => {
+      const c = rc.querySelectorAll('c');
+      if (c.length >= 2) {
+        const count = parseInt(c[0].textContent.trim(), 10);
+        const sym = c[1].textContent.trim();
+        atomTypeElements.push({ symbol: sym, count });
+      }
+    });
+
+    const elements = [];
+    const atoms = [];
+    let atomIdx = 1;
+    atomTypeElements.forEach(item => {
+      elements.push({ symbol: item.symbol, count: item.count, startIndex: atomIdx, endIndex: atomIdx + item.count - 1 });
+      for (let k = 0; k < item.count; k++) {
+        atoms.push({ index: atomIdx, element: item.symbol });
+        atomIdx++;
+      }
+    });
+
+    // 4. Total DOS
+    const totalSet = doc.querySelector('dos > total > array > set');
+    const energyGrid = [];
+    const tdosUp = [];
+    const tdosDown = [];
+
+    if (totalSet) {
+      const spinSets = totalSet.querySelectorAll(':scope > set');
+      if (spinSets.length > 0) {
+        const spin1Rows = spinSets[0].querySelectorAll('r');
+        spin1Rows.forEach(r => {
+          const vals = r.textContent.trim().split(/\s+/).map(Number);
+          energyGrid.push(vals[0]);
+          tdosUp.push(vals[1] || 0);
+          tdosDown.push(0);
+        });
+
+        if (spinSets.length > 1 && ispin === 2) {
+          const spin2Rows = spinSets[1].querySelectorAll('r');
+          spin2Rows.forEach((r, idx) => {
+            const vals = r.textContent.trim().split(/\s+/).map(Number);
+            if (idx < tdosDown.length) {
+              tdosDown[idx] = vals[1] || 0;
+            }
+          });
+        }
+      }
+    }
+
+    // 5. Partial DOS
+    const pdos = {};
+    let lorbit = 10;
+    const partialSet = doc.querySelector('dos > partial > array > set');
+    if (partialSet) {
+      const ionSets = partialSet.querySelectorAll(':scope > set');
+      ionSets.forEach((ionSet, i) => {
+        const ionIdx = i + 1;
+        const spinSets = ionSet.querySelectorAll(':scope > set');
+        if (spinSets.length === 1) { // ISPIN = 1
+          const rEls = spinSets[0].querySelectorAll('r');
+          const ionRows = [];
+          rEls.forEach(r => {
+            const vals = r.textContent.trim().split(/\s+/).map(Number);
+            ionRows.push(vals);
+          });
+          if (ionRows.length > 0) {
+            lorbit = (ionRows[0].length > 4) ? 11 : 10;
+            pdos[ionIdx] = { rows: ionRows, colCount: ionRows[0].length };
+          }
+        } else if (spinSets.length >= 2) { // ISPIN = 2
+          const spin1Rows = spinSets[0].querySelectorAll('r');
+          const spin2Rows = spinSets[1].querySelectorAll('r');
+          const ionRows = [];
+          for (let rowIdx = 0; rowIdx < spin1Rows.length; rowIdx++) {
+            const v1 = spin1Rows[rowIdx].textContent.trim().split(/\s+/).map(Number);
+            const v2 = (rowIdx < spin2Rows.length) ? spin2Rows[rowIdx].textContent.trim().split(/\s+/).map(Number) : [];
+            const combinedRow = [v1[0]];
+            for (let c = 1; c < v1.length; c++) {
+              combinedRow.push(v1[c] || 0);
+              combinedRow.push(v2[c] || 0);
+            }
+            ionRows.push(combinedRow);
+          }
+          if (ionRows.length > 0) {
+            lorbit = (ionRows[0].length > 7) ? 11 : 10;
+            pdos[ionIdx] = { rows: ionRows, colCount: ionRows[0].length };
+          }
+        }
+      });
+    }
+
+    const nions = atoms.length || Object.keys(pdos).length || 1;
+    if (elements.length === 0) {
+      elements.push({ symbol: 'X', count: nions, startIndex: 1, endIndex: nions });
+      for (let i = 1; i <= nions; i++) {
+        atoms.push({ index: i, element: 'X' });
+      }
+    }
+
+    return {
+      nions, emax: energyGrid[energyGrid.length - 1] || 10, emin: energyGrid[0] || -10,
+      nedos: energyGrid.length, efermi, ispin, lorbit,
+      elements, atoms, energyGrid,
+      tdos: { up: tdosUp, down: tdosDown },
       pdos, hasPdos: Object.keys(pdos).length > 0
     };
   }
@@ -799,19 +1126,42 @@ const SciEngine = {
     return { isMetal: gap < 0.05, gap: gap, vbm: vbm, cbm: cbm };
   },
 
-  calcDbandCenter(energies, dos, emaxLimit = 0.0) {
+  calcDbandCenter(energies, dosUp, dosDown = null, ispin = 1, emaxLimit = 0.0, spinMode = 'total') {
+    if (!energies || !dosUp || dosUp.length === 0) return null;
+
+    let targetDos = dosUp;
+    if (ispin === 2 && dosDown && dosDown.length === dosUp.length) {
+      if (spinMode === 'total') {
+        const n = energies.length;
+        const combined = new Float64Array(n);
+        for (let i = 0; i < n; i++) combined[i] = dosUp[i] + dosDown[i];
+        targetDos = combined;
+      } else if (spinMode === 'down') {
+        targetDos = dosDown;
+      } else if (spinMode === 'up') {
+        targetDos = dosUp;
+      }
+    }
+
     let num = 0;
     let denom = 0;
     for (let i = 0; i < energies.length - 1; i++) {
       const E = energies[i];
       if (E > emaxLimit) break;
-      const dE = energies[i + 1] - energies[i];
-      const val = dos[i];
+      const dE = Math.abs(energies[i + 1] - energies[i]);
+      const val = targetDos[i];
       num += E * val * dE;
       denom += val * dE;
     }
-    if (denom === 0) return null;
+    if (denom <= 1e-12) return null;
     return num / denom;
+  },
+
+  calcDbandCenterFull(energies, dosUp, dosDown = null, ispin = 1, emaxLimit = 0.0) {
+    const total = this.calcDbandCenter(energies, dosUp, dosDown, ispin, emaxLimit, 'total');
+    const up = this.calcDbandCenter(energies, dosUp, dosDown, ispin, emaxLimit, 'up');
+    const down = (ispin === 2 && dosDown) ? this.calcDbandCenter(energies, dosUp, dosDown, ispin, emaxLimit, 'down') : null;
+    return { total, up, down };
   }
 };
 
@@ -1055,13 +1405,16 @@ const ChartRenderer = {
       });
     });
 
-    // 繪製圖例 (可滑鼠直接拖曳)
+    // 1. 繪製座標軸與邊界拖曳感應控制項 (置於圖例與浮動卡片下方，避免邊緣 hit rect 遮擋)
+    this.renderMarginHandles(svg, width, height);
+
+    // 2. 繪製圖例 (可滑鼠直接拖曳、縮放)
     if (State.settings.showLegend) {
       this.renderLegend(svg, width, height);
     }
 
-    // 繪製座標軸與邊界拖曳感應控制項 (參考 energy-profile-plotter 專用實作)
-    this.renderMarginHandles(svg, width, height);
+    // 3. 繪製多數據集差值對比卡 (方案 C: 可滑鼠直接拖曳、縮放)
+    this.renderDiffBadge(svg, width, height);
   },
 
   renderSubplot(ctx) {
@@ -1081,7 +1434,17 @@ const ChartRenderer = {
       yScale = d3.scaleLinear().domain([plotEmin, plotEmax]).range([height, 0]);
     }
 
-    // 網格線
+    const svgNode = document.getElementById('chart-svg');
+    function getSvgPt(e) {
+      const pt = svgNode.createSVGPoint();
+      pt.x = e.clientX; pt.y = e.clientY;
+      const ctm = svgNode.getScreenCTM();
+      if (ctm) return pt.matrixTransform(ctm.inverse());
+      const [mx, my] = d3.pointer(e, svgNode);
+      return { x: mx, y: my };
+    }
+
+    // --- Layer 1: 網格線與零基準線 ---
     if (State.settings.showGrid) {
       const xGrid = d3.axisBottom(xScale).tickSize(-height).tickFormat('');
       const yGrid = d3.axisLeft(yScale).tickSize(-width).tickFormat('');
@@ -1089,7 +1452,6 @@ const ChartRenderer = {
       g.append('g').attr('class', 'grid').call(yGrid);
     }
 
-    // 零態密度基準線
     if (isHoriz && plotDosMin < 0 && plotDosMax > 0) {
       g.append('line').attr('class', 'zero-line')
        .attr('x1', 0).attr('x2', width).attr('y1', yScale(0)).attr('y2', yScale(0));
@@ -1098,7 +1460,8 @@ const ChartRenderer = {
        .attr('x1', xScale(0)).attr('x2', xScale(0)).attr('y1', 0).attr('y2', height);
     }
 
-    // 費米能級虛線
+    // --- Layer 2: 物理輔助線 (費米能級線、能隙陰影、d-band 垂直線) ---
+    // 費米能級參考線
     if (State.settings.markFermi) {
       const fermiVal = (State.settings.energyRef === 'fermi') ? 0 : (subplot.datasets[0] ? subplot.datasets[0].ef : 0);
       if (isHoriz) {
@@ -1106,25 +1469,79 @@ const ChartRenderer = {
         if (fx >= 0 && fx <= width) {
           g.append('line').attr('class', 'fermi-line')
            .attr('x1', fx).attr('x2', fx).attr('y1', 0).attr('y2', height);
-          g.append('text').attr('class', 'fermi-text')
-           .attr('x', fx + 4).attr('y', 14)
-           .style('font-family', State.settings.fontFamily)
-           .text('Ef');
         }
       } else {
         const fy = yScale(fermiVal);
         if (fy >= 0 && fy <= height) {
           g.append('line').attr('class', 'fermi-line')
            .attr('x1', 0).attr('x2', width).attr('y1', fy).attr('y2', fy);
-          g.append('text').attr('class', 'fermi-text')
-           .attr('x', width - 20).attr('y', fy - 4)
-           .style('font-family', State.settings.fontFamily)
-           .text('Ef');
         }
       }
     }
 
-    // 曲線與填色
+    // 能隙陰影
+    if (State.settings.showMetricCanvas && State.settings.calcBandGap) {
+      subplot.datasets.forEach(ds => {
+        const bg = ds.metrics?.bandgap;
+        if (bg && !bg.isMetal && bg.gap > 0) {
+          if (isHoriz) {
+            const xVbm = xScale(bg.vbm);
+            const xCbm = xScale(bg.cbm);
+            const gapW = Math.max(2, xCbm - xVbm);
+            g.append('rect').attr('class', 'metric-gap-shade')
+              .attr('x', xVbm).attr('y', 0)
+              .attr('width', gapW).attr('height', height)
+              .attr('fill', 'rgba(33, 150, 243, 0.12)')
+              .attr('stroke', 'rgba(33, 150, 243, 0.4)')
+              .attr('stroke-width', 1)
+              .attr('stroke-dasharray', '3,3');
+          } else {
+            const yVbm = yScale(bg.vbm);
+            const yCbm = yScale(bg.cbm);
+            const gapH = Math.max(2, yVbm - yCbm);
+            g.append('rect').attr('class', 'metric-gap-shade')
+              .attr('x', 0).attr('y', yCbm)
+              .attr('width', width).attr('height', gapH)
+              .attr('fill', 'rgba(33, 150, 243, 0.12)')
+              .attr('stroke', 'rgba(33, 150, 243, 0.4)')
+              .attr('stroke-width', 1)
+              .attr('stroke-dasharray', '3,3');
+          }
+        }
+      });
+    }
+
+    // d-band 參考線
+    if (State.settings.showMetricCanvas && State.settings.calcDband) {
+      subplot.datasets.forEach(ds => {
+        if (ds.metrics?.dbands) {
+          ds.metrics.dbands.forEach(db => {
+            const dVal = db.value;
+            if (isHoriz) {
+              const dx = xScale(dVal);
+              if (dx >= 0 && dx <= width) {
+                g.append('line').attr('class', 'metric-dband-line')
+                  .attr('x1', dx).attr('x2', dx).attr('y1', 0).attr('y2', height)
+                  .attr('stroke', db.curve.color || '#e91e63')
+                  .attr('stroke-width', 1.4)
+                  .attr('stroke-dasharray', '4,3');
+              }
+            } else {
+              const dy = yScale(dVal);
+              if (dy >= 0 && dy <= height) {
+                g.append('line').attr('class', 'metric-dband-line')
+                  .attr('x1', 0).attr('x2', width).attr('y1', dy).attr('y2', dy)
+                  .attr('stroke', db.curve.color || '#e91e63')
+                  .attr('stroke-width', 1.4)
+                  .attr('stroke-dasharray', '4,3');
+              }
+            }
+          });
+        }
+      });
+    }
+
+    // --- Layer 3: 態密度數據曲線與面積填色 ---
     const clipId = `clip-subplot-${subplot.id}-${index}`;
     g.append('clipPath').attr('id', clipId)
      .append('rect').attr('width', width).attr('height', height);
@@ -1173,6 +1590,7 @@ const ChartRenderer = {
       const strokeDash = curve.lineStyle === 'dashed' ? '4,3' : (curve.lineStyle === 'dotted' ? '2,2' : null);
 
       curveGroup.append('path').datum(ptsUp)
+        .attr('class', 'dos-line')
         .attr('d', lineGen)
         .attr('fill', 'none')
         .attr('stroke', curve.color)
@@ -1181,6 +1599,7 @@ const ChartRenderer = {
 
       if (isSpin && ptsDown.length > 0) {
         curveGroup.append('path').datum(ptsDown)
+          .attr('class', 'dos-line')
           .attr('d', lineGen)
           .attr('fill', 'none')
           .attr('stroke', curve.color)
@@ -1189,7 +1608,7 @@ const ChartRenderer = {
       }
     });
 
-    // 繪製座標軸 (Axes)
+    // --- Layer 4: 座標軸 (Axes) 與封閉黑邊外框 (Box Frame) ---
     const xAxisGen = d3.axisBottom(xScale);
     const yAxisGen = d3.axisLeft(yScale);
 
@@ -1215,7 +1634,6 @@ const ChartRenderer = {
 
     g.append('g').attr('class', 'axis axis-y').call(yAxisGen);
 
-    // 套用全圖字體與刻度字級
     g.selectAll('.axis text')
      .style('font-family', State.settings.fontFamily)
      .style('font-size', `${State.settings.tickFontSize}px`);
@@ -1223,7 +1641,6 @@ const ChartRenderer = {
     g.selectAll('.axis path, .axis line')
      .style('stroke-width', `${State.settings.frameLineWidth}px`);
 
-    // 封閉黑邊外框 (Box Frame - 出版期刊規格)
     if (State.settings.showBoxFrame) {
       g.append('rect').attr('class', 'plot-box-frame')
        .attr('x', 0).attr('y', 0)
@@ -1233,22 +1650,630 @@ const ChartRenderer = {
        .attr('stroke-width', `${State.settings.frameLineWidth}px`);
     }
 
-    // 座標軸標題 (支援滑鼠直接拖曳調整位置)
+    // --- Layer 5: 懸浮十字準星感應層 (Hover Crosshair) ---
+    // 必須在此處掛載，使其位於數據曲線上方，但位於可互動標註、小卡下方！
+    this.attachHoverCrosshair(g, width, height, xScale, yScale, curvesData, isHoriz);
+
+    // --- Layer 6: 最頂層可互動標註層 (Annotations & Badges) ---
+    const annotG = g.append('g').attr('class', 'annotations-layer');
+
+    // 1. 費米能級標籤 (高對比膠囊 Pill，滑鼠可拖曳、雙擊重設)
+    if (State.settings.markFermi) {
+      const fermiVal = (State.settings.energyRef === 'fermi') ? 0 : (subplot.datasets[0] ? subplot.datasets[0].ef : 0);
+      const off = State.settings.fermiTextOffset?.[subplot.id] || { dx: 0, dy: 0 };
+
+      if (isHoriz) {
+        const fx = xScale(fermiVal);
+        if (fx >= 0 && fx <= width) {
+          const baseX = fx + 4;
+          const baseY = 14;
+          const ftG = annotG.append('g').attr('class', 'draggable-text-group')
+            .attr('transform', `translate(${baseX + (off.dx || 0)}, ${baseY + (off.dy || 0)})`)
+            .attr('title', '拖曳移動 Ef 標籤，雙擊重設位置')
+            .style('cursor', 'move');
+
+          ftG.append('rect').attr('class', 'text-hit-area')
+            .attr('x', -4).attr('y', -12).attr('width', 28).attr('height', 24)
+            .attr('fill', 'transparent')
+            .attr('pointer-events', 'all');
+
+          ftG.append('text').attr('class', 'fermi-text')
+            .attr('x', 0).attr('y', 0)
+            .attr('dominant-baseline', 'central')
+            .style('font-family', State.settings.fontFamily)
+            .style('font-size', '11.5px')
+            .style('font-weight', '700')
+            .style('fill', '#d32f2f')
+            .style('paint-order', 'stroke fill')
+            .style('stroke', '#ffffff')
+            .style('stroke-width', '3px')
+            .style('stroke-linejoin', 'round')
+            .style('pointer-events', 'none')
+            .text('Ef');
+
+          ftG.on('pointerdown', function(ev) {
+            if (ev.button !== 0) return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            const startPt = getSvgPt(ev);
+            if (!State.settings.fermiTextOffset) State.settings.fermiTextOffset = {};
+            if (!State.settings.fermiTextOffset[subplot.id]) State.settings.fermiTextOffset[subplot.id] = { dx: 0, dy: 0 };
+            const curOff = State.settings.fermiTextOffset[subplot.id];
+            const origDx = curOff.dx || 0;
+            const origDy = curOff.dy || 0;
+            document.body.style.userSelect = 'none';
+
+            function onMove(e) {
+              e.preventDefault();
+              const curPt = getSvgPt(e);
+              curOff.dx = Math.round(origDx + (curPt.x - startPt.x));
+              curOff.dy = Math.round(origDy + (curPt.y - startPt.y));
+              ftG.attr('transform', `translate(${baseX + curOff.dx}, ${baseY + curOff.dy})`);
+            }
+
+            function onUp() {
+              document.body.style.userSelect = '';
+              window.removeEventListener('pointermove', onMove);
+              window.removeEventListener('pointerup', onUp);
+            }
+
+            window.addEventListener('pointermove', onMove);
+            window.addEventListener('pointerup', onUp);
+          });
+
+          ftG.on('dblclick', function(ev) {
+            ev.stopPropagation();
+            if (State.settings.fermiTextOffset) delete State.settings.fermiTextOffset[subplot.id];
+            ChartRenderer.render();
+          });
+        }
+      } else {
+        const fy = yScale(fermiVal);
+        if (fy >= 0 && fy <= height) {
+          const baseX = width - 24;
+          const baseY = fy - 10;
+          const ftG = annotG.append('g').attr('class', 'draggable-text-group')
+            .attr('transform', `translate(${baseX + (off.dx || 0)}, ${baseY + (off.dy || 0)})`)
+            .attr('title', '拖曳移動 Ef 標籤，雙擊重設位置')
+            .style('cursor', 'move');
+
+          ftG.append('rect').attr('class', 'text-hit-area')
+            .attr('x', -4).attr('y', -12).attr('width', 28).attr('height', 24)
+            .attr('fill', 'transparent')
+            .attr('pointer-events', 'all');
+
+          ftG.append('text').attr('class', 'fermi-text')
+            .attr('x', 0).attr('y', 0)
+            .attr('dominant-baseline', 'central')
+            .style('font-family', State.settings.fontFamily)
+            .style('font-size', '11.5px')
+            .style('font-weight', '700')
+            .style('fill', '#d32f2f')
+            .style('paint-order', 'stroke fill')
+            .style('stroke', '#ffffff')
+            .style('stroke-width', '3px')
+            .style('stroke-linejoin', 'round')
+            .style('pointer-events', 'none')
+            .text('Ef');
+
+          ftG.on('pointerdown', function(ev) {
+            if (ev.button !== 0) return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            const startPt = getSvgPt(ev);
+            if (!State.settings.fermiTextOffset) State.settings.fermiTextOffset = {};
+            if (!State.settings.fermiTextOffset[subplot.id]) State.settings.fermiTextOffset[subplot.id] = { dx: 0, dy: 0 };
+            const curOff = State.settings.fermiTextOffset[subplot.id];
+            const origDx = curOff.dx || 0;
+            const origDy = curOff.dy || 0;
+            document.body.style.userSelect = 'none';
+
+            function onMove(e) {
+              e.preventDefault();
+              const curPt = getSvgPt(e);
+              curOff.dx = Math.round(origDx + (curPt.x - startPt.x));
+              curOff.dy = Math.round(origDy + (curPt.y - startPt.y));
+              ftG.attr('transform', `translate(${baseX + curOff.dx}, ${baseY + curOff.dy})`);
+            }
+
+            function onUp() {
+              document.body.style.userSelect = '';
+              window.removeEventListener('pointermove', onMove);
+              window.removeEventListener('pointerup', onUp);
+            }
+
+            window.addEventListener('pointermove', onMove);
+            window.addEventListener('pointerup', onUp);
+          });
+
+          ftG.on('dblclick', function(ev) {
+            ev.stopPropagation();
+            if (State.settings.fermiTextOffset) delete State.settings.fermiTextOffset[subplot.id];
+            ChartRenderer.render();
+          });
+        }
+      }
+    }
+
+    // 2. 能隙標籤 (Eg 文字標註，滑鼠可拖曳、雙擊重設)
+    if (State.settings.showMetricCanvas && State.settings.calcBandGap) {
+      subplot.datasets.forEach(ds => {
+        const bg = ds.metrics?.bandgap;
+        if (bg && !bg.isMetal && bg.gap > 0) {
+          const off = State.settings.gapTextOffset?.[subplot.id] || { dx: 0, dy: 0 };
+          const gapLabel = `Eg = ${bg.gap.toFixed(2)} eV`;
+
+          if (isHoriz) {
+            const xVbm = xScale(bg.vbm);
+            const xCbm = xScale(bg.cbm);
+            const baseMidX = (xVbm + xCbm) / 2;
+            const baseMidY = 16;
+
+            const gtG = annotG.append('g').attr('class', 'metric-gap-text-group')
+              .attr('transform', `translate(${baseMidX + (off.dx || 0)}, ${baseMidY + (off.dy || 0)})`)
+              .attr('title', '拖曳移動 Eg 標籤，雙擊重設位置')
+              .style('cursor', 'move');
+
+            gtG.append('rect').attr('class', 'text-hit-area')
+              .attr('x', -45).attr('y', -12).attr('width', 90).attr('height', 24)
+              .attr('fill', 'transparent')
+              .attr('pointer-events', 'all');
+
+            gtG.append('text').attr('class', 'metric-gap-text')
+              .attr('x', 0).attr('y', 0)
+              .attr('text-anchor', 'middle')
+              .attr('dominant-baseline', 'central')
+              .style('font-family', State.settings.fontFamily)
+              .style('font-size', '11px')
+              .style('font-weight', '700')
+              .style('fill', '#1565c0')
+              .style('paint-order', 'stroke fill')
+              .style('stroke', '#ffffff')
+              .style('stroke-width', '3px')
+              .style('stroke-linejoin', 'round')
+              .style('pointer-events', 'none')
+              .text(gapLabel);
+
+            gtG.on('pointerdown', function(ev) {
+              if (ev.button !== 0) return;
+              ev.preventDefault();
+              ev.stopPropagation();
+              const startPt = getSvgPt(ev);
+              if (!State.settings.gapTextOffset) State.settings.gapTextOffset = {};
+              if (!State.settings.gapTextOffset[subplot.id]) State.settings.gapTextOffset[subplot.id] = { dx: 0, dy: 0 };
+              const curOff = State.settings.gapTextOffset[subplot.id];
+              const origDx = curOff.dx || 0;
+              const origDy = curOff.dy || 0;
+              document.body.style.userSelect = 'none';
+
+              function onMove(e) {
+                e.preventDefault();
+                const curPt = getSvgPt(e);
+                curOff.dx = Math.round(origDx + (curPt.x - startPt.x));
+                curOff.dy = Math.round(origDy + (curPt.y - startPt.y));
+                gtG.attr('transform', `translate(${baseMidX + curOff.dx}, ${baseMidY + curOff.dy})`);
+              }
+
+              function onUp() {
+                document.body.style.userSelect = '';
+                window.removeEventListener('pointermove', onMove);
+                window.removeEventListener('pointerup', onUp);
+              }
+
+              window.addEventListener('pointermove', onMove);
+              window.addEventListener('pointerup', onUp);
+            });
+
+            gtG.on('dblclick', function(ev) {
+              ev.stopPropagation();
+              if (State.settings.gapTextOffset) delete State.settings.gapTextOffset[subplot.id];
+              ChartRenderer.render();
+            });
+          } else {
+            const yVbm = yScale(bg.vbm);
+            const yCbm = yScale(bg.cbm);
+            const baseMidX = width - 40;
+            const baseMidY = (yVbm + yCbm) / 2;
+
+            const gtG = annotG.append('g').attr('class', 'metric-gap-text-group')
+              .attr('transform', `translate(${baseMidX + (off.dx || 0)}, ${baseMidY + (off.dy || 0)})`)
+              .attr('title', '拖曳移動 Eg 標籤，雙擊重設位置')
+              .style('cursor', 'move');
+
+            gtG.append('rect').attr('class', 'text-hit-area')
+              .attr('x', -45).attr('y', -12).attr('width', 90).attr('height', 24)
+              .attr('fill', 'transparent')
+              .attr('pointer-events', 'all');
+
+            gtG.append('text').attr('class', 'metric-gap-text')
+              .attr('x', 0).attr('y', 0)
+              .attr('text-anchor', 'middle')
+              .attr('dominant-baseline', 'central')
+              .style('font-family', State.settings.fontFamily)
+              .style('font-size', '11px')
+              .style('font-weight', '700')
+              .style('fill', '#1565c0')
+              .style('paint-order', 'stroke fill')
+              .style('stroke', '#ffffff')
+              .style('stroke-width', '3px')
+              .style('stroke-linejoin', 'round')
+              .style('pointer-events', 'none')
+              .text(gapLabel);
+
+            gtG.on('pointerdown', function(ev) {
+              if (ev.button !== 0) return;
+              ev.preventDefault();
+              ev.stopPropagation();
+              const startPt = getSvgPt(ev);
+              if (!State.settings.gapTextOffset) State.settings.gapTextOffset = {};
+              if (!State.settings.gapTextOffset[subplot.id]) State.settings.gapTextOffset[subplot.id] = { dx: 0, dy: 0 };
+              const curOff = State.settings.gapTextOffset[subplot.id];
+              const origDx = curOff.dx || 0;
+              const origDy = curOff.dy || 0;
+              document.body.style.userSelect = 'none';
+
+              function onMove(e) {
+                e.preventDefault();
+                const curPt = getSvgPt(e);
+                curOff.dx = Math.round(origDx + (curPt.x - startPt.x));
+                curOff.dy = Math.round(origDy + (curPt.y - startPt.y));
+                gtG.attr('transform', `translate(${baseMidX + curOff.dx}, ${baseMidY + curOff.dy})`);
+              }
+
+              function onUp() {
+                document.body.style.userSelect = '';
+                window.removeEventListener('pointermove', onMove);
+                window.removeEventListener('pointerup', onUp);
+              }
+
+              window.addEventListener('pointermove', onMove);
+              window.addEventListener('pointerup', onUp);
+            });
+
+            gtG.on('dblclick', function(ev) {
+              ev.stopPropagation();
+              if (State.settings.gapTextOffset) delete State.settings.gapTextOffset[subplot.id];
+              ChartRenderer.render();
+            });
+          }
+        }
+      });
+    }
+
+    // 3. d 帶中心標籤 (ε_d 文字標註，滑鼠可拖曳、雙擊重設)
+    if (State.settings.showMetricCanvas && State.settings.calcDband) {
+      subplot.datasets.forEach(ds => {
+        if (ds.metrics?.dbands) {
+          ds.metrics.dbands.forEach((db, dbi) => {
+            const dVal = db.value;
+            const key = `${subplot.id}_${db.curve.id}`;
+            const off = State.settings.dbandTextOffset?.[key] || { dx: 0, dy: 0 };
+            const dColor = db.curve.color || '#e91e63';
+            const dbandText = `ε_d: ${dVal.toFixed(2)} eV`;
+
+            if (isHoriz) {
+              const dx = xScale(dVal);
+              if (dx >= 0 && dx <= width) {
+                const baseTX = dx + 4;
+                const baseTY = height - 14 - dbi * 18;
+
+                const dtG = annotG.append('g').attr('class', 'metric-dband-text-group')
+                  .attr('transform', `translate(${baseTX + (off.dx || 0)}, ${baseTY + (off.dy || 0)})`)
+                  .attr('title', '拖曳移動 ε_d 標籤，雙擊重設位置')
+                  .style('cursor', 'move');
+
+                dtG.append('rect').attr('class', 'text-hit-area')
+                  .attr('x', -4).attr('y', -12).attr('width', 80).attr('height', 24)
+                  .attr('fill', 'transparent')
+                  .attr('pointer-events', 'all');
+
+                dtG.append('text').attr('class', 'metric-dband-text')
+                  .attr('x', 0).attr('y', 0)
+                  .attr('dominant-baseline', 'central')
+                  .style('font-family', State.settings.fontFamily)
+                  .style('font-size', '11px')
+                  .style('font-weight', '700')
+                  .style('fill', dColor)
+                  .style('paint-order', 'stroke fill')
+                  .style('stroke', '#ffffff')
+                  .style('stroke-width', '3px')
+                  .style('stroke-linejoin', 'round')
+                  .style('pointer-events', 'none')
+                  .text(dbandText);
+
+                dtG.on('pointerdown', function(ev) {
+                  if (ev.button !== 0) return;
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                  const startPt = getSvgPt(ev);
+                  if (!State.settings.dbandTextOffset) State.settings.dbandTextOffset = {};
+                  if (!State.settings.dbandTextOffset[key]) State.settings.dbandTextOffset[key] = { dx: 0, dy: 0 };
+                  const curOff = State.settings.dbandTextOffset[key];
+                  const origDx = curOff.dx || 0;
+                  const origDy = curOff.dy || 0;
+                  document.body.style.userSelect = 'none';
+
+                  function onMove(e) {
+                    e.preventDefault();
+                    const curPt = getSvgPt(e);
+                    curOff.dx = Math.round(origDx + (curPt.x - startPt.x));
+                    curOff.dy = Math.round(origDy + (curPt.y - startPt.y));
+                    dtG.attr('transform', `translate(${baseTX + curOff.dx}, ${baseTY + curOff.dy})`);
+                  }
+
+                  function onUp() {
+                    document.body.style.userSelect = '';
+                    window.removeEventListener('pointermove', onMove);
+                    window.removeEventListener('pointerup', onUp);
+                  }
+
+                  window.addEventListener('pointermove', onMove);
+                  window.addEventListener('pointerup', onUp);
+                });
+
+                dtG.on('dblclick', function(ev) {
+                  ev.stopPropagation();
+                  if (State.settings.dbandTextOffset) delete State.settings.dbandTextOffset[key];
+                  ChartRenderer.render();
+                });
+              }
+            } else {
+              const dy = yScale(dVal);
+              if (dy >= 0 && dy <= height) {
+                const baseTX = 14 + dbi * 75;
+                const baseTY = dy - 8;
+
+                const dtG = annotG.append('g').attr('class', 'metric-dband-text-group')
+                  .attr('transform', `translate(${baseTX + (off.dx || 0)}, ${baseTY + (off.dy || 0)})`)
+                  .attr('title', '拖曳移動 ε_d 標籤，雙擊重設位置')
+                  .style('cursor', 'move');
+
+                dtG.append('rect').attr('class', 'text-hit-area')
+                  .attr('x', -4).attr('y', -12).attr('width', 80).attr('height', 24)
+                  .attr('fill', 'transparent')
+                  .attr('pointer-events', 'all');
+
+                dtG.append('text').attr('class', 'metric-dband-text')
+                  .attr('x', 0).attr('y', 0)
+                  .attr('dominant-baseline', 'central')
+                  .style('font-family', State.settings.fontFamily)
+                  .style('font-size', '11px')
+                  .style('font-weight', '700')
+                  .style('fill', dColor)
+                  .style('paint-order', 'stroke fill')
+                  .style('stroke', '#ffffff')
+                  .style('stroke-width', '3px')
+                  .style('stroke-linejoin', 'round')
+                  .style('pointer-events', 'none')
+                  .text(dbandText);
+
+                dtG.on('pointerdown', function(ev) {
+                  if (ev.button !== 0) return;
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                  const startPt = getSvgPt(ev);
+                  if (!State.settings.dbandTextOffset) State.settings.dbandTextOffset = {};
+                  if (!State.settings.dbandTextOffset[key]) State.settings.dbandTextOffset[key] = { dx: 0, dy: 0 };
+                  const curOff = State.settings.dbandTextOffset[key];
+                  const origDx = curOff.dx || 0;
+                  const origDy = curOff.dy || 0;
+                  document.body.style.userSelect = 'none';
+
+                  function onMove(e) {
+                    e.preventDefault();
+                    const curPt = getSvgPt(e);
+                    curOff.dx = Math.round(origDx + (curPt.x - startPt.x));
+                    curOff.dy = Math.round(origDy + (curPt.y - startPt.y));
+                    dtG.attr('transform', `translate(${baseTX + curOff.dx}, ${baseTY + curOff.dy})`);
+                  }
+
+                  function onUp() {
+                    document.body.style.userSelect = '';
+                    window.removeEventListener('pointermove', onMove);
+                    window.removeEventListener('pointerup', onUp);
+                  }
+
+                  window.addEventListener('pointermove', onMove);
+                  window.addEventListener('pointerup', onUp);
+                });
+
+                dtG.on('dblclick', function(ev) {
+                  ev.stopPropagation();
+                  if (State.settings.dbandTextOffset) delete State.settings.dbandTextOffset[key];
+                  ChartRenderer.render();
+                });
+              }
+            }
+          });
+        }
+      });
+    }
+
+    // 4. 子圖資訊浮水印小卡 (Info Inset Badge: 拖曳、縮放、雙擊修改文字)
+    if (State.settings.showMetricBadge && (State.settings.calcBandGap || State.settings.calcDband)) {
+      const defaultLines = [];
+      if (numSubplots > 1) {
+        defaultLines.push({ key: 'title', text: subplot.title, bold: true, color: '#1a237e' });
+      }
+      subplot.datasets.forEach(ds => {
+        if (numSubplots === 1 && State.datasets.length > 1) {
+          defaultLines.push({ key: `ds_${ds.id}`, text: `• ${ds.name}:`, bold: true, color: '#1a237e' });
+        }
+        if (State.settings.calcBandGap && ds.metrics?.bandgap) {
+          const bg = ds.metrics.bandgap;
+          const txt = bg.isMetal ? 'Band Gap: 金屬 (0 eV)' : `Eg = ${bg.gap.toFixed(2)} eV (VBM: ${bg.vbm.toFixed(2)}, CBM: ${bg.cbm.toFixed(2)})`;
+          defaultLines.push({ key: `bg_${ds.id}`, text: (numSubplots === 1 && State.datasets.length > 1) ? `  ${txt}` : txt, color: '#37474f' });
+        }
+        if (State.settings.calcDband && ds.metrics?.dbands?.length > 0) {
+          ds.metrics.dbands.forEach(db => {
+            let txt = `ε_d (${db.curve.name}) = ${db.value.toFixed(2)} eV`;
+            if (State.settings.dbandSpinMode === 'split' && db.full?.up !== null && db.full?.down !== null) {
+              txt += ` (↑: ${db.full.up.toFixed(2)}, ↓: ${db.full.down.toFixed(2)})`;
+            }
+            defaultLines.push({ key: `db_${ds.id}_${db.curve.id}`, text: (numSubplots === 1 && State.datasets.length > 1) ? `  ${txt}` : txt, color: db.curve.color });
+          });
+        }
+      });
+
+      if (defaultLines.length > 0) {
+        const customLineMap = State.settings.customBadgeLines?.[subplot.id] || {};
+        const finalLines = defaultLines.map(l => ({
+          key: l.key,
+          bold: l.bold,
+          color: l.color,
+          text: (customLineMap[l.key] !== undefined) ? customLineMap[l.key] : l.text
+        }));
+
+        const bPadX = 9, bPadY = 6, bLineH = 15;
+        if (!State.settings.badgePositions) State.settings.badgePositions = {};
+        if (!State.settings.badgePositions[subplot.id]) {
+          State.settings.badgePositions[subplot.id] = { x: 12, y: 12 };
+        }
+        const bPos = State.settings.badgePositions[subplot.id];
+
+        const badgeG = annotG.append('g').attr('class', 'subplot-metric-badge')
+          .attr('transform', `translate(${bPos.x}, ${bPos.y})`)
+          .attr('title', '拖曳移動小卡位置，雙擊文字可自訂內容');
+
+        const bgRect = badgeG.append('rect').attr('class', 'badge-bg')
+          .attr('fill', 'rgba(255, 255, 255, 0.94)')
+          .attr('stroke', '#b0bec5')
+          .attr('stroke-width', 0.9)
+          .attr('rx', 4).attr('ry', 4);
+
+        badgeG.on('pointerdown', function(ev) {
+          if (ev.button !== 0) return;
+          ev.preventDefault();
+          ev.stopPropagation();
+          const startPt = getSvgPt(ev);
+          const startX = bPos.x;
+          const startY = bPos.y;
+          document.body.style.userSelect = 'none';
+
+          function onMove(e) {
+            e.preventDefault();
+            const curPt = getSvgPt(e);
+            bPos.x = Math.round(startX + (curPt.x - startPt.x));
+            bPos.y = Math.round(startY + (curPt.y - startPt.y));
+            badgeG.attr('transform', `translate(${bPos.x}, ${bPos.y})`);
+          }
+
+          function onUp() {
+            document.body.style.userSelect = '';
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onUp);
+          }
+
+          window.addEventListener('pointermove', onMove);
+          window.addEventListener('pointerup', onUp);
+        });
+
+        const linesG = badgeG.append('g').attr('class', 'badge-lines-container');
+
+        finalLines.forEach((line, li) => {
+          linesG.append('text').attr('class', 'badge-line')
+            .attr('x', bPadX).attr('y', bPadY + li * bLineH + 11)
+            .style('font-family', State.settings.fontFamily)
+            .style('font-size', '10px')
+            .style('font-weight', line.bold ? '600' : '400')
+            .style('fill', line.color)
+            .text(line.text)
+            .attr('title', '雙擊修改此行文字')
+            .on('dblclick', function(ev) {
+              ev.stopPropagation();
+              const n = prompt('修改浮水印內容 (Edit Badge Text)：', line.text);
+              if (n !== null) {
+                if (!State.settings.customBadgeLines) State.settings.customBadgeLines = {};
+                if (!State.settings.customBadgeLines[subplot.id]) State.settings.customBadgeLines[subplot.id] = {};
+                State.settings.customBadgeLines[subplot.id][line.key] = n;
+                ChartRenderer.render();
+              }
+            });
+        });
+
+        let maxLineRight = 0;
+        linesG.selectAll('.badge-line').each(function() {
+          try {
+            const bb = this.getBBox();
+            const right = bPadX + bb.width;
+            if (right > maxLineRight) maxLineRight = right;
+          } catch(e) {}
+        });
+        if (maxLineRight === 0) {
+          finalLines.forEach(l => {
+            maxLineRight = Math.max(maxLineRight, bPadX + l.text.length * 6.6);
+          });
+        }
+
+        const autoW = Math.max(80, Math.round(maxLineRight + bPadX));
+        const autoH = Math.max(24, Math.round(bPadY * 2 + finalLines.length * bLineH + 4));
+
+        const customSize = State.settings.badgeSizes?.[subplot.id];
+        const boxW = (customSize && customSize.width > 40) ? customSize.width : autoW;
+        const boxH = (customSize && customSize.height > 18) ? customSize.height : autoH;
+
+        bgRect.attr('width', boxW).attr('height', boxH);
+
+        const handleG = badgeG.append('g').attr('class', 'badge-resize-handle')
+          .attr('transform', `translate(${boxW}, ${boxH})`)
+          .style('cursor', 'se-resize')
+          .attr('title', '拖曳調整小卡大小，雙擊重設為自動適應');
+
+        handleG.append('path')
+          .attr('d', 'M -8 -2 L -2 -8 M -5 -2 L -2 -5')
+          .attr('stroke', '#78909c')
+          .attr('stroke-width', 1.2)
+          .attr('stroke-linecap', 'round');
+
+        handleG.append('rect')
+          .attr('x', -12).attr('y', -12)
+          .attr('width', 14).attr('height', 14)
+          .attr('fill', 'transparent');
+
+        handleG.on('pointerdown', function(ev) {
+          if (ev.button !== 0) return;
+          ev.preventDefault();
+          ev.stopPropagation();
+          const startPt = getSvgPt(ev);
+          const startW = boxW;
+          const startH = boxH;
+          document.body.style.userSelect = 'none';
+
+          function onMove(e) {
+            e.preventDefault();
+            const curPt = getSvgPt(e);
+            const newW = Math.max(50, Math.round(startW + (curPt.x - startPt.x)));
+            const newH = Math.max(22, Math.round(startH + (curPt.y - startPt.y)));
+            if (!State.settings.badgeSizes) State.settings.badgeSizes = {};
+            State.settings.badgeSizes[subplot.id] = { width: newW, height: newH };
+            bgRect.attr('width', newW).attr('height', newH);
+            handleG.attr('transform', `translate(${newW}, ${newH})`);
+          }
+
+          function onUp() {
+            document.body.style.userSelect = '';
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onUp);
+          }
+
+          window.addEventListener('pointermove', onMove);
+          window.addEventListener('pointerup', onUp);
+        });
+
+        handleG.on('dblclick', function(ev) {
+          ev.stopPropagation();
+          if (State.settings.badgeSizes) delete State.settings.badgeSizes[subplot.id];
+          ChartRenderer.render();
+        });
+      }
+    }
+
+    // 5. 座標軸標題 (xTitle, yTitle: 滑鼠可拖曳)
     const energyLabelText = (State.settings.energyRef === 'fermi') ? 'E - Ef (eV)' : 'Energy (eV)';
     const dosLabelText = 'Density of States (states/eV)';
 
-    const svgNode = document.getElementById('chart-svg');
-    function getSvgPt(e) {
-      const pt = svgNode.createSVGPoint();
-      pt.x = e.clientX; pt.y = e.clientY;
-      const ctm = svgNode.getScreenCTM();
-      if (ctm) return pt.matrixTransform(ctm.inverse());
-      const [mx, my] = d3.pointer(e, svgNode);
-      return { x: mx, y: my };
-    }
-
     if (!hideBottomAxisText || index === numSubplots - 1) {
-      const xTitleG = g.append('g').attr('class', 'axis-title-group axis-title-x')
+      const xTitleG = annotG.append('g').attr('class', 'axis-title-group axis-title-x')
         .attr('transform', `translate(${width / 2 + State.settings.xTitleOffset.dx}, ${height + 38 + State.settings.xTitleOffset.dy})`);
 
       xTitleG.append('text').attr('class', 'axis-title')
@@ -1281,7 +2306,7 @@ const ChartRenderer = {
     }
 
     if (!hideLeftAxisText || index === 0) {
-      const yTitleG = g.append('g').attr('class', 'axis-title-group axis-title-y')
+      const yTitleG = annotG.append('g').attr('class', 'axis-title-group axis-title-y')
         .attr('transform', `translate(${-46 + State.settings.yTitleOffset.dx}, ${height / 2 + State.settings.yTitleOffset.dy}) rotate(-90)`);
 
       yTitleG.append('text').attr('class', 'axis-title')
@@ -1313,14 +2338,12 @@ const ChartRenderer = {
       });
     }
 
-    // 子圖標題 (Title)
-    g.append('text').attr('class', 'chart-title')
+    // 6. 子圖標題 (Chart Title)
+    annotG.append('text').attr('class', 'chart-title')
      .attr('x', width / 2).attr('y', -12)
      .style('font-family', State.settings.fontFamily)
      .style('font-size', `${State.settings.titleFontSize}px`)
      .text(subplot.title || `Subplot ${index + 1}`);
-
-    this.attachHoverCrosshair(g, width, height, xScale, yScale, curvesData, isHoriz);
   },
 
   // 渲染邊距微調控制項 (採用 energy-profile-plotter 的 SVG 坐標變換反算與 pointer 監聽器)
@@ -1509,14 +2532,25 @@ const ChartRenderer = {
     });
   },
 
-  // 繪製圖例 (可滑鼠直接拖曳)
+  // 繪製圖例 (可滑鼠直接拖曳、拖曳右下角控制點縮放、雙擊重新命名、邊框樣式設定)
   renderLegend(svg, totalWidth, totalHeight) {
-    const itemHeight = Math.max(18, State.settings.legendFontSize + 8);
-    const padding = 8;
-    const boxWidth = 150;
-    const boxHeight = State.curves.length * itemHeight + padding * 2;
+    if (!State.settings.showLegend || State.curves.length === 0) return;
 
-    const defaultX = totalWidth - State.settings.plotMargins.right - boxWidth - 10;
+    const numLSize = parseInt(State.settings.legendFontSize, 10) || 11;
+    const lSize = `${numLSize}px`;
+    const itemH = Math.max(18, numLSize + 7);
+    const padX = 10, padY = 6;
+    const swatchLen = 16;
+    const textStartX = padX + swatchLen + 8;
+
+    // 預估自動尺寸供初始預設位置計算
+    let estW = 110;
+    State.curves.forEach(c => {
+      const txt = State.settings.legendTitles?.[c.id] || c.name;
+      estW = Math.max(estW, textStartX + txt.length * (numLSize * 0.7) + padX);
+    });
+
+    const defaultX = Math.max(10, totalWidth - State.settings.plotMargins.right - estW - 15);
     const defaultY = State.settings.plotMargins.top + 10;
 
     if (!State.settings.legendPos) {
@@ -1528,7 +2562,19 @@ const ChartRenderer = {
     const legendG = svg.append('g').attr('class', 'chart-legend')
       .attr('transform', `translate(${lx}, ${ly})`);
 
-    // 滑鼠直接拖曳圖例
+    // 背景底框 (設定填充透明度與邊框)
+    const legBorder = State.settings.legendBorder !== false;
+    const legBorderColor = State.settings.legendBorderColor || '#cfd8dc';
+    const legBorderWidth = State.settings.legendBorderWidth || 1;
+    const legBgOpacity = State.settings.legendBgOpacity ?? 0.95;
+
+    const bgRect = legendG.append('rect').attr('class', 'legend-box')
+      .attr('fill', `rgba(255, 255, 255, ${legBgOpacity})`)
+      .attr('stroke', legBorder ? legBorderColor : 'none')
+      .attr('stroke-width', legBorder ? legBorderWidth : 0)
+      .attr('rx', 4).attr('ry', 4);
+
+    // 滑鼠直接拖曳整個圖例群組
     legendG.on('pointerdown', function(ev) {
       if (ev.button !== 0) return;
       ev.preventDefault();
@@ -1568,23 +2614,372 @@ const ChartRenderer = {
       window.addEventListener('pointerup', onUp);
     });
 
-    legendG.append('rect').attr('class', 'legend-box')
-      .attr('width', boxWidth).attr('height', boxHeight);
+    const itemsG = legendG.append('g').attr('class', 'legend-items-container');
 
+    // 依序繪製每個曲線項目
     State.curves.forEach((curve, i) => {
-      const item = legendG.append('g')
-        .attr('transform', `translate(${padding}, ${padding + i * itemHeight + itemHeight / 2})`);
+      const itemY = padY + i * itemH + itemH / 2;
+      const item = itemsG.append('g').attr('class', 'legend-item')
+        .attr('transform', `translate(0, ${itemY})`)
+        .attr('title', '雙擊修改此圖例標籤 / 拖曳移動圖例')
+        .on('dblclick', function(ev) {
+          ev.stopPropagation();
+          const curName = State.settings.legendTitles?.[curve.id] || curve.name;
+          const n = prompt('修改圖例名稱 (Edit Legend Label)：', curName);
+          if (n !== null && n.trim()) {
+            curve.name = n.trim();
+            if (!State.settings.legendTitles) State.settings.legendTitles = {};
+            State.settings.legendTitles[curve.id] = n.trim();
+            UI.renderCurvesList();
+            ChartRenderer.render();
+          }
+        });
 
+      // 線段圖樣 (對應曲線顏色與虛線樣式)
       item.append('line')
-        .attr('x1', 0).attr('x2', 18).attr('y1', 0).attr('y2', 0)
+        .attr('x1', padX).attr('y1', 0)
+        .attr('x2', padX + swatchLen).attr('y2', 0)
         .attr('stroke', curve.color)
-        .attr('stroke-width', 2.5);
+        .attr('stroke-width', 2.5)
+        .attr('stroke-linecap', 'round')
+        .attr('stroke-dasharray', curve.lineStyle === 'dashed' ? '4,3' : (curve.lineStyle === 'dotted' ? '2,2' : null));
 
+      // 若有填色，在線條中央加個精緻節點或小標記
+      if (curve.fill) {
+        item.append('circle')
+          .attr('cx', padX + swatchLen / 2).attr('cy', 0)
+          .attr('r', 2.5)
+          .attr('fill', curve.color)
+          .attr('stroke', '#ffffff')
+          .attr('stroke-width', 0.8);
+      }
+
+      // 文字標籤 (不截斷，支援完整文字顯示)
+      const labelTxt = State.settings.legendTitles?.[curve.id] || curve.name;
       item.append('text').attr('class', 'legend-text')
-        .attr('x', 24).attr('y', 4)
+        .attr('x', textStartX).attr('y', 0)
+        .attr('font-size', lSize)
+        .style('font-size', lSize)
         .style('font-family', State.settings.fontFamily)
-        .style('font-size', `${State.settings.legendFontSize}px`)
-        .text(curve.name.length > 15 ? curve.name.substring(0, 14) + '…' : curve.name);
+        .attr('fill', '#263238')
+        .attr('dominant-baseline', 'middle')
+        .text(labelTxt);
+    });
+
+    // 根據文字實際渲染後的精確長度計算緊湊自動尺寸 (Tight automatic size)
+    let maxTextRight = 0;
+    itemsG.selectAll('.legend-item text').each(function() {
+      try {
+        const bb = this.getBBox();
+        const right = textStartX + bb.width;
+        if (right > maxTextRight) maxTextRight = right;
+      } catch(e) {}
+    });
+
+    if (maxTextRight === 0) {
+      State.curves.forEach(c => {
+        const txt = State.settings.legendTitles?.[c.id] || c.name;
+        maxTextRight = Math.max(maxTextRight, textStartX + txt.length * (numLSize * 0.7));
+      });
+    }
+
+    const autoW = Math.max(60, Math.round(maxTextRight + padX));
+    const autoH = Math.max(22, Math.round(padY * 2 + State.curves.length * itemH));
+
+    const boxW = (State.settings.legendCustomWidth && State.settings.legendCustomWidth > 30) ? State.settings.legendCustomWidth : autoW;
+    const boxH = (State.settings.legendCustomHeight && State.settings.legendCustomHeight > 16) ? State.settings.legendCustomHeight : autoH;
+
+    bgRect.attr('width', boxW).attr('height', boxH);
+
+    // 右下角縮放控制錨點 (Resize Handle - 仿照 energy-profile-plotter)
+    const handleG = legendG.append('g').attr('class', 'legend-resize-handle')
+      .attr('transform', `translate(${boxW}, ${boxH})`)
+      .style('cursor', 'se-resize')
+      .attr('title', '拖曳調整圖例大小，雙擊重設為自動適應');
+
+    // 對角抓取斜線紋路 (Grip lines)
+    handleG.append('path')
+      .attr('d', 'M -9 -2 L -2 -9 M -6 -2 L -2 -6 M -3 -2 L -2 -3')
+      .attr('stroke', '#8c959f')
+      .attr('stroke-width', 1.2)
+      .attr('stroke-linecap', 'round');
+
+    // 感應點擊區域 (Hit area)
+    handleG.append('rect')
+      .attr('x', -12).attr('y', -12)
+      .attr('width', 14).attr('height', 14)
+      .attr('fill', 'transparent');
+
+    // 縮放拖曳邏輯 (採用 pointerdown + window move 精準追蹤)
+    handleG.on('pointerdown', function(ev) {
+      if (ev.button !== 0) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+
+      const svgNode = document.getElementById('chart-svg');
+      function getSvgPt(e) {
+        const pt = svgNode.createSVGPoint();
+        pt.x = e.clientX; pt.y = e.clientY;
+        const ctm = svgNode.getScreenCTM();
+        if (ctm) return pt.matrixTransform(ctm.inverse());
+        const [mx, my] = d3.pointer(e, svgNode);
+        return { x: mx, y: my };
+      }
+
+      const startPt = getSvgPt(ev);
+      const startW = (State.settings.legendCustomWidth && State.settings.legendCustomWidth > 30) ? State.settings.legendCustomWidth : autoW;
+      const startH = (State.settings.legendCustomHeight && State.settings.legendCustomHeight > 16) ? State.settings.legendCustomHeight : autoH;
+
+      document.body.style.userSelect = 'none';
+
+      function onPointerMove(e) {
+        e.preventDefault();
+        const curPt = getSvgPt(e);
+        const newW = Math.max(40, Math.round(startW + (curPt.x - startPt.x)));
+        const newH = Math.max(20, Math.round(startH + (curPt.y - startPt.y)));
+        State.settings.legendCustomWidth = newW;
+        State.settings.legendCustomHeight = newH;
+        bgRect.attr('width', newW).attr('height', newH);
+        handleG.attr('transform', `translate(${newW}, ${newH})`);
+      }
+
+      function onPointerUp() {
+        document.body.style.userSelect = '';
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+      }
+
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerUp);
+    });
+
+    // 雙擊控制點重設回自動適應大小
+    handleG.on('dblclick', function(ev) {
+      ev.stopPropagation();
+      delete State.settings.legendCustomWidth;
+      delete State.settings.legendCustomHeight;
+      ChartRenderer.render();
+    });
+  },
+
+  // 繪製多數據集改質差值對比卡 (方案 C: 可滑鼠直接拖曳)
+  renderDiffBadge(svg, totalWidth, totalHeight) {
+    if (!State.settings.showMetricDiff || State.datasets.length < 2) return;
+    if (!State.settings.calcBandGap && !State.settings.calcDband) return;
+
+    const ds1 = State.datasets[0];
+    const ds2 = State.datasets[1];
+    if (!ds1.metrics || !ds2.metrics) return;
+
+    let dEg = null, dDbc = null;
+    if (State.settings.calcBandGap && ds1.metrics.bandgap && ds2.metrics.bandgap) {
+      if (!ds1.metrics.bandgap.isMetal && !ds2.metrics.bandgap.isMetal) {
+        dEg = ds2.metrics.bandgap.gap - ds1.metrics.bandgap.gap;
+      } else if (ds1.metrics.bandgap.isMetal && ds2.metrics.bandgap.isMetal) {
+        dEg = 0.0;
+      } else {
+        dEg = ds2.metrics.bandgap.gap - ds1.metrics.bandgap.gap;
+      }
+    }
+    if (State.settings.calcDband && ds1.metrics.dbands?.length > 0 && ds2.metrics.dbands?.length > 0) {
+      dDbc = ds2.metrics.dbands[0].value - ds1.metrics.dbands[0].value;
+    }
+
+    if (dEg === null && dDbc === null && !State.settings.customDiffText) return;
+
+    const diffTitle = (State.settings.customDiffTitle != null && State.settings.customDiffTitle.trim() !== '')
+      ? State.settings.customDiffTitle
+      : `📊 改質位移對比 (${ds2.name} - ${ds1.name})`;
+
+    const diffItems = [];
+    if (dDbc !== null) {
+      diffItems.push(`Δε_d = ${dDbc >= 0 ? '+' : ''}${dDbc.toFixed(2)} eV`);
+    }
+    if (dEg !== null) {
+      diffItems.push(`ΔEg = ${dEg >= 0 ? '+' : ''}${dEg.toFixed(2)} eV`);
+    }
+
+    const defaultContentText = diffItems.length > 0 ? diffItems.join('   |   ') : '（已啟用對比）';
+    const diffContentText = (State.settings.customDiffText != null && State.settings.customDiffText.trim() !== '')
+      ? State.settings.customDiffText
+      : defaultContentText;
+
+    const margins = State.settings.plotMargins;
+    const defaultX = Math.max(10, totalWidth - margins.right - 230);
+    const defaultY = margins.top + (State.settings.showLegend ? 75 : 10);
+
+    if (!State.settings.diffBadgePos) {
+      State.settings.diffBadgePos = { x: defaultX, y: defaultY };
+    }
+    const bx = State.settings.diffBadgePos.x;
+    const by = State.settings.diffBadgePos.y;
+
+    const diffG = svg.append('g').attr('class', 'metric-diff-badge')
+      .attr('transform', `translate(${bx}, ${by})`)
+      .attr('title', '拖曳移動對比卡片位置，雙擊文字可自訂內容');
+
+    const bgRect = diffG.append('rect').attr('class', 'diff-bg')
+      .attr('fill', 'rgba(240, 247, 255, 0.95)')
+      .attr('stroke', '#90caf9')
+      .attr('stroke-width', 1)
+      .attr('rx', 5).attr('ry', 5);
+
+    const titleText = diffG.append('text')
+      .attr('class', 'diff-line-title')
+      .attr('x', 8).attr('y', 15)
+      .style('font-family', State.settings.fontFamily)
+      .style('font-size', '10.5px')
+      .style('font-weight', '600')
+      .style('fill', '#1565c0')
+      .text(diffTitle)
+      .attr('title', '雙擊自訂標題')
+      .on('dblclick', function(ev) {
+        ev.stopPropagation();
+        const n = prompt('修改對比卡標題 (Edit Title)：', diffTitle);
+        if (n !== null) {
+          State.settings.customDiffTitle = n;
+          ChartRenderer.render();
+        }
+      });
+
+    const valText = diffG.append('text')
+      .attr('class', 'diff-line-val')
+      .attr('x', 8).attr('y', 33)
+      .style('font-family', State.settings.fontFamily)
+      .style('font-size', '11.5px')
+      .style('font-weight', '700')
+      .style('fill', '#2e7d32')
+      .text(diffContentText)
+      .attr('title', '雙擊自訂數值文字')
+      .on('dblclick', function(ev) {
+        ev.stopPropagation();
+        const n = prompt('修改對比數值內容 (Edit Value Text)：', diffContentText);
+        if (n !== null) {
+          State.settings.customDiffText = n;
+          ChartRenderer.render();
+        }
+      });
+
+    // 動態測量寬度
+    let maxW = 200;
+    try {
+      const tb = titleText.node().getBBox();
+      const vb = valText.node().getBBox();
+      maxW = Math.max(maxW, tb.width + 20, vb.width + 20);
+    } catch(e) {
+      maxW = Math.max(200, diffTitle.length * 7 + 20, diffContentText.length * 7 + 20);
+    }
+
+    const autoW = Math.round(maxW);
+    const autoH = 46;
+
+    const customSize = State.settings.diffBadgeSize;
+    const cardW = (customSize && customSize.width > 60) ? customSize.width : autoW;
+    const cardH = (customSize && customSize.height > 25) ? customSize.height : autoH;
+
+    bgRect.attr('width', cardW).attr('height', cardH);
+
+    // 滑鼠拖曳差值卡片
+    diffG.on('pointerdown', function(ev) {
+      if (ev.button !== 0) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+
+      const svgNode = document.getElementById('chart-svg');
+      function getSvgPt(e) {
+        const pt = svgNode.createSVGPoint();
+        pt.x = e.clientX; pt.y = e.clientY;
+        const ctm = svgNode.getScreenCTM();
+        if (ctm) return pt.matrixTransform(ctm.inverse());
+        const [mx, my] = d3.pointer(e, svgNode);
+        return { x: mx, y: my };
+      }
+
+      const startPt = getSvgPt(ev);
+      const startX = State.settings.diffBadgePos.x;
+      const startY = State.settings.diffBadgePos.y;
+
+      document.body.style.userSelect = 'none';
+
+      function onMove(e) {
+        e.preventDefault();
+        const curPt = getSvgPt(e);
+        State.settings.diffBadgePos.x = Math.round(startX + (curPt.x - startPt.x));
+        State.settings.diffBadgePos.y = Math.round(startY + (curPt.y - startPt.y));
+        diffG.attr('transform', `translate(${State.settings.diffBadgePos.x}, ${State.settings.diffBadgePos.y})`);
+      }
+
+      function onUp() {
+        document.body.style.userSelect = '';
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+      }
+
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    });
+
+    // 右下角縮放手柄
+    const handleG = diffG.append('g').attr('class', 'diff-resize-handle')
+      .attr('transform', `translate(${cardW}, ${cardH})`)
+      .style('cursor', 'se-resize')
+      .attr('title', '拖曳調整大小，雙擊重設為自動適應');
+
+    handleG.append('path')
+      .attr('d', 'M -8 -2 L -2 -8 M -5 -2 L -2 -5')
+      .attr('stroke', '#64b5f6')
+      .attr('stroke-width', 1.1)
+      .attr('stroke-linecap', 'round');
+
+    handleG.append('rect')
+      .attr('x', -10).attr('y', -10)
+      .attr('width', 12).attr('height', 12)
+      .attr('fill', 'transparent');
+
+    handleG.on('pointerdown', function(ev) {
+      if (ev.button !== 0) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+
+      const svgNode = document.getElementById('chart-svg');
+      function getSvgPt(e) {
+        const pt = svgNode.createSVGPoint();
+        pt.x = e.clientX; pt.y = e.clientY;
+        const ctm = svgNode.getScreenCTM();
+        if (ctm) return pt.matrixTransform(ctm.inverse());
+        const [mx, my] = d3.pointer(e, svgNode);
+        return { x: mx, y: my };
+      }
+
+      const startPt = getSvgPt(ev);
+      const startW = cardW;
+      const startH = cardH;
+      document.body.style.userSelect = 'none';
+
+      function onMove(e) {
+        e.preventDefault();
+        const curPt = getSvgPt(e);
+        const newW = Math.max(80, Math.round(startW + (curPt.x - startPt.x)));
+        const newH = Math.max(30, Math.round(startH + (curPt.y - startPt.y)));
+        State.settings.diffBadgeSize = { width: newW, height: newH };
+        bgRect.attr('width', newW).attr('height', newH);
+        handleG.attr('transform', `translate(${newW}, ${newH})`);
+      }
+
+      function onUp() {
+        document.body.style.userSelect = '';
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+      }
+
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    });
+
+    handleG.on('dblclick', function(ev) {
+      ev.stopPropagation();
+      delete State.settings.diffBadgeSize;
+      ChartRenderer.render();
     });
   },
 
@@ -1592,25 +2987,99 @@ const ChartRenderer = {
     const statEl = document.getElementById('stat-info');
     let statText = [];
 
-    if (State.settings.calcBandGap) {
-      const tdosEntry = extractedData.find(d => d.curve.selectionType === 'total');
-      if (tdosEntry) {
-        const bg = SciEngine.detectBandGap(tdosEntry.data.energies, tdosEntry.data.up, tdosEntry.data.down, tdosEntry.data.ispin);
-        if (bg.isMetal) {
-          statText.push('【體系特性: 金屬 (無能隙)】');
-        } else {
-          statText.push(`【估算能隙 Eg: ${bg.gap.toFixed(2)} eV (VBM: ${bg.vbm.toFixed(2)}, CBM: ${bg.cbm.toFixed(2)})】`);
+    State.datasets.forEach(ds => {
+      ds.metrics = ds.metrics || {};
+      ds.metrics.bandgap = null;
+      ds.metrics.dbands = [];
+
+      const items = [];
+
+      // 1. 能隙計算 (支援每個數據集獨立運算)
+      if (State.settings.calcBandGap) {
+        let tdosData = null;
+        const tdosEntry = extractedData.find(d => d.dataset.id === ds.id && d.curve.selectionType === 'total');
+        if (tdosEntry) {
+          tdosData = tdosEntry.data;
+        } else if (ds.tdos) {
+          const sm = State.settings.smearing;
+          const eRef = State.settings.energyRef;
+          const energies = ds.energyGrid.map(e => eRef === 'fermi' ? e - ds.ef : e);
+          const up = SciEngine.gaussianSmear(energies, ds.tdos.up, sm);
+          const down = (ds.ispin === 2 && ds.tdos.down) ? SciEngine.gaussianSmear(energies, ds.tdos.down, sm) : null;
+          tdosData = { energies, up, down, ispin: ds.ispin };
+        }
+
+        if (tdosData) {
+          const bg = SciEngine.detectBandGap(tdosData.energies, tdosData.up, tdosData.down, tdosData.ispin);
+          ds.metrics.bandgap = bg;
+          if (bg.isMetal) {
+            items.push('金屬性 (Eg = 0)');
+          } else {
+            items.push(`Eg = ${bg.gap.toFixed(2)} eV (VBM: ${bg.vbm.toFixed(2)}, CBM: ${bg.cbm.toFixed(2)})`);
+          }
         }
       }
-    }
 
-    if (State.settings.calcDband && State.settings.dbandCurveId) {
-      const entry = extractedData.find(d => d.curve.id === State.settings.dbandCurveId);
-      if (entry) {
-        const dbc = SciEngine.calcDbandCenter(entry.data.energies, entry.data.up, State.settings.dbandEmax);
-        const resText = dbc !== null ? `ε_d = ${dbc.toFixed(3)} eV` : 'ε_d = 無法計算';
-        document.getElementById('dband-result-text').textContent = resText;
-        statText.push(`【d-band center: ${resText}】`);
+      // 2. d 帶中心計算 (支援自動識別各數據集之 d 軌域與自旋拆分)
+      if (State.settings.calcDband) {
+        let targetEntries = [];
+        if (State.settings.dbandCurveId === 'auto' || !State.settings.dbandCurveId) {
+          targetEntries = extractedData.filter(d => d.dataset.id === ds.id && (d.curve.orbital === 'd' || d.curve.orbital === 't2g' || d.curve.orbital === 'eg' || ['dxy','dyz','dz2','dxz','dx2'].includes(d.curve.orbital)));
+        } else {
+          targetEntries = extractedData.filter(d => d.dataset.id === ds.id && d.curve.id === State.settings.dbandCurveId);
+        }
+
+        targetEntries.forEach(te => {
+          const dbc = SciEngine.calcDbandCenter(te.data.energies, te.data.up, te.data.down, te.data.ispin, State.settings.dbandEmax, State.settings.dbandSpinMode);
+          if (dbc !== null) {
+            const full = SciEngine.calcDbandCenterFull(te.data.energies, te.data.up, te.data.down, te.data.ispin, State.settings.dbandEmax);
+            ds.metrics.dbands.push({ curve: te.curve, value: dbc, full });
+            if (State.settings.dbandSpinMode === 'split' && te.data.ispin === 2) {
+              items.push(`ε_d(${te.curve.name}) = ${dbc.toFixed(2)} eV (↑: ${full.up?.toFixed(2) ?? '-'}, ↓: ${full.down?.toFixed(2) ?? '-'})`);
+            } else {
+              items.push(`ε_d(${te.curve.name}) = ${dbc.toFixed(2)} eV`);
+            }
+          }
+        });
+
+        // 更新側邊欄文字提示
+        const dbandResEl = document.getElementById('dband-result-text');
+        if (dbandResEl) {
+          if (ds.metrics.dbands.length > 0) {
+            const first = ds.metrics.dbands[0];
+            dbandResEl.textContent = `ε_d = ${first.value.toFixed(3)} eV (${first.curve.name})`;
+          } else {
+            dbandResEl.textContent = 'ε_d = 未檢測到 d 軌域數據';
+          }
+        }
+      }
+
+      if (items.length > 0) {
+        statText.push(`【${ds.name}: ${items.join(' | ')}】`);
+      }
+    });
+
+    // 3. 多組數據差值計算 (Differential comparison)
+    if (State.datasets.length >= 2) {
+      const ds1 = State.datasets[0];
+      const ds2 = State.datasets[1];
+      if (ds1.metrics && ds2.metrics) {
+        const diffs = [];
+        if (State.settings.calcBandGap && ds1.metrics.bandgap && ds2.metrics.bandgap) {
+          if (!ds1.metrics.bandgap.isMetal && !ds2.metrics.bandgap.isMetal) {
+            const dEg = ds2.metrics.bandgap.gap - ds1.metrics.bandgap.gap;
+            diffs.push(`ΔEg = ${dEg >= 0 ? '+' : ''}${dEg.toFixed(2)} eV`);
+          }
+        }
+        if (State.settings.calcDband && ds1.metrics.dbands?.length > 0 && ds2.metrics.dbands?.length > 0) {
+          const d1 = ds1.metrics.dbands[0].value;
+          const d2 = ds2.metrics.dbands[0].value;
+          const dDbc = d2 - d1;
+          diffs.push(`Δε_d = ${dDbc >= 0 ? '+' : ''}${dDbc.toFixed(2)} eV`);
+        }
+        if (diffs.length > 0) {
+          statText.push(`【對比 (${ds2.name} - ${ds1.name}): ${diffs.join(' | ')}】`);
+        }
       }
     }
 
@@ -1627,13 +3096,19 @@ const ExportEngine = {
     clone.setAttribute('height', height);
     clone.setAttribute('viewBox', `0 0 ${width} ${height}`);
 
-    // 移除邊界拖曳控制項避免出現在匯出圖中
-    const handles = clone.querySelector('.margin-handles-group');
-    if (handles) handles.remove();
+    // 徹底移除所有編輯互動手柄、透明感應區與懸浮感應層，保證匯出圖稿 100% 乾淨專業
+    clone.querySelectorAll(
+      '.margin-handles-group, .legend-resize-handle, .badge-resize-handle, .diff-resize-handle, .crosshair-layer, .text-hit-area'
+    ).forEach(el => el.remove());
 
     // 內嵌完整樣式表，確保在獨立 SVG 與 Canvas 圖像中渲染正確
     const ff = State.settings.fontFamily;
     const frameW = State.settings.frameLineWidth;
+    const legBorder = State.settings.legendBorder !== false;
+    const legBorderColor = State.settings.legendBorderColor || '#cfd8dc';
+    const legBorderWidth = State.settings.legendBorderWidth || 1;
+    const legBgOpacity = State.settings.legendBgOpacity ?? 0.95;
+
     const styleEl = document.createElementNS('http://www.w3.org/2000/svg', 'style');
     styleEl.textContent = `
       text { font-family: ${ff}; }
@@ -1642,14 +3117,26 @@ const ExportEngine = {
       .grid line { stroke: #e0e0e0; stroke-dasharray: 2,3; stroke-width: 0.8px; fill: none; }
       .grid path { stroke: none; fill: none; }
       .fermi-line { stroke: #d32f2f; stroke-width: 1.2px; stroke-dasharray: 4,3; fill: none !important; }
-      .fermi-text { fill: #d32f2f; font-size: 11px; font-weight: 600; font-family: ${ff}; }
+      .fermi-text { fill: #d32f2f; font-size: 11.5px; font-weight: 700; font-family: ${ff}; paint-order: stroke fill; stroke: #ffffff; stroke-width: 3px; stroke-linejoin: round; }
       .zero-line { stroke: #9e9e9e; stroke-width: 0.8px; stroke-dasharray: 2,2; fill: none !important; }
       .chart-title { font-size: ${State.settings.titleFontSize}px; font-weight: 600; fill: #1a237e; text-anchor: middle; font-family: ${ff}; }
       .axis-title { font-size: ${State.settings.axisTitleFontSize}px; font-weight: 600; fill: #212121; text-anchor: middle; font-family: ${ff}; }
-      .legend-box { fill: rgba(255,255,255,0.95); stroke: #cfd8dc; stroke-width: 1px; rx: 4px; ry: 4px; }
+      .legend-box { fill: rgba(255,255,255,${legBgOpacity}); stroke: ${legBorder ? legBorderColor : 'none'}; stroke-width: ${legBorder ? legBorderWidth : 0}px; rx: 4px; ry: 4px; }
       .legend-text { font-size: ${State.settings.legendFontSize}px; fill: #333333; font-family: ${ff}; }
       .plot-box-frame { stroke: #000000; stroke-width: ${frameW}px; fill: none !important; }
-      .margin-handles-group { display: none !important; }
+      .metric-gap-shade { fill: rgba(33, 150, 243, 0.12); stroke: rgba(33, 150, 243, 0.4); stroke-width: 1px; stroke-dasharray: 3,3; }
+      .metric-gap-text { font-family: ${ff}; font-size: 11px; font-weight: 700; fill: #1565c0; paint-order: stroke fill; stroke: #ffffff; stroke-width: 3px; stroke-linejoin: round; }
+      .metric-dband-line { stroke-width: 1.4px; stroke-dasharray: 4,3; }
+      .metric-dband-text { font-family: ${ff}; font-size: 11px; font-weight: 700; paint-order: stroke fill; stroke: #ffffff; stroke-width: 3px; stroke-linejoin: round; }
+      .subplot-metric-badge rect.badge-bg { fill: rgba(255, 255, 255, 0.94); stroke: #cfd8dc; stroke-width: 0.8px; rx: 4px; ry: 4px; }
+      .subplot-metric-badge text { font-family: ${ff}; font-size: 10px; }
+      .metric-diff-badge rect.diff-bg { fill: rgba(240, 247, 255, 0.94); stroke: #90caf9; stroke-width: 1px; rx: 5px; ry: 5px; }
+      .metric-diff-badge text { font-family: ${ff}; }
+      .badge-resize-handle, .diff-resize-handle, .legend-resize-handle, .margin-handles-group, .text-hit-area, .crosshair-layer {
+        display: none !important;
+        opacity: 0 !important;
+        visibility: hidden !important;
+      }
     `;
     clone.insertBefore(styleEl, clone.firstChild);
     return clone;
@@ -1763,8 +3250,11 @@ const ExportEngine = {
 
 // ====== UI 交互與控制器 (UI Controller) ======
 const UI = {
+  _toastTimer: null,
+
   init() {
     this.bindEvents();
+    this.setupDragAndDrop();
     this.renderCurvesList();
     this.renderDatasetsList();
     ChartRenderer.render();
@@ -1781,10 +3271,34 @@ const UI = {
       });
     });
 
-    document.getElementById('btn-load-folder').addEventListener('click', () => this.handleFolderPick());
-    document.getElementById('btn-add-another-folder').addEventListener('click', () => this.handleFolderPick());
-    document.getElementById('btn-empty-load').addEventListener('click', () => this.handleFolderPick());
-    document.getElementById('hidden-folder-input').addEventListener('change', (e) => this.handleFallbackFolderInput(e));
+    // 載入按鈕綁定 (同步直接觸發原生對話框，100% 杜絕非同步被瀏覽器攔截問題)
+    document.getElementById('btn-load-folder').addEventListener('click', () => this.pickFolder());
+    document.getElementById('btn-load-files').addEventListener('click', () => this.pickFiles());
+    document.getElementById('btn-add-another-folder').addEventListener('click', () => this.pickFolder());
+    document.getElementById('btn-add-another-files').addEventListener('click', () => this.pickFiles());
+
+    const btnEmptyFolder = document.getElementById('btn-empty-load-folder');
+    if (btnEmptyFolder) btnEmptyFolder.addEventListener('click', () => this.pickFolder());
+    const btnEmptyFiles = document.getElementById('btn-empty-load-files');
+    if (btnEmptyFiles) btnEmptyFiles.addEventListener('click', () => this.pickFiles());
+    const btnEmptyDemo = document.getElementById('btn-empty-load-demo');
+    if (btnEmptyDemo) btnEmptyDemo.addEventListener('click', () => this.loadDemoData());
+
+    const inputFolder = document.getElementById('input-folder');
+    if (inputFolder) {
+      inputFolder.addEventListener('change', (e) => {
+        this.processFileArray(Array.from(e.target.files));
+        e.target.value = '';
+      });
+    }
+
+    const inputFiles = document.getElementById('input-files');
+    if (inputFiles) {
+      inputFiles.addEventListener('change', (e) => {
+        this.processFileArray(Array.from(e.target.files));
+        e.target.value = '';
+      });
+    }
 
     document.getElementById('btn-load-demo').addEventListener('click', () => this.loadDemoData());
 
@@ -1899,14 +3413,45 @@ const UI = {
       State.settings.showLegend = e.target.checked;
       ChartRenderer.render();
     });
+    document.getElementById('opt-legend-border').addEventListener('change', (e) => {
+      State.settings.legendBorder = e.target.checked;
+      ChartRenderer.render();
+    });
+    document.getElementById('opt-legend-border-color').addEventListener('input', (e) => {
+      State.settings.legendBorderColor = e.target.value;
+      ChartRenderer.render();
+    });
+    document.getElementById('opt-legend-border-width').addEventListener('input', (e) => {
+      State.settings.legendBorderWidth = parseFloat(e.target.value) || 1.0;
+      ChartRenderer.render();
+    });
+    document.getElementById('opt-legend-bg-opacity').addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value);
+      State.settings.legendBgOpacity = val;
+      document.getElementById('label-legend-bg-opacity').textContent = val.toFixed(2);
+      ChartRenderer.render();
+    });
 
     // 重設邊距按鈕
     document.getElementById('btn-reset-margins').addEventListener('click', () => {
       State.settings.plotMargins = { top: 45, right: 35, bottom: 55, left: 70 };
       State.settings.legendPos = null;
+      State.settings.diffBadgePos = null;
+      delete State.settings.legendCustomWidth;
+      delete State.settings.legendCustomHeight;
+      delete State.settings.diffBadgeSize;
+      delete State.settings.customDiffTitle;
+      delete State.settings.customDiffText;
+      State.settings.fermiTextOffset = {};
+      State.settings.gapTextOffset = {};
+      State.settings.dbandTextOffset = {};
+      State.settings.badgePositions = {};
+      State.settings.badgeSizes = {};
+      State.settings.customBadgeLines = {};
       State.settings.xTitleOffset = { dx: 0, dy: 0 };
       State.settings.yTitleOffset = { dx: 0, dy: 0 };
       ChartRenderer.render();
+      this.showToast('已重設所有邊界、圖例與標籤位置');
     });
 
     const sliderSmear = document.getElementById('slider-smearing');
@@ -1935,84 +3480,205 @@ const UI = {
       State.settings.dbandCurveId = e.target.value;
       ChartRenderer.render();
     });
+    document.getElementById('select-dband-spin-mode').addEventListener('change', (e) => {
+      State.settings.dbandSpinMode = e.target.value;
+      ChartRenderer.render();
+    });
     document.getElementById('input-dband-emax').addEventListener('input', (e) => {
       State.settings.dbandEmax = parseFloat(e.target.value) || 0.0;
+      ChartRenderer.render();
+    });
+    document.getElementById('opt-show-metric-badge').addEventListener('change', (e) => {
+      State.settings.showMetricBadge = e.target.checked;
+      ChartRenderer.render();
+    });
+    document.getElementById('opt-show-metric-canvas').addEventListener('change', (e) => {
+      State.settings.showMetricCanvas = e.target.checked;
+      ChartRenderer.render();
+    });
+    document.getElementById('opt-show-metric-diff').addEventListener('change', (e) => {
+      State.settings.showMetricDiff = e.target.checked;
       ChartRenderer.render();
     });
 
     window.addEventListener('resize', () => ChartRenderer.render());
   },
 
-  async handleFolderPick() {
-    if (window.showDirectoryPicker) {
-      try {
-        const dirHandle = await window.showDirectoryPicker();
-        let doscarFile = null;
-        let poscarFile = null;
-
-        for await (const entry of dirHandle.values()) {
-          if (entry.kind === 'file') {
-            const lower = entry.name.toLowerCase();
-            if (lower === 'doscar') doscarFile = await entry.getFile();
-            else if (lower === 'poscar' || (!poscarFile && lower === 'contcar')) {
-              poscarFile = await entry.getFile();
-            }
-          }
-        }
-
-        if (!doscarFile) {
-          alert(`在目錄「${dirHandle.name}」中未找到 DOSCAR 檔案！請確認選取的計算目錄。`);
-          return;
-        }
-
-        const dosText = await doscarFile.text();
-        const posText = poscarFile ? await poscarFile.text() : null;
-        this.processCalculationFolder(dirHandle.name, dosText, posText);
-      } catch (err) {
-        if (err.name !== 'AbortError') {
-          console.error("DirectoryPicker error:", err);
-          document.getElementById('hidden-folder-input').click();
-        }
-      }
-    } else {
-      document.getElementById('hidden-folder-input').click();
+  pickFolder() {
+    const input = document.getElementById('input-folder');
+    if (input) {
+      input.value = '';
+      input.click();
     }
   },
 
-  async handleFallbackFolderInput(event) {
-    const files = Array.from(event.target.files);
-    if (files.length === 0) return;
+  pickFiles() {
+    const input = document.getElementById('input-files');
+    if (input) {
+      input.value = '';
+      input.click();
+    }
+  },
 
-    let folderName = 'VASP_Calculation';
-    let doscarFile = null;
-    let poscarFile = null;
+  setupDragAndDrop() {
+    const overlay = document.getElementById('drag-drop-overlay');
 
-    files.forEach(f => {
-      const pathParts = (f.webkitRelativePath || f.name).split('/');
-      if (pathParts.length > 1) folderName = pathParts[0];
-      const lower = f.name.toLowerCase();
-      if (lower === 'doscar') doscarFile = f;
-      else if (lower === 'poscar' || (!poscarFile && lower === 'contcar')) {
-        poscarFile = f;
+    window.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      if (overlay) overlay.style.display = 'flex';
+    });
+
+    window.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (overlay) overlay.style.display = 'flex';
+    });
+
+    window.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      if (e.clientX <= 0 || e.clientY <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) {
+        if (overlay) overlay.style.display = 'none';
       }
     });
 
-    if (!doscarFile) {
-      alert(`在所選目錄中未找到 DOSCAR 檔案！`);
-      return;
+    window.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      if (overlay) overlay.style.display = 'none';
+
+      const items = e.dataTransfer.items;
+      if (items && items.length > 0 && items[0].webkitGetAsEntry) {
+        const fileEntries = [];
+        
+        async function readDir(dirEntry) {
+          const reader = dirEntry.createReader();
+          const entries = await new Promise((res) => {
+            reader.readEntries(res, () => res([]));
+          });
+          for (const child of entries) {
+            await scanEntry(child);
+          }
+        }
+
+        async function scanEntry(entry) {
+          if (entry.isFile) {
+            const f = await new Promise((res) => entry.file(res));
+            f.entryPath = entry.fullPath || entry.name;
+            fileEntries.push(f);
+          } else if (entry.isDirectory) {
+            await readDir(entry);
+          }
+        }
+
+        for (let i = 0; i < items.length; i++) {
+          const itemEntry = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
+          if (itemEntry) await scanEntry(itemEntry);
+        }
+
+        if (fileEntries.length > 0) {
+          this.processFileArray(fileEntries);
+          return;
+        }
+      }
+
+      const files = Array.from(e.dataTransfer.files || []);
+      if (files.length > 0) {
+        this.processFileArray(files);
+      }
+    });
+  },
+
+  async processFileArray(files) {
+    if (!files || files.length === 0) return;
+
+    // 分組收集：依據目錄層級或檔名前綴
+    const groups = {};
+    
+    files.forEach(f => {
+      const fullPath = f.entryPath || f.webkitRelativePath || f.name;
+      const parts = fullPath.replace(/^\//, '').split('/');
+      const folderName = parts.length > 1 ? parts[0] : (files.length === 1 ? f.name.replace(/\.[^/.]+$/, '') : 'VASP_Calculation');
+      if (!groups[folderName]) groups[folderName] = [];
+      groups[folderName].push(f);
+    });
+
+    let successCount = 0;
+
+    for (const folderName of Object.keys(groups)) {
+      const fileList = groups[folderName];
+      let doscar = null;
+      let poscar = null;
+      let vasprun = null;
+
+      fileList.forEach(f => {
+        const lower = f.name.toLowerCase();
+        if (lower === 'doscar' || lower.endsWith('doscar') || lower.endsWith('.doscar')) {
+          doscar = f;
+        } else if (lower === 'poscar' || (!poscar && (lower === 'contcar' || lower.endsWith('poscar') || lower.endsWith('contcar')))) {
+          poscar = f;
+        } else if (lower === 'vasprun.xml' || lower.endsWith('.xml')) {
+          vasprun = f;
+        }
+      });
+
+      if (doscar) {
+        try {
+          const dosText = await doscar.text();
+          const posText = poscar ? await poscar.text() : null;
+          this.processCalculationFolder(folderName, dosText, posText);
+          successCount++;
+        } catch (err) {
+          console.error("DOSCAR 載入失敗:", err);
+          alert(`解析目錄「${folderName}」之 DOSCAR 失敗: ${err.message}`);
+        }
+      } else if (vasprun) {
+        try {
+          const xmlText = await vasprun.text();
+          this.processVasprunXml(folderName, xmlText);
+          successCount++;
+        } catch (err) {
+          console.error("vasprun.xml 載入失敗:", err);
+          alert(`解析目錄「${folderName}」之 vasprun.xml 失敗: ${err.message}`);
+        }
+      }
     }
 
-    const dosText = await doscarFile.text();
-    const posText = poscarFile ? await poscarFile.text() : null;
-    this.processCalculationFolder(folderName, dosText, posText);
-    event.target.value = '';
+    if (successCount === 0) {
+      // 容錯機制：嘗試遍歷所有檔案直接搜尋
+      const anyDos = files.find(f => f.name.toLowerCase().includes('dos'));
+      const anyPos = files.find(f => f.name.toLowerCase().includes('pos') || f.name.toLowerCase().includes('cont'));
+      const anyXml = files.find(f => f.name.toLowerCase().endsWith('.xml'));
+
+      if (anyDos) {
+        try {
+          const dosText = await anyDos.text();
+          const posText = anyPos ? await anyPos.text() : null;
+          this.processCalculationFolder('VASP_DOS', dosText, posText);
+          successCount++;
+        } catch (e) {
+          alert(`解析 DOSCAR 失敗: ${e.message}`);
+        }
+      } else if (anyXml) {
+        try {
+          const xmlText = await anyXml.text();
+          this.processVasprunXml('VASP_XML', xmlText);
+          successCount++;
+        } catch (e) {
+          alert(`解析 vasprun.xml 失敗: ${e.message}`);
+        }
+      } else {
+        alert("未在選取的檔案中找到有效的 VASP 計算輸出！\n請確認選取包含 DOSCAR 或 vasprun.xml 的檔案/資料夾。");
+      }
+    }
   },
 
   processCalculationFolder(folderName, doscarText, poscarText) {
     try {
       let posData = null;
       if (poscarText) {
-        posData = VaspParser.parsePoscar(poscarText);
+        try {
+          posData = VaspParser.parsePoscar(poscarText);
+        } catch (pe) {
+          console.warn("POSCAR 解析失敗，改用預設原子:", pe);
+        }
       }
 
       const dosData = VaspParser.parseDoscar(doscarText);
@@ -2067,11 +3733,72 @@ const UI = {
       this.renderCurvesList();
       this.populateDbandCurveSelector();
       ChartRenderer.render();
+      this.showToast(`✅ 成功載入 VASP 計算: <strong>${folderName}</strong> (ISPIN=${dosData.ispin}, 共 ${posData.totalAtoms} 原子)`);
 
     } catch (err) {
       alert("解析 VASP 輸出檔失敗: " + err.message);
       console.error(err);
     }
+  },
+
+  processVasprunXml(folderName, xmlText) {
+    try {
+      const parsed = VaspParser.parseVasprunXml(xmlText);
+      const newDataset = {
+        id: 'ds_' + Date.now() + '_' + Math.floor(Math.random()*1000),
+        name: folderName,
+        folderName: folderName,
+        ef: parsed.efermi,
+        ispin: parsed.ispin,
+        lorbit: parsed.lorbit,
+        elements: parsed.elements,
+        atoms: parsed.atoms,
+        energyGrid: parsed.energyGrid,
+        tdos: parsed.tdos,
+        pdos: parsed.pdos
+      };
+
+      State.datasets.push(newDataset);
+
+      if (State.curves.length === 0) {
+        State.curves.push({
+          id: 'curve_' + Date.now(),
+          datasetId: null,
+          name: 'Total DOS',
+          selectionType: 'total',
+          selectedElement: null,
+          selectedAtoms: null,
+          orbital: 'total',
+          color: '#1a237e',
+          lineWidth: 2.0,
+          lineStyle: 'solid',
+          fill: true,
+          fillOpacity: 0.18,
+          spinDownInverted: true
+        });
+      }
+
+      this.renderDatasetsList();
+      this.renderCurvesList();
+      this.populateDbandCurveSelector();
+      ChartRenderer.render();
+      this.showToast(`✅ 成功載入 vasprun.xml: <strong>${folderName}</strong> (ISPIN=${parsed.ispin}, 共 ${parsed.atoms.length} 原子)`);
+
+    } catch (err) {
+      alert("解析 vasprun.xml 失敗: " + err.message);
+      console.error(err);
+    }
+  },
+
+  showToast(msg, duration = 3000) {
+    const toast = document.getElementById('toast');
+    if (!toast) return;
+    toast.innerHTML = msg;
+    toast.classList.add('show');
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => {
+      toast.classList.remove('show');
+    }, duration);
   },
 
   // 逼真物理示範數據 (修復 TDOS 與各軌域嚴格加總關係)
@@ -2519,16 +4246,25 @@ const UI = {
 
   populateDbandCurveSelector() {
     const sel = document.getElementById('select-dband-curve');
+    if (!sel) return;
     sel.innerHTML = '';
+
+    const autoOpt = document.createElement('option');
+    autoOpt.value = 'auto';
+    autoOpt.textContent = '自動識別各數據集之 d 軌域 (推薦)';
+    if (State.settings.dbandCurveId === 'auto' || !State.settings.dbandCurveId) autoOpt.selected = true;
+    sel.appendChild(autoOpt);
+
     State.curves.forEach(c => {
       const opt = document.createElement('option');
       opt.value = c.id;
-      opt.textContent = c.name;
+      opt.textContent = `特定曲線: ${c.name}`;
       if (State.settings.dbandCurveId === c.id) opt.selected = true;
       sel.appendChild(opt);
     });
-    if (!State.settings.dbandCurveId && State.curves.length > 0) {
-      State.settings.dbandCurveId = State.curves[0].id;
+
+    if (!State.settings.dbandCurveId) {
+      State.settings.dbandCurveId = 'auto';
     }
   }
 };
