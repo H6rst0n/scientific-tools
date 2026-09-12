@@ -1,0 +1,3669 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>科研反應自由能差繪圖工具 (Reaction Free Energy Gap Plotter)</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+/* ====== CSS Variables (延續 energy-profile-plotter 標準設計規範) ====== */
+:root {
+  --bg: #f0f2f5;
+  --panel: #ffffff;
+  --header-bg: #1a237e;
+  --header-text: #ffffff;
+  --border: #e0e0e0;
+  --accent: #1a237e;
+  --accent-light: #e8eaf6;
+  --accent-hover: #283593;
+  --text: #333333;
+  --text-light: #757575;
+  --danger: #c62828;
+  --success: #2e7d32;
+  --warning: #ef6c00;
+  --radius: 6px;
+  --shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', sans-serif;
+  background: var(--bg); color: var(--text);
+  height: 100vh; overflow: hidden;
+  display: flex; flex-direction: column;
+}
+
+/* ====== Header ====== */
+header {
+  background: var(--header-bg); color: var(--header-text);
+  padding: 8px 16px; display: flex; align-items: center; gap: 8px;
+  flex-wrap: nowrap; flex-shrink: 0; z-index: 10;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  overflow-x: auto;
+}
+header h1 { font-size: 15px; font-weight: 600; letter-spacing: 0.3px; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+header .spacer { flex: 1; }
+.header-group { display: flex; align-items: center; gap: 6px; }
+.header-group label { font-size: 12px; opacity: 0.88; white-space: nowrap; }
+.header-group select, .header-group input {
+  padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.3);
+  background: rgba(255,255,255,0.15); color: white; font-size: 12px; cursor: pointer;
+}
+.header-group select option { color: #333; background: white; }
+
+/* ====== Buttons ====== */
+.btn {
+  padding: 5px 11px; border-radius: 4px; cursor: pointer; font-size: 12px;
+  border: 1px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.13);
+  color: white; transition: all 0.15s; white-space: nowrap; display: inline-flex;
+  align-items: center; gap: 4px; font-weight: 500;
+}
+.btn:hover { background: rgba(255,255,255,0.26); border-color: rgba(255,255,255,0.45); }
+.btn:active { transform: translateY(1px); }
+.btn-lang {
+  padding: 4px 9px; border-radius: 12px; font-size: 11px; font-weight: 600;
+  background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.4);
+  color: white; cursor: pointer; letter-spacing: 0.5px;
+}
+.btn-lang:hover { background: rgba(255,255,255,0.35); }
+.btn-panel {
+  padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;
+  border: 1px solid var(--border); background: white; color: var(--text); transition: all 0.15s;
+}
+.btn-panel:hover { background: #f5f5f5; border-color: #bdbdbd; }
+.btn-accent { background: var(--accent); color: white; border-color: var(--accent); }
+.btn-accent:hover { background: var(--accent-hover); }
+.btn-danger { background: var(--danger); color: white; border-color: var(--danger); }
+.btn-danger:hover { opacity: 0.88; }
+.btn-sm { padding: 3px 7px; font-size: 11px; }
+
+/* ====== Main Layout ====== */
+#main { display: grid; grid-template-columns: 470px 1fr; flex: 1; overflow: hidden; }
+
+/* ====== Left Panel ====== */
+#left-panel {
+  background: var(--panel); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+#group-section { padding: 10px 12px 6px; border-bottom: 1px solid var(--border); background: #fafafa; }
+#group-tabs { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+.group-tab {
+  padding: 4px 9px; border: 1px solid var(--border); border-radius: 4px;
+  cursor: pointer; font-size: 12px; background: white; display: flex;
+  align-items: center; gap: 5px; transition: all 0.15s; font-weight: 500;
+}
+.group-tab:hover { background: #f0f0f0; }
+.group-tab.active { background: var(--accent); color: white; border-color: var(--accent); }
+.group-tab .color-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; border: 1px solid rgba(0,0,0,0.2); }
+.group-tab .tab-close { font-size: 13px; margin-left: 4px; opacity: 0.6; cursor: pointer; line-height: 1; }
+.group-tab .tab-close:hover { opacity: 1; color: #ff8a80; }
+#btn-add-group { border-style: dashed; color: var(--accent); }
+
+/* Quick Action Toolbar for Step Conversion & G to dG Calculation */
+.quick-helper-bar {
+  display: flex; gap: 6px; padding: 6px 12px; background: #f8fafc;
+  border-bottom: 1px solid var(--border); font-size: 11px; align-items: center; flex-wrap: wrap;
+}
+
+/* ====== Table ====== */
+#table-container { flex: 1; min-height: 120px; overflow-y: auto; overflow-x: auto; }
+#data-table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
+#data-table th {
+  background: #37474f; color: white; padding: 6px 4px; text-align: center;
+  font-weight: 500; font-size: 11px; position: sticky; top: 0; z-index: 2;
+  user-select: none; white-space: nowrap;
+}
+#data-table td { padding: 3px 2px; border-bottom: 1px solid var(--border); text-align: center; vertical-align: middle; }
+#data-table tbody tr { transition: background 0.1s; }
+#data-table tbody tr:hover { background: #fafafa; }
+#data-table tbody tr.selected { background: var(--accent-light); }
+#data-table input, #data-table select {
+  width: 100%; border: 1px solid transparent; padding: 3px 3px; border-radius: 3px;
+  font-size: 12px; text-align: center; background: transparent;
+}
+#data-table input:focus, #data-table select:focus { border-color: var(--accent); outline: none; background: white; }
+#data-table input[type="checkbox"] { width: 14px; height: 14px; cursor: pointer; }
+
+.col-check { width: 26px; }
+.col-idx { width: 34px; color: var(--text-light); font-size: 10px; }
+.col-name { width: auto; min-width: 90px; }
+.col-energy { width: 85px; min-width: 75px; }
+.col-color { width: 32px; }
+.col-action { width: 30px; }
+
+.name-cell-wrap { display: flex; align-items: center; gap: 2px; }
+.name-cell-wrap input { flex: 1; min-width: 0; font-family: 'Times New Roman', Cambria, serif; font-size: 13px; font-weight: 500; }
+.btn-toggle-eye { background: none; border: none; cursor: pointer; font-size: 12px; padding: 0 2px; line-height: 1; color: #555; }
+.btn-toggle-eye:hover { opacity: 0.7; }
+.btn-toggle-eye.hidden-item { opacity: 0.25; filter: grayscale(1); }
+
+/* ====== Table Actions ====== */
+#table-actions {
+  padding: 7px 12px; border-top: 1px solid var(--border);
+  display: flex; gap: 5px; flex-wrap: wrap; flex-shrink: 0; align-items: center; background: #fafafa;
+}
+.paste-hint { font-size: 10px; color: var(--text-light); margin-left: auto; font-style: italic; }
+
+/* ====== Batch Style Panel ====== */
+#batch-panel { padding: 9px 12px; border-top: 1px solid var(--border); background: #fdfdfd; flex-shrink: 0; }
+#batch-panel.hidden { display: none; }
+#batch-panel h4 { font-size: 11px; margin-bottom: 6px; color: var(--text-light); font-weight: 600; }
+.batch-controls { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.batch-controls label { font-size: 11px; display: flex; align-items: center; gap: 4px; }
+.batch-controls select, .batch-controls input[type="number"] { padding: 2px 4px; border: 1px solid var(--border); border-radius: 3px; font-size: 11px; }
+
+/* ====== Collapsible Sections ====== */
+#chart-options-section, #annotation-section { border-top: 1px solid var(--border); flex-shrink: 0; }
+.section-toggle {
+  font-size: 12px; padding: 7px 12px; cursor: pointer; color: var(--text-light);
+  user-select: none; transition: background 0.1s; font-weight: 600; display: flex; align-items: center; justify-content: space-between;
+}
+.section-toggle:hover { background: #f5f5f5; color: var(--text); }
+.section-body {
+  padding: 6px 12px 10px; max-height: 290px; overflow-y: auto; overflow-x: hidden;
+}
+.section-body.hidden { display: none; }
+.section-body::-webkit-scrollbar { width: 6px; }
+.section-body::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+
+.opt-subhead { font-size: 11px; font-weight: 600; color: var(--accent); margin: 7px 0 4px; border-top: 1px dashed #eee; padding-top: 5px; }
+.opt-subhead:first-child { border-top: none; padding-top: 0; margin-top: 2px; }
+.opt-row { display: flex; gap: 6px; align-items: center; margin-bottom: 5px; font-size: 11px; color: var(--text); }
+.opt-row label { display: flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; }
+.opt-row input[type="checkbox"] { width: 14px; height: 14px; cursor: pointer; }
+.opt-row input[type="number"].opt-inp { width: 48px; padding: 2px 3px; font-size: 11px; border: 1px solid var(--border); border-radius: 3px; text-align: center; }
+.opt-row input[type="text"].opt-txt { width: 130px; padding: 2px 4px; font-size: 11px; border: 1px solid var(--border); border-radius: 3px; }
+.opt-row select.opt-sel { padding: 2px 4px; font-size: 11px; border: 1px solid var(--border); border-radius: 3px; }
+.opt-row-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 6px; margin-bottom: 4px; }
+.opt-row-grid .opt-row { margin-bottom: 0; }
+.opt-indent { padding-left: 16px; }
+.format-hint { font-size: 10px; color: var(--text-light); line-height: 1.35; padding: 4px 6px; background: #f5f5f5; border-radius: 4px; margin-top: 5px; }
+
+/* ====== Right Panel & Chart Area ====== */
+#right-panel { display: flex; align-items: stretch; justify-content: center; padding: 14px; overflow: hidden; }
+#chart-wrapper {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  background: white; border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; position: relative;
+}
+#chart-svg { width: 100%; height: 100%; }
+
+/* ====== SVG Styles & Publication Standards ====== */
+.axis path, .axis line { stroke: #000000; }
+.axis text { fill: #000000; }
+.axis-label { fill: #000000; font-weight: bold; cursor: move; user-select: none; }
+.axis-label:hover { fill: var(--accent); }
+.chart-title-group text { cursor: move; user-select: none; }
+.chart-title-group:hover text { fill: var(--accent); }
+.grid line { stroke: #e0e0e0; stroke-dasharray: 4,4; }
+.grid path { stroke: none; }
+.zero-line { stroke: #000000; stroke-width: 1.5px; }
+.bar-rect { cursor: pointer; transition: opacity 0.15s; }
+.bar-rect:hover { opacity: 0.85; }
+.value-label { cursor: move; user-select: none; font-family: 'Times New Roman', Cambria, serif; }
+.value-label:hover { opacity: 0.75; }
+
+/* Legend & Legend Resize Handles */
+.chart-legend { cursor: move; user-select: none; }
+.chart-legend-bg { fill: white; stroke: #000000; stroke-width: 1px; rx: 4px; ry: 4px; }
+.legend-item { cursor: pointer; }
+.legend-item text { fill: #000000; font-family: 'Times New Roman', Cambria, serif; }
+.legend-resize-handle { cursor: se-resize; }
+.legend-resize-handle:hover path { stroke: #2563eb; }
+
+.text-annotation-group text { cursor: move; user-select: none; }
+.ref-line-group { cursor: move; }
+
+/* Plot Box Resizing Handles */
+.plot-edge-hit:hover {
+  stroke: #2563eb; stroke-width: 2px; stroke-dasharray: 4,4; fill: rgba(37, 99, 235, 0.08);
+}
+
+/* ====== Unified Color Popover ====== */
+#color-popover {
+  position: fixed; background: white; border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.22); padding: 10px 12px; z-index: 500;
+  width: 220px; border: 1px solid var(--border);
+}
+#color-popover.hidden { display: none; }
+.color-popover-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.color-popover-header input[type="color"] { width: 34px; height: 26px; border: 1px solid var(--border); border-radius: 4px; padding: 0; cursor: pointer; }
+.color-popover-header input[type="text"] { flex: 1; width: 68px; padding: 3px 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 11px; font-family: monospace; text-transform: uppercase; }
+.color-popover-none-btn { padding: 3px 8px; font-size: 11px; border: 1px solid var(--border); background: #f8f9fa; border-radius: 4px; cursor: pointer; color: var(--text); }
+.color-popover-none-btn:hover { background: #e9ecef; }
+.palette-swatches { display: flex; flex-wrap: wrap; gap: 4px; padding: 3px 0 6px; }
+.color-swatch {
+  width: 17px; height: 17px; border-radius: 50%; cursor: pointer;
+  border: 2px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+  transition: transform 0.1s, border-color 0.1s; flex-shrink: 0;
+}
+.color-swatch:hover { transform: scale(1.22); }
+.color-swatch.active { border-color: #212121; transform: scale(1.15); }
+.color-btn {
+  width: 22px; height: 20px; border-radius: 4px; border: 1px solid #bbb;
+  cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1); transition: transform 0.1s, border-color 0.1s;
+  padding: 0; vertical-align: middle; flex-shrink: 0;
+}
+.color-btn:hover { border-color: #333; transform: scale(1.08); }
+.color-btn.is-none {
+  background: repeating-linear-gradient(45deg, #eee, #eee 3px, #fff 3px, #fff 6px) !important;
+  color: #888; font-size: 10px; font-weight: bold; line-height: 1;
+}
+
+/* ====== Popups & Modals ====== */
+#style-popup {
+  position: fixed; background: white; border-radius: var(--radius);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.18); padding: 12px 14px; z-index: 200;
+  min-width: 230px; max-width: 310px; border: 1px solid var(--border);
+}
+#style-popup.hidden { display: none; }
+#style-popup h4 { font-size: 13px; margin-bottom: 8px; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 5px; }
+.popup-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; gap: 8px; }
+.popup-row label { font-size: 12px; color: var(--text); flex-shrink: 0; }
+.popup-row input[type="number"], .popup-row input[type="text"] { width: 70px; padding: 2px 4px; border: 1px solid var(--border); border-radius: 3px; font-size: 12px; text-align: center; }
+.popup-row select { padding: 3px 6px; border: 1px solid var(--border); border-radius: 3px; font-size: 12px; }
+#popup-close { position: absolute; top: 8px; right: 10px; cursor: pointer; font-size: 16px; color: var(--text-light); background: none; border: none; }
+#popup-close:hover { color: var(--text); }
+
+.modal-overlay {
+  position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+  background: rgba(15, 23, 42, 0.55); backdrop-filter: blur(2px);
+  z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 16px;
+}
+.modal-overlay.hidden { display: none; }
+.modal-box {
+  background: white; border-radius: 8px; box-shadow: 0 12px 36px rgba(0,0,0,0.25);
+  width: 100%; max-width: 560px; max-height: 88vh; display: flex; flex-direction: column;
+  overflow: hidden; border: 1px solid var(--border);
+}
+.modal-header {
+  padding: 12px 16px; background: #f8fafc; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+}
+.modal-header h3 { font-size: 14px; font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 6px; }
+.modal-close { background: none; border: none; font-size: 18px; cursor: pointer; color: #64748b; padding: 2px 6px; border-radius: 4px; line-height: 1; }
+.modal-close:hover { background: #e2e8f0; color: #0f172a; }
+.modal-body { padding: 14px 16px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; }
+.modal-footer {
+  padding: 10px 16px; background: #f8fafc; border-top: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-shrink: 0;
+}
+
+/* Example preset cards */
+.preset-list-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.preset-item-card {
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px;
+  cursor: pointer; transition: all 0.15s; background: white;
+}
+.preset-item-card:hover { border-color: var(--accent); background: #f8fafc; transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
+.preset-item-card h5 { font-size: 13px; color: var(--accent); margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between; }
+.preset-item-card p { font-size: 11px; color: var(--text-light); line-height: 1.4; }
+
+/* Toast */
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: #212121; color: white; padding: 9px 20px; border-radius: 6px;
+  font-size: 12px; z-index: 1200; pointer-events: none;
+  animation: toastAnim 2.2s ease-in-out forwards; box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+}
+@keyframes toastAnim {
+  0% { opacity: 0; transform: translateX(-50%) translateY(10px); }
+  12% { opacity: 1; transform: translateX(-50%) translateY(0); }
+  82% { opacity: 1; transform: translateX(-50%) translateY(0); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+}
+</style>
+</head>
+<body>
+
+<!-- ====== Header ====== -->
+<header>
+  <a href="./index.html" class="btn" style="text-decoration: none; padding: 4px 8px; font-size: 11px; background: rgba(255,255,255,0.18);" title="返回工具箱首頁">🏠 首頁</a>
+  <h1 id="app-title">⚛ 反應自由能差繪圖工具</h1>
+  <button class="btn-lang" id="btn-lang" title="Switch Language">EN</button>
+  <div class="spacer"></div>
+  
+  <div class="header-group">
+    <label id="lbl-input-unit">輸入單位：</label>
+    <select id="input-unit"></select>
+  </div>
+  <div class="header-group">
+    <label id="lbl-display-unit">顯示單位：</label>
+    <select id="display-unit"></select>
+  </div>
+  
+  <div class="header-group">
+    <label id="lbl-canvas-ratio">比例：</label>
+    <select id="canvas-ratio">
+      <option value="auto">自適應</option>
+      <option value="16:9" selected>16:9</option>
+      <option value="4:3">4:3</option>
+      <option value="3:2">3:2</option>
+      <option value="1:1">1:1</option>
+      <option value="custom">自訂</option>
+    </select>
+  </div>
+  <div class="header-group hidden" id="custom-size-group">
+    <label>W:</label>
+    <input type="number" id="custom-w" min="300" max="4000" step="50" style="width:52px; padding:3px; text-align:center;">
+    <label>H:</label>
+    <input type="number" id="custom-h" min="200" max="3000" step="50" style="width:52px; padding:3px; text-align:center;">
+  </div>
+  
+  <div class="header-group" id="dpi-group">
+    <label id="lbl-dpi">解析度：</label>
+    <select id="export-dpi">
+      <option value="1">1x (72 DPI)</option>
+      <option value="2">2x (150 DPI)</option>
+      <option value="3" selected>3x (300 DPI - 期刊)</option>
+      <option value="4">4x (450 DPI)</option>
+      <option value="6">6x (600 DPI)</option>
+    </select>
+  </div>
+
+  <div class="header-group" style="margin-left:4px;">
+    <button class="btn" id="btn-open-presets" title="載入內建經典反應範例">📑 <span id="lbl-btn-presets">範例庫</span></button>
+    <button class="btn" id="btn-add-text" title="新增自訂文字框">🔤 + 文字</button>
+    <button class="btn" id="btn-add-refline" title="新增參考/閾值水平線">📏 + 參考線</button>
+    <button class="btn" id="btn-export-svg">⬇ SVG</button>
+    <button class="btn" id="btn-export-png">⬇ PNG</button>
+    <button class="btn" id="btn-save-json" title="保存專案 JSON">💾</button>
+    <button class="btn" id="btn-load-json" title="載入專案 JSON">📂</button>
+  </div>
+</header>
+
+<!-- ====== Main Content ====== -->
+<main id="main">
+  <div id="left-panel">
+    <!-- Group / System Tabs -->
+    <div id="group-section"><div id="group-tabs"></div></div>
+
+    <!-- Quick Reaction Step Helper Bar -->
+    <div class="quick-helper-bar">
+      <button type="button" class="btn-panel btn-sm" id="btn-convert-to-steps" style="color:#1e3a8a; border-color:#bfdbfe; background:#eff6ff;" title="將當前中間體序列自動轉換為反應步名稱 (如 NO3 -> NO2)">
+        ⚡ 一鍵生成反應步 (A → B)
+      </button>
+      <button type="button" class="btn-panel btn-sm" id="btn-open-g-calculator" style="color:#065f46; border-color:#a7f3d0; background:#ecfdf5;" title="輸入各態自由能 G，自動計算各步能差 ΔG">
+        🧮 能量 G ➔ 計算 ΔG
+      </button>
+    </div>
+
+    <!-- Data Table View -->
+    <div id="table-container">
+      <table id="data-table">
+        <thead>
+          <tr>
+            <th class="col-check" id="th-check" title="全選/取消">☐</th>
+            <th class="col-idx">#</th>
+            <th class="col-name" id="th-name">反應步 / 中間體 (Reaction Step)</th>
+            <th class="col-energy" id="th-energy">能差 (ΔG)</th>
+            <th class="col-color" id="th-color">色</th>
+            <th class="col-action">✕</th>
+          </tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+
+    <!-- Table Actions -->
+    <div id="table-actions">
+      <button class="btn-panel btn-accent btn-sm" id="btn-add-row">+ 新增步驟</button>
+      <button class="btn-panel btn-danger btn-sm" id="btn-delete-rows">✕ 刪除選取</button>
+      <button class="btn-panel btn-sm" id="btn-select-all">全選</button>
+      <button class="btn-panel btn-sm" id="btn-deselect-all">取消</button>
+      <button class="btn-panel btn-sm" id="btn-batch-input" title="批次多行文字輸入/貼上">📋 批次輸入</button>
+      <span class="paste-hint" id="paste-hint">支援 Excel / TSV 複製貼上 (Ctrl+V)</span>
+    </div>
+
+    <!-- Batch Style Panel (When rows selected) -->
+    <div id="batch-panel" class="hidden">
+      <h4 id="batch-title">▸ 批量操作（套用至選取項目）</h4>
+      <div class="batch-controls">
+        <label><span id="lbl-bshowname">名稱</span> <select id="batch-showname">
+          <option value="">-保持-</option>
+          <option value="show">顯示</option>
+          <option value="hide">隱藏</option>
+        </select></label>
+        <label><span id="lbl-bshowval">數值</span> <select id="batch-showval">
+          <option value="">-保持-</option>
+          <option value="show">顯示</option>
+          <option value="hide">隱藏</option>
+        </select></label>
+        <label><span id="lbl-bcolor">色彩</span> <input type="color" id="batch-color" value="#d32f2f"></label>
+        <button class="btn-panel btn-accent btn-sm" id="btn-batch-apply">套用</button>
+      </div>
+      <div id="batch-palette" class="palette-swatches"></div>
+    </div>
+
+    <!-- Collapsible Chart Options -->
+    <div id="chart-options-section">
+      <div class="section-toggle" id="chart-options-toggle">
+        <span>▸ 圖表與座標軸設定 (Chart &amp; Axis Options)</span>
+        <span style="font-size:10px; opacity:0.6;">展開/收合</span>
+      </div>
+      <div id="chart-options-body" class="section-body hidden">
+        
+        <!-- ① 圖表標題 -->
+        <div class="opt-subhead" id="lbl-chart-title-head">圖表標題 (Chart Title)</div>
+        <div class="opt-row">
+          <label><input type="checkbox" id="opt-show-chart-title"> <span id="lbl-show-chart-title">顯示圖表標題</span></label>
+        </div>
+        <div class="opt-row opt-indent" id="row-chart-title-text">
+          <label><span id="lbl-chart-title-text">標題：</span> <input type="text" id="opt-chart-title-text" class="opt-txt" placeholder="在此輸入標題"></label>
+        </div>
+        <div class="opt-row opt-indent" id="row-chart-title-size">
+          <label><span id="lbl-chart-title-fontsize">字級：</span> <input type="number" id="opt-chart-title-fontsize" min="8" max="48" value="16" class="opt-inp"></label>
+          <label style="margin-left:6px;"><span id="lbl-chart-title-weight">粗細：</span>
+            <select id="opt-chart-title-weight" class="opt-sel">
+              <option value="400">正常</option>
+              <option value="500">中等</option>
+              <option value="600">次粗</option>
+              <option value="700" selected>粗體</option>
+            </select>
+          </label>
+        </div>
+
+        <!-- ② 軸線與邊框 -->
+        <div class="opt-subhead" id="lbl-axis-frame-head">座標軸線與圖框 (Axes &amp; Frame)</div>
+        <div class="opt-row-grid">
+          <div class="opt-row"><label><input type="checkbox" id="opt-show-bottom-axis" checked> <span id="lbl-show-bottom-axis">底部 X 軸</span></label></div>
+          <div class="opt-row"><label><input type="checkbox" id="opt-show-left-axis" checked> <span id="lbl-show-left-axis">左側 Y 軸</span></label></div>
+          <div class="opt-row"><label><input type="checkbox" id="opt-show-top-axis" checked> <span id="lbl-show-top-axis">頂部軸線</span></label></div>
+          <div class="opt-row"><label><input type="checkbox" id="opt-show-right-axis" checked> <span id="lbl-show-right-axis">右側軸線</span></label></div>
+        </div>
+        <div class="opt-row">
+          <label><span id="lbl-axis-thickness">軸線粗細 (px)：</span> <input type="number" id="opt-axis-thickness" class="opt-inp" min="0.5" max="6" step="0.5" value="1.2"></label>
+        </div>
+
+        <!-- ③ 軸刻度 Tick 方向 -->
+        <div class="opt-subhead" id="lbl-tick-dir-head">刻度線方向 (Tick Directions)</div>
+        <div class="opt-row-grid">
+          <div class="opt-row"><label><span id="lbl-tick-bottom">底部 (X)：</span> <select id="opt-tick-dir-bottom" class="opt-sel"><option value="out">向外</option><option value="in">向內</option><option value="both">雙向</option><option value="none">無</option></select></label></div>
+          <div class="opt-row"><label><span id="lbl-tick-left">左側 (Y)：</span> <select id="opt-tick-dir-left" class="opt-sel"><option value="out">向外</option><option value="in">向內</option><option value="both">雙向</option><option value="none">無</option></select></label></div>
+          <div class="opt-row"><label><span id="lbl-tick-top">頂部：</span> <select id="opt-tick-dir-top" class="opt-sel"><option value="none">無</option><option value="out">向外</option><option value="in">向內</option><option value="both">雙向</option></select></label></div>
+          <div class="opt-row"><label><span id="lbl-tick-right">右側：</span> <select id="opt-tick-dir-right" class="opt-sel"><option value="none">無</option><option value="out">向外</option><option value="in">向內</option><option value="both">雙向</option></select></label></div>
+        </div>
+
+        <!-- ④ 軸標題與 X 軸排版 -->
+        <div class="opt-subhead" id="lbl-axis-title-head">軸標題與 X 軸排版 (Axis &amp; Step Formats)</div>
+        <div class="opt-row">
+          <label><input type="checkbox" id="opt-show-xtitle" checked> <span id="lbl-opt-xtitle">顯示 X 軸標題</span></label>
+        </div>
+        <div class="opt-row opt-indent">
+          <label><span id="lbl-opt-xtitle-text">X 標題：</span> <input type="text" id="opt-xtitle-text" class="opt-txt" value="Reaction Step"></label>
+        </div>
+        <div class="opt-row">
+          <label><span id="lbl-opt-ytitle-text">Y 標題：</span> <input type="text" id="opt-ytitle-text" class="opt-txt" value="Energy Gap"></label>
+        </div>
+        <div class="opt-row opt-indent">
+          <label><span id="lbl-x-rotation">X 標籤旋轉：</span>
+            <select id="opt-x-label-rotation" class="opt-sel">
+              <option value="0">水平 (0°)</option>
+              <option value="30">傾斜 30°</option>
+              <option value="45" selected>傾斜 45°</option>
+              <option value="90">垂直 (90°)</option>
+            </select>
+          </label>
+          <label style="margin-left:6px;"><span id="lbl-x-align">標籤對齊：</span>
+            <select id="opt-x-label-align" class="opt-sel">
+              <option value="end">靠右/末端 (End)</option>
+              <option value="center" selected>置中對齊 (Center)</option>
+              <option value="start">靠左/起點 (Start)</option>
+            </select>
+          </label>
+        </div>
+        <div class="opt-row opt-indent">
+          <label><span id="lbl-x-multiline">排版風格：</span>
+            <select id="opt-x-label-multiline" class="opt-sel">
+              <option value="single" selected>單行橫排 (A → B)</option>
+              <option value="wrap">雙行折行 (A \n ↓ \n B)</option>
+              <option value="arrow-bottom">兩行排版 (A \n → B)</option>
+            </select>
+          </label>
+          <label style="margin-left:6px;"><span id="lbl-x-offset-y">垂直距離：</span>
+            <input type="number" id="opt-x-label-offset-y" class="opt-inp" min="0" max="80" value="0" style="width:48px;">
+          </label>
+        </div>
+
+        <!-- ⑤ 基準線 y=0 與 網格 -->
+        <div class="opt-subhead" id="lbl-zero-grid-head">基準線與網格 (Zero Line &amp; Grid)</div>
+        <div class="opt-row-grid">
+          <div class="opt-row"><label><input type="checkbox" id="opt-show-zeroline" checked> <span id="lbl-show-zeroline">高亮 y=0 基準線</span></label></div>
+          <div class="opt-row"><label><input type="checkbox" id="opt-show-grid" checked> <span id="lbl-show-grid">顯示背景網格</span></label></div>
+        </div>
+        <div class="opt-row opt-indent">
+          <label><span id="lbl-zero-thick">y=0 粗細：</span> <input type="number" id="opt-zeroline-thickness" class="opt-inp" min="0.5" max="5" step="0.5" value="1.2"></label>
+          <label style="margin-left:6px;"><span id="lbl-grid-dash">網格虛線：</span>
+            <select id="opt-grid-dash" class="opt-sel">
+              <option value="4,4" selected>4,4 (標準)</option>
+              <option value="2,2">2,2 (細密)</option>
+              <option value="6,3">6,3 (長虛線)</option>
+              <option value="solid">實線</option>
+            </select>
+          </label>
+        </div>
+
+        <!-- ⑥ 柱狀圖幾何 (Bar Geometry) -->
+        <div class="opt-subhead" id="lbl-bar-geom-head">柱狀排列與間距 (Bar Geometry)</div>
+        <div class="opt-row-grid">
+          <div class="opt-row"><label><span id="lbl-group-padding">分類間距：</span> <input type="number" id="opt-group-padding" class="opt-inp" min="0.05" max="0.8" step="0.05" value="0.25"></label></div>
+          <div class="opt-row"><label><span id="lbl-bar-padding">組內間距：</span> <input type="number" id="opt-bar-padding" class="opt-inp" min="0.0" max="0.5" step="0.02" value="0.02"></label></div>
+        </div>
+        <div class="opt-row">
+          <label><span id="lbl-bar-border-width">柱子邊框粗細 (px)：</span> <input type="number" id="opt-bar-border-width" class="opt-inp" min="0" max="4" step="0.5" value="1.0"></label>
+          <label style="margin-left:6px;"><span id="lbl-bar-border-color">邊框色：</span> <input type="color" id="opt-bar-border-color" value="#000000" style="width:26px; height:22px; padding:0; border:1px solid #ccc; border-radius:3px; cursor:pointer;"></label>
+        </div>
+
+        <!-- ⑦ 數值標籤 (Value Labels) -->
+        <div class="opt-subhead" id="lbl-val-label-head">數值標籤排版 (Value Labels)</div>
+        <div class="opt-row-grid">
+          <div class="opt-row"><label><input type="checkbox" id="opt-show-val-labels" checked> <span id="lbl-show-val-labels">顯示柱頂/底數值</span></label></div>
+          <div class="opt-row"><label><span id="lbl-opt-decimals">小數位數：</span> <input type="number" id="opt-decimals" class="opt-inp" min="0" max="5" value="3"></label></div>
+        </div>
+        <div class="opt-row">
+          <label><span id="lbl-val-label-offset">標籤距離 (px)：</span> <input type="number" id="opt-val-label-offset" class="opt-inp" min="1" max="25" value="6"></label>
+          <label style="margin-left:6px;"><span id="lbl-val-label-color">字體顏色：</span>
+            <select id="opt-val-label-color-mode" class="opt-sel">
+              <option value="black" selected>純黑 (Black)</option>
+              <option value="match">跟隨柱色 (Match Bar)</option>
+              <option value="gray">深灰 (#555)</option>
+            </select>
+          </label>
+        </div>
+
+        <!-- ⑧ Y 軸數值範圍 (Y-Axis Range) -->
+        <div class="opt-subhead" id="lbl-yrange-head">Y 軸數值範圍 (Y-Axis Range)</div>
+        <div class="opt-row">
+          <label><span id="lbl-ymin">Y Min：</span> <input type="number" id="opt-ymin" class="opt-inp" step="0.5" placeholder="自動"></label>
+          <label style="margin-left:6px;"><span id="lbl-ymax">Y Max：</span> <input type="number" id="opt-ymax" class="opt-inp" step="0.5" placeholder="自動"></label>
+          <button type="button" class="btn-panel btn-sm" id="btn-reset-yrange" style="margin-left:6px; font-size:10px;">↺ 重設</button>
+        </div>
+
+        <!-- ⑨ 全域字型與排版規格 (Typography) -->
+        <div class="opt-subhead" id="lbl-typography-head">字型與排版規格 (Typography &amp; Fonts)</div>
+        <div class="opt-row">
+          <label><span id="lbl-font-family">全域字型：</span>
+            <select id="opt-font-family" class="opt-sel" style="width:170px;">
+              <option value="Times New Roman, Times, serif" selected>Times New Roman (經典襯線)</option>
+              <option value="Arial, sans-serif">Arial (標準無襯線)</option>
+              <option value="Helvetica, sans-serif">Helvetica</option>
+              <option value="Calibri, sans-serif">Calibri</option>
+              <option value="Segoe UI, sans-serif">Segoe UI</option>
+              <option value="Georgia, serif">Georgia</option>
+              <option value="custom">自訂字型 (Custom)...</option>
+            </select>
+          </label>
+        </div>
+        <div class="opt-row opt-indent hidden" id="row-custom-font">
+          <label><span id="lbl-custom-font">名稱：</span> <input type="text" id="opt-custom-font" class="opt-txt" placeholder="例如: STIX Two Text"></label>
+        </div>
+        <div class="opt-row opt-indent" style="gap:4px;">
+          <button type="button" class="btn-panel btn-sm" id="btn-load-font-file" style="font-size:10px;">📂 載入字型檔 (.ttf/.otf)</button>
+          <input type="file" id="inp-font-file" accept=".ttf,.otf,.woff,.woff2" style="display:none;">
+        </div>
+
+        <!-- Typography Matrix Table -->
+        <table style="width:100%; border-collapse:collapse; margin-top:6px; font-size:11px;">
+          <thead>
+            <tr style="background:#f1f5f9; color:#475569; text-align:left;">
+              <th style="padding:4px;" id="th-typo-item">圖表元素</th>
+              <th style="padding:4px; text-align:center;" id="th-typo-size">字級 (px)</th>
+              <th style="padding:4px; text-align:center;" id="th-typo-weight">粗細</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="padding:3px 4px;" id="lbl-axistitle-fontsize">軸標題 (X / Y)</td>
+              <td style="padding:2px; text-align:center;"><input type="number" id="opt-axistitle-fontsize" class="opt-inp" min="8" max="36" value="14"></td>
+              <td style="padding:2px; text-align:center;"><select id="opt-axistitle-weight" class="opt-sel"><option value="400">正常</option><option value="600">次粗</option><option value="700" selected>粗體</option></select></td>
+            </tr>
+            <tr>
+              <td style="padding:3px 4px;" id="lbl-tick-fontsize">軸刻度數值 (Ticks)</td>
+              <td style="padding:2px; text-align:center;"><input type="number" id="opt-tick-fontsize" class="opt-inp" min="8" max="36" value="12"></td>
+              <td style="padding:2px; text-align:center;"><select id="opt-tick-weight" class="opt-sel"><option value="400" selected>正常</option><option value="600">次粗</option><option value="700">粗體</option></select></td>
+            </tr>
+            <tr>
+              <td style="padding:3px 4px;" id="lbl-name-fontsize">反應步名稱 (X-Axis)</td>
+              <td style="padding:2px; text-align:center;"><input type="number" id="opt-name-fontsize" class="opt-inp" min="8" max="36" value="12"></td>
+              <td style="padding:2px; text-align:center;"><select id="opt-name-weight" class="opt-sel"><option value="400">正常</option><option value="500">中等</option><option value="600">次粗</option><option value="700" selected>粗體</option></select></td>
+            </tr>
+            <tr>
+              <td style="padding:3px 4px;" id="lbl-energy-fontsize">柱頂能差數值 (Values)</td>
+              <td style="padding:2px; text-align:center;"><input type="number" id="opt-energy-fontsize" class="opt-inp" min="8" max="36" value="11"></td>
+              <td style="padding:2px; text-align:center;"><select id="opt-energy-weight" class="opt-sel"><option value="400">正常</option><option value="600">次粗</option><option value="700" selected>粗體</option></select></td>
+            </tr>
+            <tr>
+              <td style="padding:3px 4px;" id="lbl-legend-fontsize">圖例文字 (Legend)</td>
+              <td style="padding:2px; text-align:center;"><input type="number" id="opt-legend-fontsize" class="opt-inp" min="8" max="36" value="13"></td>
+              <td style="padding:2px; text-align:center;"><select id="opt-legend-weight" class="opt-sel"><option value="400">正常</option><option value="500" selected>中等</option><option value="600">次粗</option><option value="700">粗體</option></select></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- ⑩ 圖表留白 Margins -->
+        <div class="opt-subhead" id="lbl-plot-margins-title">圖表留白與邊界 (Margins)</div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px; font-size:11px;">
+          <div class="opt-row"><label><span id="lbl-margin-top">上：</span> <input type="number" id="opt-margin-top" class="opt-inp" placeholder="自動"></label></div>
+          <div class="opt-row"><label><span id="lbl-margin-bottom">下：</span> <input type="number" id="opt-margin-bottom" class="opt-inp" placeholder="自動"></label></div>
+          <div class="opt-row"><label><span id="lbl-margin-left">左：</span> <input type="number" id="opt-margin-left" class="opt-inp" placeholder="自動"></label></div>
+          <div class="opt-row"><label><span id="lbl-margin-right">右：</span> <input type="number" id="opt-margin-right" class="opt-inp" placeholder="自動"></label></div>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
+          <span style="font-size:10px; color:var(--text-light);" id="hint-plot-margins">💡 可直接用滑鼠拖曳圖表四邊或四角調整範圍</span>
+          <button type="button" class="btn-panel btn-sm" id="btn-reset-plot-margins" style="font-size:10px; padding:1px 6px;">↺ 自適應</button>
+        </div>
+
+        <!-- ⑪ 格式提示 -->
+        <div class="format-hint" id="lbl-format-hint">
+          💡 <b>反應步與化學式 / 希臘字母語法：</b><br>
+          箭頭：<code>--&gt;</code>、<code>-&gt;</code>、<code>\to</code> 自動轉為 <code>→</code><br>
+          希臘字/能差：<code>\Delta G</code> (ΔG)、<code>\delta</code> (δ)、<code>\alpha</code> (α)、<code>\theta</code> (θ)<br>
+          化學下標：<code>NO_3</code> 或 <code>HPO_4</code> 或 <code>H_2O</code><br>
+          化學上標：<code>HPO_4^{2-}</code> 或 <code>Fe^{3+}</code> 或 <code>TS^*</code> 或 <code>TS^\ddagger</code><br>
+          換行：直接按 Enter 或輸入 <code>\n</code> 或 <code>&lt;br&gt;</code>；跳脫：<code>\_</code>, <code>\^</code>
+        </div>
+      </div>
+    </div>
+
+    <!-- Collapsible Reference Lines & Annotations -->
+    <div id="annotation-section">
+      <div class="section-toggle" id="annotation-toggle">
+        <span id="lbl-annotation-title">▸ 參考線與標註 (Reference Lines &amp; Annotations)</span>
+        <button type="button" class="btn-panel btn-sm" id="btn-add-annotation" style="font-size:10px; padding:1px 6px;">+ 參考線</button>
+      </div>
+      <div id="annotation-body" class="section-body hidden">
+        <div id="annotation-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== Right Panel ====== -->
+  <div id="right-panel">
+    <div id="chart-wrapper">
+      <svg id="chart-svg"></svg>
+    </div>
+  </div>
+</main>
+
+<!-- ====== Unified Color Popover ====== -->
+<div id="color-popover" class="hidden">
+  <div class="color-popover-header">
+    <input type="color" id="pop-color-input" value="#d32f2f">
+    <input type="text" id="pop-color-hex" value="#D32F2F" maxlength="7">
+    <button type="button" class="color-popover-none-btn" id="pop-color-none">無底色</button>
+  </div>
+  <div class="color-popover-section">
+    <div class="color-popover-title" id="lbl-pop-recent">最近使用</div>
+    <div class="palette-swatches" id="pop-recent-swatches"></div>
+  </div>
+  <div class="color-popover-section">
+    <div class="color-popover-title" id="lbl-pop-presets">標準配色</div>
+    <div class="palette-swatches" id="pop-preset-swatches"></div>
+  </div>
+</div>
+
+<!-- ====== Node/Bar Style Popup ====== -->
+<div id="style-popup" class="hidden">
+  <button id="popup-close">✕</button>
+  <h4 id="popup-title">柱狀樣式</h4>
+  <div id="popup-body"></div>
+</div>
+
+<!-- ====== Presets Examples Modal ====== -->
+<div class="modal-overlay hidden" id="preset-examples-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="lbl-examples-modal-title">📑 內建經典反應自由能差範例庫 (Reaction Datasets)</h3>
+      <button class="modal-close" id="btn-close-examples-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px; color:#475569; line-height:1.4;">點擊下方任一科研經典體系即可一鍵載入數據與對應樣式：</p>
+      <div class="preset-list-grid" id="examples-list-container"></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn-panel" id="btn-cancel-examples">關閉</button>
+    </div>
+  </div>
+</div>
+
+<!-- ====== Batch Text Input Modal ====== -->
+<div class="modal-overlay hidden" id="batch-input-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="lbl-batch-modal-title">📋 批次輸入能差數據 (Batch Data Input)</h3>
+      <button class="modal-close" id="btn-close-batch-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px; color:#475569; line-height:1.4;">
+        每一行代表一個反應步，格式：<code>反應步名稱 [Tab或逗號] 能差數值</code><br>
+        例如：<br>
+        <code>NO_3 --> NO_2	-0.835</code><br>
+        <code>NO_2 --> NO_2H	-1.355</code><br>
+        <code>NO_2H --> NO	-0.308</code>
+      </p>
+      <textarea id="ta-batch-input" style="width:100%; height:180px; font-family:monospace; font-size:12px; padding:8px; border:1px solid var(--border); border-radius:4px; outline:none;"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn-panel" id="btn-cancel-batch">取消</button>
+      <button type="button" class="btn-panel btn-accent" id="btn-confirm-batch">✓ 匯入數據</button>
+    </div>
+  </div>
+</div>
+
+<!-- ====== Free Energy G to Delta G Calculator Modal ====== -->
+<div class="modal-overlay hidden" id="g-calculator-modal">
+  <div class="modal-box" style="max-width:580px;">
+    <div class="modal-header">
+      <h3>🧮 自由能 <i>G</i> ➔ 自動計算反應步能差 Δ<i>G</i></h3>
+      <button class="modal-close" id="btn-close-g-calc">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px; color:#475569; line-height:1.5;">
+        請依序貼上各反應中間體狀態的名稱與<b>總自由能 <i>G</i></b>（每行一個狀態，以 Tab 或逗號分隔）：<br>
+        工具將自動為您計算各步能差 <b>Δ<i>G</i><sub><i>i</i></sub> = <i>G</i><sub><i>i</i></sub> − <i>G</i><sub><i>i</i>−1</sub></b> 並自動生成 <code>State<sub><i>i</i>−1</sub> → State<sub><i>i</i></sub></code> 反應步名稱！
+      </p>
+      <textarea id="ta-g-calc-input" style="width:100%; height:160px; font-family:monospace; font-size:12px; padding:8px; border:1px solid var(--border); border-radius:4px; outline:none;" placeholder="例如：&#10;NO_3	0.000&#10;NO_2	-0.835&#10;NO_2H	-2.190&#10;NO	-2.498"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn-panel" id="btn-cancel-g-calc">取消</button>
+      <button type="button" class="btn-panel btn-accent" id="btn-confirm-g-calc">✓ 計算並套用能差</button>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden inputs for file I/O -->
+<input type="file" id="file-input" accept=".json" style="display:none;">
+
+<script>
+// ============================================================
+// 1. I18N & LANGUAGE DICTIONARY
+// ============================================================
+let currentLang = 'zh';
+
+const LANG = {
+  zh: {
+    title: '⚛ 反應自由能差繪圖工具',
+    langBtn: 'EN',
+    inputUnit: '輸入單位：', displayUnit: '顯示單位：',
+    canvasRatio: '比例：', ratioAuto: '自適應', ratioCustom: '自訂',
+    dpiLabel: '解析度：',
+    btnPresets: '範例庫',
+    addText: '🔤 + 文字',
+    addRefLine: '📏 + 參考線',
+    thName: '反應步 / 中間體 (Reaction Step)',
+    thEnergy: '能差 (ΔG)',
+    thColor: '色',
+    addState: '+ 新增步驟',
+    deleteSelected: '✕ 刪除選取',
+    selectAll: '全選', deselect: '取消',
+    pasteHint: '支援 Excel / TSV 複製貼上 (Ctrl+V)',
+    batchInput: '📋 批次輸入',
+    batchTitle: '▸ 批量操作（套用至選取項目）',
+    apply: '套用',
+    addGroup: '+ 體系',
+    renamePrompt: '請輸入體系/路徑名稱 (支援上下標如 HPO_4^{2-}):',
+    editLegendPrompt: '修改圖例名稱 (支援化學式上下標):',
+    legendResizeHint: '拖曳右下角調整圖例大小，雙擊還原自動緊湊尺寸',
+    chartOptionsTitle: '▸ 圖表與座標軸設定 (Chart & Axis Options)',
+    annotationTitle: '▸ 參考線與標註 (Reference Lines & Annotations)',
+    addAnnotation: '+ 參考線',
+    noAnnotations: '尚未新增參考線。點擊上方「+ 參考線」新增。',
+    showName: '顯示名稱', hideName: '隱藏名稱',
+    showVal: '顯示數值', hideVal: '隱藏數值',
+    pastedRows: '已成功貼上 {n} 筆能差數據！',
+    toastPresetExported: '已成功匯出樣式預設檔：',
+    toastPresetImported: '已成功套用圖表樣式設定！',
+    exportSVGMsg: '已匯出 SVG 向量圖',
+    exportPNGMsg: '已匯出高解析 PNG 圖檔',
+    color: '顏色',
+    /* Chart Options */
+    chartTitleHead: '圖表標題 (Chart Title)',
+    showChartTitle: '顯示圖表標題',
+    chartTitleText: '標題：',
+    axisFrameHead: '座標軸線與圖框 (Axes & Frame)',
+    showBottomAxis: '底部 X 軸', showLeftAxis: '左側 Y 軸',
+    showTopAxis: '頂部軸線', showRightAxis: '右側軸線',
+    axisThickness: '軸線粗細 (px)：',
+    tickDirHead: '刻度線方向 (Tick Directions)',
+    tickDirBottom: '底部 (X)：', tickDirLeft: '左側 (Y)：',
+    tickDirTop: '頂部：', tickDirRight: '右側：',
+    tickDirOut: '向外 (Out)', tickDirIn: '向內 (In)', tickDirBoth: '雙向 (Both)', tickDirNone: '無 (None)',
+    axisTitleHead: '軸標題與 X 軸排版 (Axis & Step Formats)',
+    optShowXTitle: '顯示 X 軸標題', optXTitleText: 'X 標題：', yAxisTitleText: 'Y 標題：',
+    xLabelRotation: 'X 標籤旋轉：', xLabelAlign: '標籤對齊：',
+    alignEnd: '靠右/末端 (End)', alignCenter: '置中對齊 (Center)', alignStart: '靠左/起點 (Start)',
+    xLabelMultiline: '排版風格：', xLabelOffsetY: '垂直距離：',
+    zeroGridHead: '基準線與網格 (Zero Line & Grid)',
+    showZeroLine: '高亮 y=0 基準線', showGrid: '顯示背景網格',
+    zeroThick: 'y=0 粗細：', gridDash: '網格虛線：',
+    barGeomHead: '柱狀排列與間距 (Bar Geometry)',
+    groupPadding: '分類間距：', barPadding: '組內間距：',
+    barBorderWidth: '柱子邊框粗細 (px)：', barBorderColor: '邊框色：',
+    valLabelHead: '數值標籤排版 (Value Labels)',
+    showValLabels: '顯示柱頂/底數值', optDecimals: '小數位數：',
+    valLabelOffset: '標籤距離 (px)：', valLabelColor: '字體顏色：',
+    yrangeTitle: 'Y 軸數值範圍 (Y-Axis Range)',
+    yMin: 'Y Min：', yMax: 'Y Max：', resetYRange: '↺ 重設',
+    typographyHead: '字型與排版規格 (Typography & Fonts)',
+    fontFamily: '全域字型：', customFont: '名稱：',
+    btnLoadFontFile: '📂 載入字型檔 (.ttf/.otf)',
+    thTypoItem: '圖表元素', thTypoSize: '字級 (px)', thTypoWeight: '粗細',
+    axisTitleTypo: '軸標題 (X / Y)', tickTypo: '軸刻度數值 (Ticks)',
+    nameTypo: '反應步名稱 (X-Axis)', energyTypo: '柱頂能差數值 (Values)', legendTypo: '圖例文字 (Legend)',
+    plotMarginsTitle: '圖表留白與邊界 (Margins)',
+    marginTop: '上：', marginBottom: '下：', marginLeft: '左：', marginRight: '右：',
+    hintPlotMargins: '💡 可直接用滑鼠拖曳圖表四邊或四角調整範圍',
+  },
+  en: {
+    title: '⚛ Reaction Free Energy Gap Plotter',
+    langBtn: '中文',
+    inputUnit: 'Input Unit:', displayUnit: 'Display Unit:',
+    canvasRatio: 'Ratio:', ratioAuto: 'Auto Fit', ratioCustom: 'Custom',
+    dpiLabel: 'Resolution:',
+    btnPresets: 'Presets',
+    addText: '🔤 + Text',
+    addRefLine: '📏 + Line',
+    thName: 'Reaction Step / Intermediate',
+    thEnergy: 'Energy Gap (ΔG)',
+    thColor: 'Color',
+    addState: '+ Add Step',
+    deleteSelected: '✕ Delete',
+    selectAll: 'All', deselect: 'None',
+    pasteHint: 'Support Excel / TSV copy-paste (Ctrl+V)',
+    batchInput: '📋 Batch Input',
+    batchTitle: '▸ Batch Style (Apply to selected)',
+    apply: 'Apply',
+    addGroup: '+ Group',
+    renamePrompt: 'Rename system / pathway (supports sub/superscript e.g. HPO_4^{2-}):',
+    editLegendPrompt: 'Edit legend title:',
+    legendResizeHint: 'Drag corner to resize legend box, double click to reset',
+    chartOptionsTitle: '▸ Chart & Axis Options',
+    annotationTitle: '▸ Reference Lines & Annotations',
+    addAnnotation: '+ Add Line',
+    noAnnotations: 'No reference lines yet. Click "+ Add Line" above.',
+    showName: 'Show Name', hideName: 'Hide Name',
+    showVal: 'Show Value', hideVal: 'Hide Value',
+    pastedRows: 'Pasted {n} step rows successfully!',
+    toastPresetExported: 'Exported style preset: ',
+    toastPresetImported: 'Successfully applied style preset!',
+    exportSVGMsg: 'Exported SVG vector graphic',
+    exportPNGMsg: 'Exported high-res PNG image',
+    color: 'Color',
+    /* Chart Options */
+    chartTitleHead: 'Chart Title',
+    showChartTitle: 'Show Chart Title',
+    chartTitleText: 'Title:',
+    axisFrameHead: 'Axes & Frame',
+    showBottomAxis: 'Bottom X Axis', showLeftAxis: 'Left Y Axis',
+    showTopAxis: 'Top Axis', showRightAxis: 'Right Axis',
+    axisThickness: 'Axis Thickness (px):',
+    tickDirHead: 'Tick Directions',
+    tickDirBottom: 'Bottom (X):', tickDirLeft: 'Left (Y):',
+    tickDirTop: 'Top:', tickDirRight: 'Right:',
+    tickDirOut: 'Out', tickDirIn: 'In', tickDirBoth: 'Both', tickDirNone: 'None',
+    axisTitleHead: 'Axis Titles & Step Formats',
+    optShowXTitle: 'Show X Title', optXTitleText: 'X Title:', yAxisTitleText: 'Y Title:',
+    xLabelRotation: 'X Rotation:', xLabelAlign: 'Label Align:',
+    alignEnd: 'End / Angled', alignCenter: 'Center', alignStart: 'Start',
+    xLabelMultiline: 'Style:', xLabelOffsetY: 'Y Offset:',
+    zeroGridHead: 'Zero Line & Grid',
+    showZeroLine: 'Highlight y=0 Baseline', showGrid: 'Show Gridlines',
+    zeroThick: 'y=0 Thickness:', gridDash: 'Grid Dash:',
+    barGeomHead: 'Bar Geometry & Spacing',
+    groupPadding: 'Group Padding:', barPadding: 'Bar Padding:',
+    barBorderWidth: 'Bar Border Width (px):', barBorderColor: 'Border Color:',
+    valLabelHead: 'Value Labels',
+    showValLabels: 'Show Value Labels', optDecimals: 'Decimals:',
+    valLabelOffset: 'Label Offset (px):', valLabelColor: 'Text Color:',
+    yrangeTitle: 'Y-Axis Range',
+    yMin: 'Y Min:', yMax: 'Y Max:', resetYRange: '↺ Reset',
+    typographyHead: 'Typography & Fonts',
+    fontFamily: 'Global Font:', customFont: 'Custom Font:',
+    btnLoadFontFile: '📂 Load Font File (.ttf/.otf)',
+    thTypoItem: 'Element', thTypoSize: 'Size (px)', thTypoWeight: 'Weight',
+    axisTitleTypo: 'Axis Titles (X / Y)', tickTypo: 'Axis Ticks',
+    nameTypo: 'Reaction Steps (X-Axis)', energyTypo: 'Value Labels', legendTypo: 'Legend Text',
+    plotMarginsTitle: 'Plot Area Margins',
+    marginTop: 'Top:', marginBottom: 'Bottom:', marginLeft: 'Left:', marginRight: 'Right:',
+    hintPlotMargins: '💡 Drag chart 4 borders or corners to adjust plot area',
+  }
+};
+function t(key) { return (LANG[currentLang] && LANG[currentLang][key]) || (LANG['en'] && LANG['en'][key]) || key; }
+
+// ============================================================
+// 2. CONSTANTS & PALETTES
+// ============================================================
+const UNITS = ['eV', 'kcal/mol', 'kJ/mol', 'Hartree'];
+const TO_EV = { 'eV': 1, 'kcal/mol': 1/23.0609, 'kJ/mol': 1/96.485, 'Hartree': 27.2114 };
+const FROM_EV = { 'eV': 1, 'kcal/mol': 23.0609, 'kJ/mol': 96.485, 'Hartree': 1/27.2114 };
+
+const GROUP_COLORS = ['#c62828', '#1565c0', '#2e7d32', '#e65100', '#6a1b9a', '#00838f', '#4e342e', '#37474f'];
+const PRESET_COLORS = [
+  '#c62828', '#d32f2f', '#1565c0', '#1976d2', '#2e7d32', '#388e3c',
+  '#e65100', '#f57c00', '#6a1b9a', '#7b1fa2', '#00838f', '#0097a7',
+  '#212121', '#424242', '#546e7a', '#c2185b', '#4e342e', '#fbc02d'
+];
+
+const STORAGE_KEY = 'reaction-energy-gap-plotter-v2';
+
+// ============================================================
+// 3. CHEMICAL FORMULA / RICH TEXT PARSER
+// ============================================================
+function parseRichText(str) {
+  if (str === undefined || str === null || str === '') return [];
+  let s = String(str)
+    // Strip inline LaTeX math $...$ delimiters
+    .replace(/\$([^\$]+)\$/g, '$1')
+    .replace(/\$/g, '')
+    // Standard reaction arrows
+    .replace(/-->|->|\\rightarrow|\\to/g, ' → ')
+    .replace(/<--|<-|\\leftarrow/g, ' ← ')
+    .replace(/<-->|<->|\\leftrightarrow/g, ' ↔ ')
+    .replace(/\\downarrow|\\down/g, ' ↓ ')
+    .replace(/\\uparrow|\\up/g, ' ↑ ')
+    // Scientific symbols & transition states
+    .replace(/\\ddagger/g, '‡')
+    .replace(/\\dagger/g, '†')
+    .replace(/\\star/g, '★')
+    .replace(/\\circ/g, '°')
+    .replace(/\\AA|\\angstrom/gi, 'Å')
+    .replace(/\\pm/g, '±')
+    .replace(/\\mp/g, '∓')
+    .replace(/\\times/g, '×')
+    .replace(/\\cdot/g, '·')
+    .replace(/\\approx/g, '≈')
+    .replace(/\\neq/g, '≠')
+    .replace(/\\leq|\\le/g, '≤')
+    .replace(/\\geq|\\ge/g, '≥')
+    .replace(/\\infty/g, '∞')
+    // Greek letters (case-sensitive)
+    .replace(/\\Delta/g, 'Δ')
+    .replace(/\\delta/g, 'δ')
+    .replace(/\\Alpha/g, 'Α')
+    .replace(/\\alpha/g, 'α')
+    .replace(/\\Beta/g, 'Β')
+    .replace(/\\beta/g, 'β')
+    .replace(/\\Gamma/g, 'Γ')
+    .replace(/\\gamma/g, 'γ')
+    .replace(/\\Theta/g, 'Θ')
+    .replace(/\\theta/g, 'θ')
+    .replace(/\\Lambda/g, 'Λ')
+    .replace(/\\lambda/g, 'λ')
+    .replace(/\\Sigma/g, 'Σ')
+    .replace(/\\sigma/g, 'σ')
+    .replace(/\\Omega/g, 'Ω')
+    .replace(/\\omega/g, 'ω')
+    .replace(/\\Phi/g, 'Φ')
+    .replace(/\\phi/g, 'φ')
+    .replace(/\\Psi/g, 'Ψ')
+    .replace(/\\psi/g, 'ψ')
+    .replace(/\\eta/g, 'η')
+    .replace(/\\mu/g, 'μ')
+    .replace(/\\nu/g, 'ν')
+    .replace(/\\pi/g, 'π')
+    .replace(/\\tau/g, 'τ')
+    .replace(/\\rho/g, 'ρ')
+    .replace(/\\chi/g, 'χ')
+    .replace(/\\kappa/g, 'κ')
+    .replace(/\\epsilon/g, 'ε');
+
+  s = s.replace(/<sub>(.*?)<\/sub>/gi, '_{$1}')
+       .replace(/<sup>(.*?)<\/sup>/gi, '^{$1}');
+
+  const tokens = [];
+  let i = 0;
+  let curNormal = '';
+
+  function flushNormal() {
+    if (curNormal) {
+      tokens.push({ type: 'normal', text: curNormal });
+      curNormal = '';
+    }
+  }
+
+  while (i < s.length) {
+    if (s[i] === '\\' && i + 1 < s.length && (s[i+1] === '_' || s[i+1] === '^' || s[i+1] === '\\' || s[i+1] === '{' || s[i+1] === '}')) {
+      curNormal += s[i+1];
+      i += 2;
+    } else if (s[i] === '_' || s[i] === '^') {
+      flushNormal();
+      const type = (s[i] === '_') ? 'sub' : 'sup';
+      i++;
+      if (i < s.length && s[i] === '{') {
+        i++;
+        let content = '';
+        while (i < s.length && s[i] !== '}') {
+          if (s[i] === '\\' && i + 1 < s.length && (s[i+1] === '}' || s[i+1] === '\\')) {
+            content += s[i+1];
+            i += 2;
+          } else {
+            content += s[i];
+            i++;
+          }
+        }
+        if (i < s.length && s[i] === '}') i++;
+        if (content) tokens.push({ type, text: content });
+      } else if (i < s.length) {
+        tokens.push({ type, text: s[i] });
+        i++;
+      }
+    } else {
+      curNormal += s[i];
+      i++;
+    }
+  }
+  flushNormal();
+  return tokens;
+}
+
+function renderRichText(textSel, rawStr) {
+  textSel.selectAll('*').remove();
+  textSel.text('');
+  if (rawStr === undefined || rawStr === null || rawStr === '') return;
+
+  let normalizedStr = String(rawStr)
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/\\n/g, '\n');
+
+  const rawLines = normalizedStr.split(/\r?\n/);
+  const baseX = parseFloat(textSel.attr('x')) || 0;
+  const domBaseline = textSel.attr('dominant-baseline') || '';
+  const isCentered = (domBaseline === 'middle' || domBaseline === 'central');
+  const N = rawLines.length;
+
+  rawLines.forEach((lineStr, lineIdx) => {
+    let dy = '0';
+    if (lineIdx === 0) {
+      if (N > 1 && isCentered) dy = (- (N - 1) * 0.6) + 'em';
+      else dy = '0';
+    } else {
+      dy = '1.25em';
+    }
+
+    const lineTspan = textSel.append('tspan')
+      .attr('x', baseX)
+      .attr('dy', dy);
+
+    const tokens = parseRichText(lineStr);
+    if (tokens.length === 0) {
+      lineTspan.text('\u00A0');
+    } else {
+      tokens.forEach(tok => {
+        const tspan = lineTspan.append('tspan').text(tok.text);
+        if (tok.type === 'sub') {
+          tspan.attr('baseline-shift', 'sub').attr('font-size', '75%');
+        } else if (tok.type === 'sup') {
+          tspan.attr('baseline-shift', 'super').attr('font-size', '75%');
+        }
+      });
+    }
+  });
+}
+
+// ============================================================
+// 4. DATA MODEL & STATE
+// ============================================================
+let nextId = 1;
+function gid() { return 'g' + (nextId++); }
+
+function defaultApp() {
+  return {
+    inputUnit: 'eV', displayUnit: 'eV', activeGroup: 0, lang: 'zh',
+    canvasConfig: { ratio: '16:9', width: 960, height: 540, scale: 3 },
+    chartOptions: {
+      showChartTitle: false, chartTitleText: '', chartTitleFontSize: 16, chartTitleFontWeight: '700', chartTitleOffset: { x: 0, y: 0 },
+      showBottomAxis: true, showLeftAxis: true, showTopAxis: true, showRightAxis: true, axisThickness: 1.2,
+      tickDirBottom: 'out', tickDirLeft: 'out', tickDirTop: 'none', tickDirRight: 'none',
+      showXTitle: true, xTitleText: 'Reaction Step', yTitleText: 'Energy Gap',
+      xTitleOffset: { x: 0, y: 0 }, yTitleOffset: { x: 0, y: 0 },
+      xLabelRotation: '0', xLabelAlign: 'center', xLabelOffsetY: 0, xLabelMultiline: 'single',
+      showZeroLine: true, zeroLineThickness: 1.2,
+      showGrid: true, gridDash: '4,4',
+      groupPadding: 0.25, barPadding: 0.02, barBorderWidth: 1.0, barBorderColor: '#000000',
+      showValLabels: true, decimals: 3, valLabelOffset: 6, valLabelColorMode: 'black',
+      yMin: null, yMax: null,
+      fontFamily: 'Times New Roman, Times, serif', customFont: '',
+      axisTitleFontSize: 14, axisTitleFontWeight: '700',
+      axisTickFontSize: 12, axisTickFontWeight: '400',
+      nameFontSize: 12, nameFontWeight: '700',
+      energyFontSize: 11, energyFontWeight: '700',
+      legendFontSize: 13, legendFontWeight: '500',
+      plotMargins: { top: null, bottom: null, left: null, right: null }
+    },
+    legend: { visible: true, x: 85, y: 40, orientation: 'vertical', showBorder: true, titles: {}, customWidth: null, customHeight: null },
+    textAnnotations: [],
+    referenceLines: [],
+    recentColors: ['#c62828', '#1565c0', '#2e7d32', '#e65100', '#212121'],
+    // Shared intermediates / steps list across systems
+    intermediates: [
+      { id: 'i1', name: 'NO_3 → NO_2', showName: true },
+      { id: 'i2', name: 'NO_2 → NO_2H', showName: true },
+      { id: 'i3', name: 'NO_2H → NO', showName: true },
+      { id: 'i4', name: 'NO → NOH', showName: true },
+      { id: 'i5', name: 'NOH → N', showName: true },
+      { id: 'i6', name: 'N → NH', showName: true },
+      { id: 'i7', name: 'NH → NH_2', showName: true },
+      { id: 'i8', name: 'NH_2 → NH_3', showName: true }
+    ],
+    // Multi-system groups (e.g. HPO4^2- vs Pristine)
+    groups: [
+      {
+        id: gid(), name: 'HPO_4^{2-}', color: '#c62828', visible: true,
+        values: {
+          'i1': -0.835,
+          'i2': -1.355,
+          'i3': -0.308,
+          'i4': 0.750,
+          'i5': -0.843,
+          'i6': -0.965,
+          'i7': -1.274,
+          'i8': 0.633
+        },
+        customColors: {},
+        showValues: {}
+      },
+      {
+        id: gid(), name: 'Pristine', color: '#1565c0', visible: true,
+        values: {
+          'i1': -1.870,
+          'i2': 0.159,
+          'i3': -1.308,
+          'i4': 0.851,
+          'i5': -0.704,
+          'i6': -1.130,
+          'i7': -1.314,
+          'i8': 0.313
+        },
+        customColors: {},
+        showValues: {}
+      }
+    ]
+  };
+}
+
+let app = defaultApp();
+let selectedRows = new Set();
+const undoStack = [], redoStack = [];
+const MAX_UNDO = 50;
+let prevSnapshot = null;
+
+// ============================================================
+// 5. PRESETS / EXAMPLES LIBRARY
+// ============================================================
+const PRESET_EXAMPLES = [
+  {
+    id: 'no3rr',
+    title: '硝酸鹽還原反應 (NO3RR on HPO4^2- vs Pristine - 步驟式)',
+    titleEn: 'Nitrate Reduction (NO3RR on HPO4^2- vs Pristine - Step-by-Step)',
+    desc: '使用者參考圖標準數據，包含 NO3 → NO2 → NO2H → NO → NOH → N → NH → NH2 → NH3 各步反應自由能差。',
+    descEn: 'Exact step-by-step energy gap dataset from user reference image comparing HPO4^2- and Pristine systems.',
+    load: () => {
+      app.intermediates = [
+        { id: 'i1', name: 'NO_3 → NO_2', showName: true },
+        { id: 'i2', name: 'NO_2 → NO_2H', showName: true },
+        { id: 'i3', name: 'NO_2H → NO', showName: true },
+        { id: 'i4', name: 'NO → NOH', showName: true },
+        { id: 'i5', name: 'NOH → N', showName: true },
+        { id: 'i6', name: 'N → NH', showName: true },
+        { id: 'i7', name: 'NH → NH_2', showName: true },
+        { id: 'i8', name: 'NH_2 → NH_3', showName: true }
+      ];
+      app.groups = [
+        {
+          id: gid(), name: 'HPO_4^{2-}', color: '#c62828', visible: true,
+          values: { 'i1': -0.835, 'i2': -1.355, 'i3': -0.308, 'i4': 0.750, 'i5': -0.843, 'i6': -0.965, 'i7': -1.274, 'i8': 0.633 },
+          customColors: {}, showValues: {}
+        },
+        {
+          id: gid(), name: 'Pristine', color: '#1565c0', visible: true,
+          values: { 'i1': -1.870, 'i2': 0.159, 'i3': -1.308, 'i4': 0.851, 'i5': -0.704, 'i6': -1.130, 'i7': -1.314, 'i8': 0.313 },
+          customColors: {}, showValues: {}
+        }
+      ];
+      app.chartOptions.xTitleText = 'Reaction Step';
+      app.chartOptions.yTitleText = 'Energy Gap';
+      app.chartOptions.yMin = -2.0;
+      app.chartOptions.yMax = 1.0;
+      app.chartOptions.decimals = 3;
+      app.chartOptions.fontFamily = 'Times New Roman, Times, serif';
+    }
+  },
+  {
+    id: 'orr',
+    title: '氧還原/析氧反應 (ORR / OER on Pt vs RuO2)',
+    titleEn: 'Oxygen Reduction & Evolution (ORR / OER: Pt vs RuO2)',
+    desc: '經典四電子催化步驟：O2 → *OOH → *O → *OH → H2O。',
+    descEn: 'Classic 4-electron mechanism steps: O2 -> *OOH -> *O -> *OH -> H2O.',
+    load: () => {
+      app.intermediates = [
+        { id: 'i1', name: 'O_2 → ^*OOH', showName: true },
+        { id: 'i2', name: '^*OOH → ^*O', showName: true },
+        { id: 'i3', name: '^*O → ^*OH', showName: true },
+        { id: 'i4', name: '^*OH → H_2O', showName: true }
+      ];
+      app.groups = [
+        {
+          id: gid(), name: 'Pt(111)', color: '#2e7d32', visible: true,
+          values: { 'i1': -0.450, 'i2': -0.750, 'i3': 0.420, 'i4': -1.710 },
+          customColors: {}, showValues: {}
+        },
+        {
+          id: gid(), name: 'RuO_2', color: '#e65100', visible: true,
+          values: { 'i1': -0.820, 'i2': 0.170, 'i3': -0.800, 'i4': -0.550 },
+          customColors: {}, showValues: {}
+        }
+      ];
+      app.chartOptions.xTitleText = 'Reaction Step';
+      app.chartOptions.yTitleText = 'Free Energy Gap (eV)';
+      delete app.chartOptions.yMin; delete app.chartOptions.yMax;
+      app.chartOptions.decimals = 2;
+    }
+  },
+  {
+    id: 'co2rr',
+    title: '二氧化碳還原反應 (CO2RR to CO & CH4)',
+    titleEn: 'CO2 Reduction Reaction (CO2RR to CO & CH4)',
+    desc: '比較 Cu(111) 與 Au(111) 上 *COOH, *CO, *CHO 等中間體轉變能差。',
+    descEn: 'Comparing step-by-step energy gaps on Cu(111) vs Au(111).',
+    load: () => {
+      app.intermediates = [
+        { id: 'i1', name: 'CO_2 → ^*COOH', showName: true },
+        { id: 'i2', name: '^*COOH → ^*CO', showName: true },
+        { id: 'i3', name: '^*CO → ^*CHO', showName: true },
+        { id: 'i4', name: '^*CHO → ^*CH_2O', showName: true },
+        { id: 'i5', name: '^*CH_2O → CH_4', showName: true }
+      ];
+      app.groups = [
+        {
+          id: gid(), name: 'Cu(111)', color: '#e65100', visible: true,
+          values: { 'i1': 0.420, 'i2': -1.040, 'i3': 1.360, 'i4': -1.120, 'i5': -0.870 },
+          customColors: {}, showValues: {}
+        },
+        {
+          id: gid(), name: 'Au(111)', color: '#fbc02d', visible: true,
+          values: { 'i1': 0.850, 'i2': -0.730, 'i3': 1.530, 'i4': -1.450, 'i5': -1.000 },
+          customColors: {}, showValues: {}
+        }
+      ];
+      app.chartOptions.xTitleText = 'Reaction Step';
+      app.chartOptions.yTitleText = 'Energy Gap (eV)';
+      delete app.chartOptions.yMin; delete app.chartOptions.yMax;
+      app.chartOptions.decimals = 2;
+    }
+  }
+];
+
+// ============================================================
+// 6. HELPER FUNCTIONS
+// ============================================================
+function convertE(v, from, to) { if (from === to) return v; return v * TO_EV[from] * FROM_EV[to]; }
+function dispE(raw) { return convertE(raw || 0, app.inputUnit, app.displayUnit); }
+function fmtE(v, dec) {
+  const d = (dec !== undefined) ? dec : (app.chartOptions?.decimals !== undefined ? app.chartOptions.decimals : 3);
+  if (Math.abs(v) < 1e-7) return (0).toFixed(d);
+  return v.toFixed(d);
+}
+function ag() { return app.groups[app.activeGroup] || app.groups[0]; }
+function getActiveFontFamily() {
+  const ff = app.chartOptions?.fontFamily || 'Times New Roman, Times, serif';
+  if (ff === 'custom') {
+    return (app.chartOptions?.customFont || '').trim() || 'Times New Roman, Times, serif';
+  }
+  return ff;
+}
+
+function getRecentColors() {
+  if (!app.recentColors || !app.recentColors.length) {
+    try {
+      const saved = localStorage.getItem('recent-colors');
+      if (saved) app.recentColors = JSON.parse(saved);
+    } catch(e){}
+  }
+  if (!app.recentColors || !app.recentColors.length) {
+    app.recentColors = ['#c62828', '#1565c0', '#2e7d32', '#e65100', '#212121'];
+  }
+  return app.recentColors;
+}
+
+function addRecentColor(hex) {
+  if (!hex || typeof hex !== 'string' || hex === 'none' || hex === 'transparent') return;
+  hex = hex.toLowerCase();
+  getRecentColors();
+  const idx = app.recentColors.indexOf(hex);
+  if (idx !== -1) app.recentColors.splice(idx, 1);
+  app.recentColors.unshift(hex);
+  if (app.recentColors.length > 14) app.recentColors.pop();
+  try { localStorage.setItem('recent-colors', JSON.stringify(app.recentColors)); } catch(e){}
+}
+
+// ============================================================
+// 7. COLOR PICKER POPOVER
+// ============================================================
+let activeColorPicker = null;
+
+function hideColorPopover() {
+  const pop = document.getElementById('color-popover');
+  if (pop) pop.classList.add('hidden');
+  if (activeColorPicker && activeColorPicker.onSave) activeColorPicker.onSave();
+  activeColorPicker = null;
+}
+
+function openColorPopover(anchorEl, currentColor, onChange, opts = {}) {
+  const pop = document.getElementById('color-popover');
+  const popInp = document.getElementById('pop-color-input');
+  const popHex = document.getElementById('pop-color-hex');
+  const popNone = document.getElementById('pop-color-none');
+  if (!pop) return;
+
+  activeColorPicker = {
+    targetBtn: anchorEl,
+    currentColor: currentColor || '#c62828',
+    onChange: onChange,
+    onSave: opts.onSave || null,
+    showNone: !!opts.showNone
+  };
+
+  const isNone = (currentColor === 'none' || currentColor === 'transparent' || !currentColor);
+  if (popInp) popInp.value = isNone ? '#c62828' : currentColor;
+  if (popHex) popHex.value = isNone ? 'NONE' : currentColor.toUpperCase();
+
+  if (popNone) {
+    popNone.style.display = opts.showNone ? 'inline-block' : 'none';
+  }
+
+  renderColorPopoverSwatches();
+  pop.classList.remove('hidden');
+
+  const rect = anchorEl.getBoundingClientRect();
+  let left = rect.left;
+  let top = rect.bottom + 4;
+  if (left + 230 > window.innerWidth) left = window.innerWidth - 235;
+  if (left < 10) left = 10;
+  if (top + 210 > window.innerHeight) top = Math.max(10, rect.top - 215);
+
+  pop.style.left = left + 'px';
+  pop.style.top = top + 'px';
+}
+
+function renderColorPopoverSwatches() {
+  if (!activeColorPicker) return;
+  const cur = (activeColorPicker.currentColor || '').toLowerCase();
+  const popRecent = document.getElementById('pop-recent-swatches');
+  const popPresets = document.getElementById('pop-preset-swatches');
+
+  if (popRecent) {
+    popRecent.innerHTML = '';
+    getRecentColors().forEach(c => {
+      const sw = document.createElement('div');
+      sw.className = 'color-swatch' + (c.toLowerCase() === cur ? ' active' : '');
+      sw.style.backgroundColor = c;
+      sw.title = c;
+      sw.onclick = e => { e.stopPropagation(); applyColorFromPopover(c); };
+      popRecent.appendChild(sw);
+    });
+  }
+
+  if (popPresets) {
+    popPresets.innerHTML = '';
+    PRESET_COLORS.forEach(c => {
+      const sw = document.createElement('div');
+      sw.className = 'color-swatch' + (c.toLowerCase() === cur ? ' active' : '');
+      sw.style.backgroundColor = c;
+      sw.title = c;
+      sw.onclick = e => { e.stopPropagation(); applyColorFromPopover(c); };
+      popPresets.appendChild(sw);
+    });
+  }
+}
+
+function applyColorFromPopover(color) {
+  if (!activeColorPicker) return;
+  activeColorPicker.currentColor = color;
+  const isNone = (color === 'none' || color === 'transparent');
+
+  const popInp = document.getElementById('pop-color-input');
+  const popHex = document.getElementById('pop-color-hex');
+
+  if (!isNone) {
+    if (popInp) popInp.value = color;
+    if (popHex) popHex.value = color.toUpperCase();
+    addRecentColor(color);
+  } else {
+    if (popHex) popHex.value = 'NONE';
+  }
+
+  if (activeColorPicker.targetBtn) {
+    activeColorPicker.targetBtn.setAttribute('data-color', color);
+    updateColorButtonVisual(activeColorPicker.targetBtn, color);
+  }
+
+  if (activeColorPicker.onChange) activeColorPicker.onChange(color);
+  renderColorPopoverSwatches();
+}
+
+function updateColorButtonVisual(btn, color) {
+  if (!btn) return;
+  if (color === 'none' || color === 'transparent' || !color) {
+    btn.classList.add('is-none');
+    btn.style.backgroundColor = '';
+    btn.textContent = '✕';
+  } else {
+    btn.classList.remove('is-none');
+    btn.style.backgroundColor = color;
+    btn.textContent = '';
+  }
+}
+
+function createColorButton(initialColor, onChange, opts = {}) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'color-btn' + ((initialColor === 'none' || !initialColor) ? ' is-none' : '');
+  btn.setAttribute('data-color', initialColor || 'none');
+  if (opts.title) btn.title = opts.title;
+  updateColorButtonVisual(btn, initialColor || 'none');
+
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    const cur = btn.getAttribute('data-color') || initialColor || '#c62828';
+    openColorPopover(btn, cur, (newCol) => {
+      btn.setAttribute('data-color', newCol);
+      updateColorButtonVisual(btn, newCol);
+      onChange(newCol);
+    }, opts);
+  };
+  return btn;
+}
+
+function setupColorPopoverEvents() {
+  const pop = document.getElementById('color-popover');
+  const popInp = document.getElementById('pop-color-input');
+  const popHex = document.getElementById('pop-color-hex');
+  const popNone = document.getElementById('pop-color-none');
+  if (!pop) return;
+
+  if (popInp) {
+    popInp.oninput = () => applyColorFromPopover(popInp.value);
+    popInp.onchange = () => { addRecentColor(popInp.value); saveState(); };
+  }
+  if (popHex) {
+    popHex.onchange = () => {
+      let val = popHex.value.trim();
+      if (!val.startsWith('#') && /^[0-9A-Fa-f]{6}$/.test(val)) val = '#' + val;
+      if (/^#[0-9A-Fa-f]{6}$/.test(val) || /^#[0-9A-Fa-f]{3}$/.test(val)) {
+        applyColorFromPopover(val);
+        saveState();
+      } else if (val.toUpperCase() === 'NONE') {
+        applyColorFromPopover('none');
+        saveState();
+      }
+    };
+  }
+  if (popNone) {
+    popNone.onclick = e => { e.stopPropagation(); applyColorFromPopover('none'); saveState(); };
+  }
+  document.addEventListener('click', e => {
+    if (pop && !pop.contains(e.target) && (!activeColorPicker || !activeColorPicker.targetBtn || !activeColorPicker.targetBtn.contains(e.target))) {
+      hideColorPopover();
+    }
+  });
+}
+
+// ============================================================
+// 8. GROUP & INTERMEDIATE MANAGEMENT
+// ============================================================
+function renderGroups() {
+  const c = document.getElementById('group-tabs');
+  c.innerHTML = '';
+  app.groups.forEach((g, i) => {
+    const tab = document.createElement('div');
+    tab.className = 'group-tab' + (i === app.activeGroup ? ' active' : '');
+    tab.innerHTML = `<span class="color-dot" style="background:${g.color}"></span>`;
+    
+    // Name with formatted rich text span
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = g.name;
+    tab.appendChild(nameSpan);
+
+    if (app.groups.length > 1) {
+      const x = document.createElement('span');
+      x.className = 'tab-close';
+      x.textContent = '×';
+      x.title = '刪除此體系';
+      x.onclick = e => { e.stopPropagation(); delGroup(i); };
+      tab.appendChild(x);
+    }
+    tab.onclick = () => switchGroup(i);
+    tab.ondblclick = e => {
+      e.stopPropagation();
+      const n = prompt(t('renamePrompt'), g.name);
+      if (n && n.trim()) { g.name = n.trim(); saveAndRender(); }
+    };
+    c.appendChild(tab);
+  });
+
+  const add = document.createElement('div');
+  add.className = 'group-tab';
+  add.id = 'btn-add-group';
+  add.textContent = t('addGroup');
+  add.onclick = addGroup;
+  c.appendChild(add);
+}
+
+function switchGroup(i) {
+  app.activeGroup = i;
+  selectedRows.clear();
+  renderGroups();
+  renderTable();
+  renderChart();
+  updateBatch();
+}
+
+function addGroup() {
+  const ci = app.groups.length % GROUP_COLORS.length;
+  const col = GROUP_COLORS[ci];
+  const name = 'System ' + String.fromCharCode(65 + app.groups.length);
+  const values = {};
+  app.intermediates.forEach(it => { values[it.id] = 0.000; });
+
+  app.groups.push({
+    id: gid(), name: name, color: col, visible: true,
+    values: values, customColors: {}, showValues: {}
+  });
+  app.activeGroup = app.groups.length - 1;
+  saveAndRender();
+}
+
+function delGroup(i) {
+  if (app.groups.length <= 1) return;
+  app.groups.splice(i, 1);
+  if (app.activeGroup >= app.groups.length) app.activeGroup = app.groups.length - 1;
+  selectedRows.clear();
+  saveAndRender();
+}
+
+// ============================================================
+// 9. DATA TABLE
+// ============================================================
+let lastClicked = null;
+
+function renderTable() {
+  const tbody = document.getElementById('table-body');
+  tbody.innerHTML = '';
+  const grp = ag();
+
+  app.intermediates.forEach((it, idx) => {
+    const tr = document.createElement('tr');
+    if (selectedRows.has(idx)) tr.classList.add('selected');
+
+    // 1. Checkbox
+    const td0 = document.createElement('td');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = selectedRows.has(idx);
+    cb.onclick = e => { e.stopPropagation(); handleSel(idx, e); };
+    td0.appendChild(cb);
+    tr.appendChild(td0);
+
+    // 2. Index
+    const tdIdx = document.createElement('td');
+    tdIdx.className = 'col-idx';
+    tdIdx.textContent = idx + 1;
+    tr.appendChild(tdIdx);
+
+    // 3. Name + Eye Toggle
+    const td1 = document.createElement('td');
+    const nw = document.createElement('div');
+    nw.className = 'name-cell-wrap';
+    const inpN = document.createElement('input');
+    inpN.type = 'text';
+    inpN.value = it.name;
+    inpN.placeholder = '反應步名稱 (如 A --> B)';
+    inpN.onchange = () => { it.name = inpN.value.trim() || `Step_${idx+1}`; saveAndRender(); };
+
+    const eye = document.createElement('button');
+    eye.type = 'button';
+    eye.className = 'btn-toggle-eye' + (it.showName === false ? ' hidden-item' : '');
+    eye.textContent = it.showName === false ? '🚫' : '👁';
+    eye.title = it.showName === false ? '已隱藏名稱 (點擊顯示)' : '已顯示名稱 (點擊隱藏)';
+    eye.onclick = e => {
+      e.stopPropagation();
+      it.showName = (it.showName === false);
+      saveAndRender();
+    };
+
+    nw.appendChild(inpN);
+    nw.appendChild(eye);
+    td1.appendChild(nw);
+    tr.appendChild(td1);
+
+    // 4. Energy Gap Value + Eye Toggle
+    const tdE = document.createElement('td');
+    const ew = document.createElement('div');
+    ew.className = 'name-cell-wrap';
+    const rawVal = grp.values[it.id] !== undefined ? grp.values[it.id] : 0.000;
+    const inpE = document.createElement('input');
+    inpE.type = 'number';
+    inpE.step = '0.001';
+    inpE.value = rawVal;
+    inpE.onchange = () => {
+      grp.values[it.id] = parseFloat(inpE.value) || 0.000;
+      saveAndRender();
+    };
+
+    const eyeE = document.createElement('button');
+    eyeE.type = 'button';
+    const isValShown = grp.showValues[it.id] !== false;
+    eyeE.className = 'btn-toggle-eye' + (!isValShown ? ' hidden-item' : '');
+    eyeE.textContent = !isValShown ? '🚫' : '👁';
+    eyeE.title = !isValShown ? '已隱藏數值標籤 (點擊顯示)' : '已顯示數值標籤 (點擊隱藏)';
+    eyeE.onclick = e => {
+      e.stopPropagation();
+      grp.showValues[it.id] = !isValShown;
+      saveAndRender();
+    };
+
+    ew.appendChild(inpE);
+    ew.appendChild(eyeE);
+    tdE.appendChild(ew);
+    tr.appendChild(tdE);
+
+    // 5. Bar Color (Override)
+    const tdCol = document.createElement('td');
+    const customCol = grp.customColors[it.id] || grp.color;
+    const colBtn = createColorButton(customCol, newCol => {
+      grp.customColors[it.id] = newCol;
+      renderChart();
+    }, {
+      title: '單獨設定此步驟柱子顏色',
+      onSave: () => saveState()
+    });
+    tdCol.appendChild(colBtn);
+    tr.appendChild(tdCol);
+
+    // 6. Delete Row Button
+    const tdDel = document.createElement('td');
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn-toggle-eye';
+    delBtn.style.color = '#c62828';
+    delBtn.textContent = '✕';
+    delBtn.title = '刪除此步驟';
+    delBtn.onclick = e => {
+      e.stopPropagation();
+      delIntermediate(idx);
+    };
+    tdDel.appendChild(delBtn);
+    tr.appendChild(tdDel);
+
+    tbody.appendChild(tr);
+  });
+}
+
+function handleSel(i, e) {
+  if (e.shiftKey && lastClicked !== null) {
+    const lo = Math.min(lastClicked, i), hi = Math.max(lastClicked, i);
+    for (let k = lo; k <= hi; k++) selectedRows.add(k);
+  } else {
+    selectedRows.has(i) ? selectedRows.delete(i) : selectedRows.add(i);
+  }
+  lastClicked = i;
+  renderTable();
+  updateBatch();
+}
+
+function delIntermediate(idx) {
+  if (app.intermediates.length <= 1) {
+    alert('至少需保留一個步驟！');
+    return;
+  }
+  const it = app.intermediates[idx];
+  app.intermediates.splice(idx, 1);
+  app.groups.forEach(g => {
+    delete g.values[it.id];
+    delete g.customColors[it.id];
+    delete g.showValues[it.id];
+  });
+  selectedRows.clear();
+  saveAndRender();
+}
+
+function updateBatch() {
+  const p = document.getElementById('batch-panel');
+  p.classList.toggle('hidden', selectedRows.size === 0);
+  if (selectedRows.size > 0) {
+    const pal = document.getElementById('batch-palette');
+    if (pal) {
+      pal.innerHTML = '';
+      const set = new Set([...getRecentColors(), ...PRESET_COLORS]);
+      Array.from(set).slice(0, 14).forEach(c => {
+        const sw = document.createElement('div');
+        sw.className = 'color-swatch';
+        sw.style.backgroundColor = c;
+        sw.title = c;
+        sw.onclick = e => {
+          e.stopPropagation();
+          document.getElementById('batch-color').value = c;
+          addRecentColor(c);
+        };
+        pal.appendChild(sw);
+      });
+    }
+  }
+}
+
+// ============================================================
+// 10. SETUP ACTIONS, BATCH, PASTE & REACTION STEP CONVERTER
+// ============================================================
+function setupActions() {
+  document.getElementById('btn-add-row').onclick = () => {
+    const newId = 'i' + (app.intermediates.length + 1) + '_' + Date.now().toString(36).slice(-3);
+    const newName = 'Step_' + (app.intermediates.length + 1);
+    app.intermediates.push({ id: newId, name: newName, showName: true });
+    app.groups.forEach(g => { g.values[newId] = 0.000; });
+    saveAndRender();
+  };
+
+  document.getElementById('btn-delete-rows').onclick = () => {
+    if (selectedRows.size === 0) return;
+    const toDelete = Array.from(selectedRows).sort((a, b) => b - a);
+    toDelete.forEach(idx => {
+      const it = app.intermediates[idx];
+      if (it) {
+        app.groups.forEach(g => {
+          delete g.values[it.id];
+          delete g.customColors[it.id];
+          delete g.showValues[it.id];
+        });
+        app.intermediates.splice(idx, 1);
+      }
+    });
+    if (app.intermediates.length === 0) {
+      const nid = 'i1';
+      app.intermediates.push({ id: nid, name: 'NO_3 → NO_2', showName: true });
+      app.groups.forEach(g => { g.values[nid] = 0.000; });
+    }
+    selectedRows.clear();
+    saveAndRender();
+  };
+
+  document.getElementById('btn-select-all').onclick = () => {
+    for (let i = 0; i < app.intermediates.length; i++) selectedRows.add(i);
+    renderTable();
+    updateBatch();
+  };
+
+  document.getElementById('btn-deselect-all').onclick = () => {
+    selectedRows.clear();
+    renderTable();
+    updateBatch();
+  };
+
+  document.getElementById('th-check').onclick = () => {
+    if (selectedRows.size === app.intermediates.length) selectedRows.clear();
+    else { for (let i = 0; i < app.intermediates.length; i++) selectedRows.add(i); }
+    renderTable();
+    updateBatch();
+  };
+
+  document.getElementById('btn-batch-apply').onclick = () => {
+    const grp = ag();
+    const bName = document.getElementById('batch-showname').value;
+    const bVal = document.getElementById('batch-showval').value;
+    const col = document.getElementById('batch-color').value;
+
+    selectedRows.forEach(idx => {
+      const it = app.intermediates[idx];
+      if (it) {
+        if (bName === 'show') it.showName = true;
+        else if (bName === 'hide') it.showName = false;
+
+        if (bVal === 'show') grp.showValues[it.id] = true;
+        else if (bVal === 'hide') grp.showValues[it.id] = false;
+
+        if (col) {
+          grp.customColors[it.id] = col;
+          addRecentColor(col);
+        }
+      }
+    });
+    saveAndRender();
+  };
+
+  // Convert States to Step Transitions (A -> B)
+  const btnConvertSteps = document.getElementById('btn-convert-to-steps');
+  if (btnConvertSteps) {
+    btnConvertSteps.onclick = () => {
+      if (app.intermediates.length < 2) {
+        alert('請先輸入至少 2 個中間體狀態名稱！');
+        return;
+      }
+      // Check if already contains arrows
+      const alreadyHasArrows = app.intermediates.some(it => it.name.includes('→') || it.name.includes('-->') || it.name.includes('->'));
+      if (alreadyHasArrows) {
+        // Standardize arrows
+        app.intermediates.forEach(it => {
+          it.name = it.name.replace(/-->|->|\\rightarrow|\\to/g, ' → ');
+        });
+        saveAndRender();
+        showToast('已標準化反應步箭頭格式！');
+        return;
+      }
+
+      // Convert sequence S0, S1, S2, ... into S0 -> S1, S1 -> S2, ...
+      const oldIntermediates = [...app.intermediates];
+      const newIntermediates = [];
+      const newGroupValues = {};
+      app.groups.forEach(g => { newGroupValues[g.id] = {}; });
+
+      for (let i = 0; i < oldIntermediates.length - 1; i++) {
+        const fromName = oldIntermediates[i].name;
+        const toName = oldIntermediates[i + 1].name;
+        const nid = 'step_' + (i + 1) + '_' + Date.now().toString(36);
+        newIntermediates.push({
+          id: nid,
+          name: `${fromName} → ${toName}`,
+          showName: true
+        });
+
+        // Keep values from target intermediate
+        app.groups.forEach(g => {
+          const targetVal = g.values[oldIntermediates[i + 1].id];
+          newGroupValues[g.id][nid] = targetVal !== undefined ? targetVal : 0.000;
+        });
+      }
+
+      app.intermediates = newIntermediates;
+      app.groups.forEach(g => {
+        g.values = newGroupValues[g.id];
+        g.customColors = {};
+        g.showValues = {};
+      });
+
+      selectedRows.clear();
+      saveAndRender();
+      showToast(`已成功將 ${oldIntermediates.length} 個狀態轉換為 ${newIntermediates.length} 個相鄰反應步！`);
+    };
+  }
+
+  // Free Energy G to Delta G Calculator Modal
+  const gCalcModal = document.getElementById('g-calculator-modal');
+  const btnOpenGCalc = document.getElementById('btn-open-g-calculator');
+  const btnCloseGCalc = document.getElementById('btn-close-g-calc');
+  const btnCancelGCalc = document.getElementById('btn-cancel-g-calc');
+  const btnConfirmGCalc = document.getElementById('btn-confirm-g-calc');
+  const taGCalc = document.getElementById('ta-g-calc-input');
+
+  if (btnOpenGCalc && gCalcModal) {
+    btnOpenGCalc.onclick = () => gCalcModal.classList.remove('hidden');
+    const closeGCalc = () => gCalcModal.classList.add('hidden');
+    if (btnCloseGCalc) btnCloseGCalc.onclick = closeGCalc;
+    if (btnCancelGCalc) btnCancelGCalc.onclick = closeGCalc;
+    if (btnConfirmGCalc) {
+      btnConfirmGCalc.onclick = () => {
+        const text = taGCalc.value.trim();
+        if (!text) return;
+        const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+        const stateList = [];
+
+        lines.forEach((l, idx) => {
+          let parts = l.split('\t');
+          if (parts.length < 2) parts = l.split(',');
+          if (parts.length < 1) return;
+          const name = parts[0].trim() || `S_${idx}`;
+          const gVal = parts[1] !== undefined ? (parseFloat(parts[1].trim()) || 0) : 0;
+          stateList.push({ name, gVal });
+        });
+
+        if (stateList.length < 2) {
+          alert('請至少輸入 2 個狀態及其能量！');
+          return;
+        }
+
+        const grp = ag();
+        const newIntermediates = [];
+        const newValues = {};
+
+        for (let i = 1; i < stateList.length; i++) {
+          const fromState = stateList[i - 1];
+          const toState = stateList[i];
+          const deltaG = toState.gVal - fromState.gVal;
+          const nid = 'step_' + i + '_' + Date.now().toString(36);
+
+          newIntermediates.push({
+            id: nid,
+            name: `${fromState.name} → ${toState.name}`,
+            showName: true
+          });
+          newValues[nid] = parseFloat(deltaG.toFixed(4));
+        }
+
+        app.intermediates = newIntermediates;
+        grp.values = newValues;
+
+        app.groups.forEach(g => {
+          if (g !== grp) {
+            newIntermediates.forEach(it => {
+              if (g.values[it.id] === undefined) g.values[it.id] = 0.000;
+            });
+          }
+        });
+
+        selectedRows.clear();
+        saveAndRender();
+        closeGCalc();
+        showToast(`已成功計算並生成 ${newIntermediates.length} 個反應步能差！`);
+      };
+    }
+  }
+
+  // Batch text input modal
+  const batchModal = document.getElementById('batch-input-modal');
+  const btnOpenBatch = document.getElementById('btn-batch-input');
+  const btnCloseBatch = document.getElementById('btn-close-batch-modal');
+  const btnCancelBatch = document.getElementById('btn-cancel-batch');
+  const btnConfirmBatch = document.getElementById('btn-confirm-batch');
+  const taBatch = document.getElementById('ta-batch-input');
+
+  if (btnOpenBatch && batchModal) {
+    btnOpenBatch.onclick = () => {
+      const grp = ag();
+      let initLines = [];
+      app.intermediates.forEach(it => {
+        const val = grp.values[it.id] !== undefined ? grp.values[it.id] : 0.000;
+        initLines.push(`${it.name}\t${val}`);
+      });
+      taBatch.value = initLines.join('\n');
+      batchModal.classList.remove('hidden');
+    };
+    const closeBatch = () => batchModal.classList.add('hidden');
+    if (btnCloseBatch) btnCloseBatch.onclick = closeBatch;
+    if (btnCancelBatch) btnCancelBatch.onclick = closeBatch;
+    if (btnConfirmBatch) {
+      btnConfirmBatch.onclick = () => {
+        const text = taBatch.value.trim();
+        if (text) {
+          parsePasteLines(text.split(/\r?\n/));
+          closeBatch();
+        }
+      };
+    }
+  }
+
+  // Examples Presets Modal
+  const exModal = document.getElementById('preset-examples-modal');
+  const btnOpenEx = document.getElementById('btn-open-presets');
+  const btnCloseEx = document.getElementById('btn-close-examples-modal');
+  const btnCancelEx = document.getElementById('btn-cancel-examples');
+
+  if (btnOpenEx && exModal) {
+    btnOpenEx.onclick = () => {
+      renderExamplesList();
+      exModal.classList.remove('hidden');
+    };
+    const closeEx = () => exModal.classList.add('hidden');
+    if (btnCloseEx) btnCloseEx.onclick = closeEx;
+    if (btnCancelEx) btnCancelEx.onclick = closeEx;
+  }
+}
+
+function renderExamplesList() {
+  const container = document.getElementById('examples-list-container');
+  if (!container) return;
+  container.innerHTML = '';
+
+  PRESET_EXAMPLES.forEach(ex => {
+    const card = document.createElement('div');
+    card.className = 'preset-item-card';
+    card.innerHTML = `
+      <h5>${currentLang === 'zh' ? ex.title : ex.titleEn} <span>➔ 載入</span></h5>
+      <p>${currentLang === 'zh' ? ex.desc : ex.descEn}</p>
+    `;
+    card.onclick = () => {
+      ex.load();
+      document.getElementById('preset-examples-modal').classList.add('hidden');
+      initCanvasConfig();
+      initChartOptions();
+      saveAndRender();
+      showToast(currentLang === 'zh' ? `已載入範例：${ex.title}` : `Loaded preset: ${ex.titleEn}`);
+    };
+    container.appendChild(card);
+  });
+}
+
+// Paste Handler (Ctrl+V)
+function setupPaste() {
+  document.addEventListener('paste', e => {
+    const act = document.activeElement;
+    if (act && (act.tagName === 'INPUT' || act.tagName === 'TEXTAREA' || act.tagName === 'SELECT')) return;
+
+    const text = (e.clipboardData || window.clipboardData).getData('text');
+    if (!text || !text.trim()) return;
+
+    const lines = text.trim().split(/\r?\n/);
+    if (lines.length < 1) return;
+
+    const hasTab = text.includes('\t');
+    const hasComma = text.includes(',');
+    if (!hasTab && !hasComma && lines.length === 1) return;
+
+    e.preventDefault();
+    parsePasteLines(lines);
+  });
+}
+
+function parsePasteLines(lines) {
+  const grp = ag();
+  let added = 0;
+  const newIntermediates = [];
+  const newValues = {};
+
+  lines.forEach((line, i) => {
+    line = line.trim();
+    if (!line) return;
+    let cells = line.split('\t');
+    if (cells.length < 2) cells = line.split(',');
+    if (cells.length < 1) return;
+
+    const first = cells[0].trim().toLowerCase();
+    if (['name', '名稱', 'intermediate', '中間體', 'state', 'step', '步驟'].includes(first)) return;
+
+    const name = cells[0].trim() || `Step_${i+1}`;
+    const val = cells[1] !== undefined ? (parseFloat(cells[1].trim()) || 0.000) : 0.000;
+    const nid = 'i_' + Date.now().toString(36) + '_' + i;
+
+    newIntermediates.push({ id: nid, name: name, showName: true });
+    newValues[nid] = val;
+    added++;
+  });
+
+  if (added > 0) {
+    app.intermediates = newIntermediates;
+    grp.values = newValues;
+    app.groups.forEach(g => {
+      if (g !== grp) {
+        newIntermediates.forEach(it => {
+          if (g.values[it.id] === undefined) g.values[it.id] = 0.000;
+        });
+      }
+    });
+    selectedRows.clear();
+    saveAndRender();
+    showToast(t('pastedRows').replace('{n}', added));
+  }
+}
+
+// ============================================================
+// 11. CHART OPTIONS & CONFIG
+// ============================================================
+function initChartOptions() {
+  const co = app.chartOptions;
+  const toggle = document.getElementById('chart-options-toggle');
+  const body = document.getElementById('chart-options-body');
+  if (toggle && body) toggle.onclick = () => body.classList.toggle('hidden');
+
+  function bindCb(id, prop, dflt = true) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.checked = co[prop] !== false;
+    el.onchange = () => { co[prop] = el.checked; saveAndRender(); };
+  }
+  function bindInpNum(id, prop, dflt, min, max) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = co[prop] !== undefined ? co[prop] : dflt;
+    el.oninput = () => { co[prop] = Math.max(min, Math.min(max, parseFloat(el.value) || dflt)); renderChart(); };
+    el.onchange = () => saveState();
+  }
+  function bindInpTxt(id, prop, dflt = '') {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = co[prop] || dflt;
+    el.oninput = () => { co[prop] = el.value; renderChart(); };
+    el.onchange = () => saveState();
+  }
+  function bindSel(id, prop, dflt) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = co[prop] || dflt;
+    el.onchange = () => { co[prop] = el.value; saveAndRender(); };
+  }
+
+  // Chart Title
+  bindCb('opt-show-chart-title', 'showChartTitle', false);
+  bindInpTxt('opt-chart-title-text', 'chartTitleText');
+  bindInpNum('opt-chart-title-fontsize', 'chartTitleFontSize', 16, 8, 48);
+  bindSel('opt-chart-title-weight', 'chartTitleFontWeight', '700');
+
+  // Axes Frame
+  bindCb('opt-show-bottom-axis', 'showBottomAxis');
+  bindCb('opt-show-left-axis', 'showLeftAxis');
+  bindCb('opt-show-top-axis', 'showTopAxis');
+  bindCb('opt-show-right-axis', 'showRightAxis');
+  bindInpNum('opt-axis-thickness', 'axisThickness', 1.2, 0.5, 6);
+
+  // Tick Directions
+  bindSel('opt-tick-dir-bottom', 'tickDirBottom', 'out');
+  bindSel('opt-tick-dir-left', 'tickDirLeft', 'out');
+  bindSel('opt-tick-dir-top', 'tickDirTop', 'none');
+  bindSel('opt-tick-dir-right', 'tickDirRight', 'none');
+
+  // Axis Titles & X Rotation
+  bindCb('opt-show-xtitle', 'showXTitle');
+  bindInpTxt('opt-xtitle-text', 'xTitleText', 'Reaction Step');
+  bindInpTxt('opt-ytitle-text', 'yTitleText', 'Energy Gap');
+  bindSel('opt-x-label-rotation', 'xLabelRotation', '45');
+  bindSel('opt-x-label-align', 'xLabelAlign', 'center');
+  bindSel('opt-x-label-multiline', 'xLabelMultiline', 'single');
+  bindInpNum('opt-x-label-offset-y', 'xLabelOffsetY', 0, 0, 80);
+
+  // Zero Line & Grid
+  bindCb('opt-show-zeroline', 'showZeroLine');
+  bindInpNum('opt-zeroline-thickness', 'zeroLineThickness', 1.2, 0.5, 5);
+  bindCb('opt-show-grid', 'showGrid');
+  bindSel('opt-grid-dash', 'gridDash', '4,4');
+
+  // Bar Geometry
+  bindInpNum('opt-group-padding', 'groupPadding', 0.25, 0.05, 0.8);
+  bindInpNum('opt-bar-padding', 'barPadding', 0.02, 0.0, 0.5);
+  bindInpNum('opt-bar-border-width', 'barBorderWidth', 1.0, 0, 4);
+
+  const inpBorderCol = document.getElementById('opt-bar-border-color');
+  if (inpBorderCol) {
+    inpBorderCol.value = co.barBorderColor || '#000000';
+    inpBorderCol.oninput = () => { co.barBorderColor = inpBorderCol.value; renderChart(); };
+    inpBorderCol.onchange = () => saveState();
+  }
+
+  // Value Labels
+  bindCb('opt-show-val-labels', 'showValLabels');
+  bindInpNum('opt-decimals', 'decimals', 3, 0, 5);
+  bindInpNum('opt-val-label-offset', 'valLabelOffset', 6, 1, 25);
+  bindSel('opt-val-label-color-mode', 'valLabelColorMode', 'black');
+
+  // Y-Range
+  const inpYMin = document.getElementById('opt-ymin');
+  const inpYMax = document.getElementById('opt-ymax');
+  const btnResetY = document.getElementById('btn-reset-yrange');
+  if (inpYMin) {
+    inpYMin.value = (co.yMin !== undefined && co.yMin !== null) ? co.yMin : '';
+    inpYMin.oninput = () => { co.yMin = inpYMin.value.trim() !== '' ? parseFloat(inpYMin.value) : null; renderChart(); };
+    inpYMin.onchange = () => saveState();
+  }
+  if (inpYMax) {
+    inpYMax.value = (co.yMax !== undefined && co.yMax !== null) ? co.yMax : '';
+    inpYMax.oninput = () => { co.yMax = inpYMax.value.trim() !== '' ? parseFloat(inpYMax.value) : null; renderChart(); };
+    inpYMax.onchange = () => saveState();
+  }
+  if (btnResetY) {
+    btnResetY.onclick = () => {
+      delete co.yMin; delete co.yMax;
+      if (inpYMin) inpYMin.value = '';
+      if (inpYMax) inpYMax.value = '';
+      saveAndRender();
+    };
+  }
+
+  // Typography
+  const selFont = document.getElementById('opt-font-family');
+  const rowCustomFont = document.getElementById('row-custom-font');
+  const inpCustomFont = document.getElementById('opt-custom-font');
+  if (selFont) {
+    selFont.value = co.fontFamily || 'Times New Roman, Times, serif';
+    if (rowCustomFont) rowCustomFont.classList.toggle('hidden', selFont.value !== 'custom');
+    selFont.onchange = () => {
+      co.fontFamily = selFont.value;
+      if (rowCustomFont) rowCustomFont.classList.toggle('hidden', selFont.value !== 'custom');
+      saveAndRender();
+    };
+  }
+  if (inpCustomFont) {
+    inpCustomFont.value = co.customFont || '';
+    inpCustomFont.oninput = () => { co.customFont = inpCustomFont.value; renderChart(); };
+    inpCustomFont.onchange = () => saveState();
+  }
+
+  // Font loading
+  const btnLoadFont = document.getElementById('btn-load-font-file');
+  const inpFontFile = document.getElementById('inp-font-file');
+  if (btnLoadFont && inpFontFile) {
+    btnLoadFont.onclick = () => inpFontFile.click();
+    inpFontFile.onchange = () => {
+      const file = inpFontFile.files[0];
+      if (!file) return;
+      const fontName = file.name.replace(/\.[^/.]+$/, '').trim();
+      const reader = new FileReader();
+      reader.onload = async e => {
+        try {
+          const fontFace = new FontFace(fontName, e.target.result);
+          await fontFace.load();
+          document.fonts.add(fontFace);
+          const opt = new Option(`★ ${fontName} (已載入)`, fontName);
+          selFont.insertBefore(opt, selFont.querySelector('option[value="custom"]'));
+          selFont.value = fontName;
+          co.fontFamily = fontName;
+          saveAndRender();
+          showToast(`已載入字型：${fontName}`);
+        } catch(err) {
+          alert(`載入字型失敗：${err.message}`);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    };
+  }
+
+  // Typography Matrix
+  bindInpNum('opt-axistitle-fontsize', 'axisTitleFontSize', 14, 8, 36);
+  bindSel('opt-axistitle-weight', 'axisTitleFontWeight', '700');
+  bindInpNum('opt-tick-fontsize', 'axisTickFontSize', 12, 8, 36);
+  bindSel('opt-tick-weight', 'axisTickFontWeight', '400');
+  bindInpNum('opt-name-fontsize', 'nameFontSize', 12, 8, 36);
+  bindSel('opt-name-weight', 'nameFontWeight', '700');
+  bindInpNum('opt-energy-fontsize', 'energyFontSize', 11, 8, 36);
+  bindSel('opt-energy-weight', 'energyFontWeight', '700');
+  bindInpNum('opt-legend-fontsize', 'legendFontSize', 13, 8, 36);
+  bindSel('opt-legend-weight', 'legendFontWeight', '500');
+
+  // Margins
+  const inpMT = document.getElementById('opt-margin-top');
+  const inpMB = document.getElementById('opt-margin-bottom');
+  const inpML = document.getElementById('opt-margin-left');
+  const inpMR = document.getElementById('opt-margin-right');
+  const btnResetM = document.getElementById('btn-reset-plot-margins');
+
+  function bindMargin(el, side) {
+    if (!el) return;
+    el.oninput = () => {
+      if (!co.plotMargins) co.plotMargins = {};
+      const v = el.value.trim();
+      co.plotMargins[side] = v === '' ? null : Math.max(5, Math.min(500, parseFloat(v) || 0));
+      renderChart();
+    };
+    el.onchange = () => saveState();
+  }
+  bindMargin(inpMT, 'top');
+  bindMargin(inpMB, 'bottom');
+  bindMargin(inpML, 'left');
+  bindMargin(inpMR, 'right');
+
+  if (btnResetM) {
+    btnResetM.onclick = () => {
+      co.plotMargins = { top: null, bottom: null, left: null, right: null };
+      if (inpMT) inpMT.value = '';
+      if (inpMB) inpMB.value = '';
+      if (inpML) inpML.value = '';
+      if (inpMR) inpMR.value = '';
+      saveAndRender();
+      showToast('已重設圖表邊界留白為自適應');
+    };
+  }
+}
+
+function initUnits() {
+  const iSel = document.getElementById('input-unit');
+  const dSel = document.getElementById('display-unit');
+  UNITS.forEach(u => { iSel.add(new Option(u, u)); dSel.add(new Option(u, u)); });
+  iSel.value = app.inputUnit;
+  dSel.value = app.displayUnit;
+  iSel.onchange = () => { app.inputUnit = iSel.value; saveAndRender(); };
+  dSel.onchange = () => { app.displayUnit = dSel.value; saveAndRender(); };
+}
+
+function getCanvasDimensions() {
+  const cfg = app.canvasConfig || { ratio: '16:9', width: 960, height: 540, scale: 3 };
+  const wr = document.getElementById('chart-wrapper');
+  const maxW = wr ? (wr.clientWidth || 900) : 900;
+  const maxH = wr ? (wr.clientHeight || 520) : 520;
+
+  if (cfg.ratio === '16:9') return { w: 1280, h: 720 };
+  if (cfg.ratio === '4:3') return { w: 1024, h: 768 };
+  if (cfg.ratio === '3:2') return { w: 1200, h: 800 };
+  if (cfg.ratio === '1:1') return { w: 900, h: 900 };
+  if (cfg.ratio === 'custom') return { w: Math.max(300, cfg.width || 960), h: Math.max(200, cfg.height || 540) };
+  return { w: Math.max(600, maxW), h: Math.max(400, maxH) };
+}
+
+function initCanvasConfig() {
+  if (!app.canvasConfig) app.canvasConfig = { ratio: '16:9', width: 960, height: 540, scale: 3 };
+  const rSel = document.getElementById('canvas-ratio');
+  const dSel = document.getElementById('export-dpi');
+  const cwInp = document.getElementById('custom-w');
+  const chInp = document.getElementById('custom-h');
+  const customGroup = document.getElementById('custom-size-group');
+
+  if (rSel) {
+    rSel.value = app.canvasConfig.ratio || '16:9';
+    customGroup.classList.toggle('hidden', rSel.value !== 'custom');
+    rSel.onchange = () => {
+      app.canvasConfig.ratio = rSel.value;
+      customGroup.classList.toggle('hidden', rSel.value !== 'custom');
+      saveAndRender();
+    };
+  }
+  if (cwInp && chInp) {
+    cwInp.value = app.canvasConfig.width || 960;
+    chInp.value = app.canvasConfig.height || 540;
+    cwInp.oninput = () => { app.canvasConfig.width = parseInt(cwInp.value) || 960; renderChart(); };
+    cwInp.onchange = () => saveState();
+    chInp.oninput = () => { app.canvasConfig.height = parseInt(chInp.value) || 540; renderChart(); };
+    chInp.onchange = () => saveState();
+  }
+  if (dSel) {
+    dSel.value = String(app.canvasConfig.scale || 3);
+    dSel.onchange = () => { app.canvasConfig.scale = parseInt(dSel.value) || 3; saveState(); };
+  }
+}
+
+// ============================================================
+// 12. D3 CHART RENDERING ENGINE
+// ============================================================
+let cW = 960, cH = 540;
+let currentPlotMargin = { top: 30, right: 35, bottom: 65, left: 75 };
+let currentPlotW = 850;
+
+function getSvgPoint(evt) {
+  const svgNode = document.getElementById('chart-svg');
+  if (!svgNode) return { x: evt.clientX, y: evt.clientY };
+  const pt = svgNode.createSVGPoint();
+  pt.x = evt.clientX; pt.y = evt.clientY;
+  const ctm = svgNode.getScreenCTM();
+  if (ctm) return pt.matrixTransform(ctm.inverse());
+  const [mx, my] = d3.pointer(evt, svgNode);
+  return { x: mx, y: my };
+}
+
+function bindPrecisionDrag(d3Selection, getStartOffset, onDragUpdate, onDragEnd, onDblClick) {
+  d3Selection.on('pointerdown', function(ev) {
+    if (ev.button !== 0) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+
+    const startPt = getSvgPoint(ev);
+    const startOff = getStartOffset();
+    document.body.style.userSelect = 'none';
+
+    function onPointerMove(e) {
+      e.preventDefault();
+      const curPt = getSvgPoint(e);
+      const dx = curPt.x - startPt.x;
+      const dy = curPt.y - startPt.y;
+      onDragUpdate(Math.round(startOff.x + dx), Math.round(startOff.y + dy), dx, dy);
+    }
+
+    function onPointerUp() {
+      document.body.style.userSelect = '';
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      if (onDragEnd) onDragEnd();
+    }
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+  });
+
+  if (onDblClick) {
+    d3Selection.on('dblclick', function(ev) {
+      ev.stopPropagation();
+      onDblClick();
+    });
+  }
+}
+
+function renderChart() {
+  const svg = d3.select('#chart-svg');
+  svg.selectAll('*').remove();
+
+  const dims = getCanvasDimensions();
+  cW = dims.w; cH = dims.h;
+
+  const co = app.chartOptions || {};
+  const activeFont = getActiveFontFamily();
+  svg.style('font-family', activeFont);
+
+  const axThick = co.axisThickness || 1.2;
+  const tickFontSize = co.axisTickFontSize || 12;
+  const tickWeight = co.axisTickFontWeight || '400';
+  const axisTitleFontSize = co.axisTitleFontSize || 14;
+  const axisTitleWeight = co.axisTitleFontWeight || '700';
+  const nameFontSize = co.nameFontSize || 12;
+  const nameFontWeight = co.nameFontWeight || '700';
+  const energyFontSize = co.energyFontSize || 11;
+  const energyFontWeight = co.energyFontWeight || '700';
+  const xRot = parseInt(co.xLabelRotation) || 0;
+
+  // Dynamic Margins
+  const hasChartTitle = Boolean(co.showChartTitle && co.chartTitleText && co.chartTitleText.trim());
+  const chartTitleSize = co.chartTitleFontSize || 16;
+  const showXTitle = co.showXTitle !== false;
+
+  const align = co.xLabelAlign || 'end';
+  const offsetUserY = co.xLabelOffsetY || 0;
+  const extraRotBottom = (xRot === 45 ? 38 : (xRot === 90 ? 55 : (xRot === 30 ? 25 : 0)))
+                       + (align === 'center' && xRot !== 0 ? 18 : 0)
+                       + offsetUserY;
+  const autoTop = hasChartTitle ? (chartTitleSize + 28) : 28;
+  const autoBottom = 20 + (nameFontSize + 16) + extraRotBottom + (showXTitle ? (axisTitleFontSize + 18) : 0);
+  const autoLeft = Math.max(75, axisTitleFontSize * 1.4 + tickFontSize * 2.8 + 18);
+  const autoRight = 35;
+
+  const pm = co.plotMargins || {};
+  const margin = {
+    top: (pm.top !== undefined && pm.top !== null) ? pm.top : autoTop,
+    right: (pm.right !== undefined && pm.right !== null) ? pm.right : autoRight,
+    bottom: (pm.bottom !== undefined && pm.bottom !== null) ? pm.bottom : autoBottom,
+    left: (pm.left !== undefined && pm.left !== null) ? pm.left : autoLeft
+  };
+
+  currentPlotMargin = margin;
+  const iW = cW - margin.left - margin.right;
+  const iH = cH - margin.top - margin.bottom;
+  currentPlotW = iW;
+
+  svg.attr('viewBox', `0 0 ${cW} ${cH}`).attr('preserveAspectRatio', 'xMidYMid meet');
+  svg.append('rect').attr('width', cW).attr('height', cH).attr('fill', 'white');
+
+  const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+  // Chart Title
+  if (hasChartTitle) {
+    if (!co.chartTitleOffset) co.chartTitleOffset = { x: 0, y: 0 };
+    const ox = co.chartTitleOffset.x || 0;
+    const oy = co.chartTitleOffset.y || 0;
+    const baseTitleX = margin.left + iW / 2;
+    const baseTitleY = 18 + chartTitleSize / 2;
+
+    const titleG = svg.append('g').attr('class', 'chart-title-group')
+      .attr('transform', `translate(${baseTitleX + ox}, ${baseTitleY + oy})`)
+      .style('cursor', 'move');
+
+    const titleEl = titleG.append('text')
+      .attr('x', 0).attr('y', 0)
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'middle')
+      .attr('font-size', chartTitleSize + 'px')
+      .attr('font-weight', co.chartTitleFontWeight || '700')
+      .style('font-family', activeFont)
+      .attr('fill', '#000000');
+    renderRichText(titleEl, co.chartTitleText.trim());
+
+    bindPrecisionDrag(
+      titleG,
+      () => ({ x: co.chartTitleOffset.x || 0, y: co.chartTitleOffset.y || 0 }),
+      (newX, newY) => {
+        co.chartTitleOffset = { x: newX, y: newY };
+        titleG.attr('transform', `translate(${baseTitleX + newX}, ${baseTitleY + newY})`);
+      },
+      () => saveState(),
+      () => { co.chartTitleOffset = { x: 0, y: 0 }; saveAndRender(); }
+    );
+  }
+
+  // Scales
+  const intermediateIds = app.intermediates.map(it => it.id);
+  const activeGroups = app.groups.filter(gr => gr.visible !== false);
+  const groupIds = activeGroups.map(gr => gr.id);
+
+  // Collect all displayed values for Y-domain
+  const allVals = [0]; // always include 0 baseline
+  activeGroups.forEach(gr => {
+    app.intermediates.forEach(it => {
+      const raw = gr.values[it.id];
+      if (raw !== undefined && !isNaN(raw)) allVals.push(dispE(raw));
+    });
+  });
+
+  const yMinData = d3.min(allVals);
+  const yMaxData = d3.max(allVals);
+  const ySpan = (yMaxData - yMinData) || 1.0;
+  const yPad = ySpan * 0.16;
+
+  const yDomainMin = (co.yMin !== undefined && co.yMin !== null) ? co.yMin : (yMinData < 0 ? yMinData - yPad : -0.2);
+  const yDomainMax = (co.yMax !== undefined && co.yMax !== null) ? co.yMax : (yMaxData > 0 ? yMaxData + yPad : 0.5);
+
+  const x0Scale = d3.scaleBand()
+    .domain(intermediateIds)
+    .range([0, iW])
+    .padding(co.groupPadding !== undefined ? co.groupPadding : 0.25);
+
+  const x1Scale = d3.scaleBand()
+    .domain(groupIds)
+    .range([0, x0Scale.bandwidth()])
+    .padding(co.barPadding !== undefined ? co.barPadding : 0.02);
+
+  const yScale = d3.scaleLinear()
+    .domain([yDomainMin, yDomainMax])
+    .range([iH, 0])
+    .nice();
+
+  const zeroY = yScale(0);
+
+  // Background Grid (Dashed horizontal lines)
+  if (co.showGrid !== false) {
+    const gridDash = co.gridDash === 'solid' ? null : (co.gridDash || '4,4');
+    const gridG = g.append('g').attr('class', 'grid')
+      .call(d3.axisLeft(yScale).tickSize(-iW).tickFormat(''));
+    if (gridDash) gridG.selectAll('line').style('stroke-dasharray', gridDash);
+    gridG.selectAll('line').style('stroke', '#e0e0e0');
+    gridG.select('path').style('stroke', 'none');
+  }
+
+  // Bars rendering
+  const barBorderWidth = co.barBorderWidth !== undefined ? co.barBorderWidth : 1.0;
+  const barBorderColor = co.barBorderColor || '#000000';
+  const valOffset = co.valLabelOffset || 6;
+  const dec = co.decimals !== undefined ? co.decimals : 3;
+
+  intermediateIds.forEach(itId => {
+    const itObj = app.intermediates.find(it => it.id === itId);
+    const itG = g.append('g').attr('transform', `translate(${x0Scale(itId)},0)`);
+
+    activeGroups.forEach(gr => {
+      const rawVal = gr.values[itId];
+      if (rawVal === undefined || isNaN(rawVal)) return;
+
+      const val = dispE(rawVal);
+      const barX = x1Scale(gr.id);
+      const barW = Math.max(2, x1Scale.bandwidth());
+      const barY = Math.min(zeroY, yScale(val));
+      const barH = Math.max(1, Math.abs(yScale(val) - zeroY));
+      const barCol = gr.customColors[itId] || gr.color;
+
+      // Draw Bar
+      itG.append('rect')
+        .attr('class', 'bar-rect')
+        .attr('x', barX)
+        .attr('y', barY)
+        .attr('width', barW)
+        .attr('height', barH)
+        .attr('fill', barCol)
+        .attr('stroke', barBorderColor)
+        .attr('stroke-width', barBorderWidth)
+        .on('click', function(ev) {
+          ev.stopPropagation();
+          showBarPopup(gr, itObj, ev);
+        });
+
+      // Draw Value Label (if shown)
+      const isValShown = (co.showValLabels !== false) && (gr.showValues[itId] !== false);
+      if (isValShown) {
+        const valX = barX + barW / 2;
+        let valY = 0;
+
+        if (val >= 0) {
+          valY = yScale(val) - valOffset;
+        } else {
+          valY = yScale(val) + valOffset + energyFontSize * 0.75;
+        }
+
+        let labelColor = '#000000';
+        if (co.valLabelColorMode === 'match') labelColor = barCol;
+        else if (co.valLabelColorMode === 'gray') labelColor = '#555555';
+
+        const valText = itG.append('text')
+          .attr('class', 'value-label')
+          .attr('x', valX)
+          .attr('y', valY)
+          .attr('text-anchor', 'middle')
+          .attr('font-size', energyFontSize + 'px')
+          .attr('font-weight', energyFontWeight)
+          .style('font-family', activeFont)
+          .attr('fill', labelColor);
+        
+        renderRichText(valText, fmtE(val, dec));
+      }
+    });
+  });
+
+  // Highlight Baseline y = 0
+  if (co.showZeroLine !== false) {
+    const zeroThick = co.zeroLineThickness || 1.2;
+    g.append('line')
+      .attr('class', 'zero-line')
+      .attr('x1', 0).attr('y1', zeroY)
+      .attr('x2', iW).attr('y2', zeroY)
+      .style('stroke', '#000000')
+      .style('stroke-width', zeroThick + 'px');
+  }
+
+  // Axes (Pure Academic Frame)
+  // 1. Bottom X Axis
+  if (co.showBottomAxis !== false) {
+    const xAxisGen = d3.axisBottom(x0Scale).tickFormat('');
+
+    const tickDir = co.tickDirBottom || 'out';
+    if (tickDir === 'in') xAxisGen.tickSizeInner(-6).tickPadding(10);
+    else if (tickDir === 'out') xAxisGen.tickSizeInner(6).tickPadding(10);
+    else if (tickDir === 'both') xAxisGen.tickSizeInner(6).tickPadding(10);
+    else xAxisGen.tickSizeInner(0).tickPadding(8);
+
+    const xAxG = g.append('g').attr('class', 'axis axis-bottom')
+      .attr('transform', `translate(0, ${iH})`)
+      .call(xAxisGen);
+
+    xAxG.selectAll('path, line').style('stroke', '#000000').style('stroke-width', axThick + 'px');
+    if (tickDir === 'both') {
+      xAxG.selectAll('.tick line').attr('y1', -6).attr('y2', 6);
+    }
+
+    // Custom Formatted X Tick Labels (with rotation and multiline step support)
+    xAxG.selectAll('.tick').each(function(id) {
+      const tickG = d3.select(this);
+      const it = app.intermediates.find(item => item.id === id);
+      if (!it || it.showName === false) return;
+
+      let labelStr = it.name;
+      if (co.xLabelMultiline === 'wrap') {
+        // Convert "A → B" to "A\n↓\nB"
+        labelStr = labelStr.replace(/\s*→\s*|\s*-->\s*|\s*->\s*/g, '\n↓\n');
+      } else if (co.xLabelMultiline === 'arrow-bottom') {
+        // Convert "A → B" to "A\n→ B"
+        labelStr = labelStr.replace(/\s*→\s*|\s*-->\s*|\s*->\s*/g, '\n→ ');
+      }
+
+      const align = co.xLabelAlign || 'end';
+      const offsetUserY = co.xLabelOffsetY || 0;
+      const baseTextY = ((tickDir === 'in' || tickDir === 'none') ? 10 : 12) + offsetUserY;
+
+      const textEl = tickG.append('text')
+        .attr('font-size', nameFontSize + 'px')
+        .attr('font-weight', nameFontWeight)
+        .style('font-family', activeFont)
+        .attr('fill', '#000000');
+
+      if (align === 'center') {
+        textEl.attr('text-anchor', 'middle');
+        if (xRot !== 0) {
+          // Centered & rotated: center the text under the tick and rotate cleanly
+          const rotCenterY = baseTextY + Math.sin(Math.abs(xRot) * Math.PI / 180) * (nameFontSize * 1.6);
+          textEl.attr('x', 0)
+            .attr('y', rotCenterY)
+            .attr('dominant-baseline', 'middle')
+            .attr('transform', `rotate(-${xRot}, 0, ${rotCenterY})`);
+        } else {
+          textEl.attr('x', 0)
+            .attr('y', baseTextY)
+            .attr('dominant-baseline', 'hanging');
+        }
+      } else if (align === 'start') {
+        textEl.attr('text-anchor', 'start');
+        if (xRot !== 0) {
+          textEl.attr('x', 0)
+            .attr('y', baseTextY)
+            .attr('transform', `rotate(-${xRot}, 0, ${baseTextY}) translate(4, 0)`);
+        } else {
+          textEl.attr('x', 0)
+            .attr('y', baseTextY)
+            .attr('dominant-baseline', 'hanging');
+        }
+      } else {
+        // 'end' (default/current behavior)
+        textEl.attr('text-anchor', 'end');
+        if (xRot !== 0) {
+          textEl.attr('x', 0)
+            .attr('y', baseTextY)
+            .attr('transform', `rotate(-${xRot}, 0, ${baseTextY}) translate(-4, 0)`);
+        } else {
+          textEl.attr('x', 0)
+            .attr('y', baseTextY)
+            .attr('dominant-baseline', 'hanging');
+        }
+      }
+
+      renderRichText(textEl, labelStr);
+    });
+  }
+
+  // 2. Left Y Axis
+  if (co.showLeftAxis !== false) {
+    const yAxisGen = d3.axisLeft(yScale);
+    const tickDir = co.tickDirLeft || 'out';
+    if (tickDir === 'in') yAxisGen.tickSizeInner(-6).tickPadding(8);
+    else if (tickDir === 'out') yAxisGen.tickSizeInner(6).tickPadding(8);
+    else if (tickDir === 'both') yAxisGen.tickSizeInner(6).tickPadding(8);
+    else yAxisGen.tickSizeInner(0).tickPadding(6);
+
+    const yAxG = g.append('g').attr('class', 'axis axis-left').call(yAxisGen);
+    yAxG.selectAll('path, line').style('stroke', '#000000').style('stroke-width', axThick + 'px');
+    if (tickDir === 'both') {
+      yAxG.selectAll('.tick line').attr('x1', -6).attr('x2', 6);
+    }
+
+    yAxG.selectAll('text')
+      .attr('font-size', tickFontSize + 'px')
+      .attr('font-weight', tickWeight)
+      .style('font-family', activeFont)
+      .attr('fill', '#000000');
+  }
+
+  // 3. Top Frame Axis
+  if (co.showTopAxis !== false) {
+    const topGen = d3.axisTop(x0Scale).tickFormat('');
+    const tickDir = co.tickDirTop || 'none';
+    if (tickDir === 'in') topGen.tickSizeInner(-6);
+    else if (tickDir === 'out') topGen.tickSizeInner(6);
+    else if (tickDir === 'both') topGen.tickSizeInner(6);
+    else topGen.tickSizeInner(0);
+
+    const topG = g.append('g').attr('class', 'axis axis-top').call(topGen);
+    topG.selectAll('path, line').style('stroke', '#000000').style('stroke-width', axThick + 'px');
+    if (tickDir === 'both') topG.selectAll('.tick line').attr('y1', -6).attr('y2', 6);
+  }
+
+  // 4. Right Frame Axis
+  if (co.showRightAxis !== false) {
+    const rightGen = d3.axisRight(yScale).tickFormat('');
+    const tickDir = co.tickDirRight || 'none';
+    if (tickDir === 'in') rightGen.tickSizeInner(-6);
+    else if (tickDir === 'out') rightGen.tickSizeInner(6);
+    else if (tickDir === 'both') rightGen.tickSizeInner(6);
+    else rightGen.tickSizeInner(0);
+
+    const rightG = g.append('g').attr('class', 'axis axis-right')
+      .attr('transform', `translate(${iW},0)`).call(rightGen);
+    rightG.selectAll('path, line').style('stroke', '#000000').style('stroke-width', axThick + 'px');
+    if (tickDir === 'both') rightG.selectAll('.tick line').attr('x1', -6).attr('x2', 6);
+  }
+
+  // Axis Titles (Draggable)
+  // X Title
+  if (co.showXTitle !== false) {
+    if (!co.xTitleOffset) co.xTitleOffset = { x: 0, y: 0 };
+    const xox = co.xTitleOffset.x || 0;
+    const xoy = co.xTitleOffset.y || 0;
+    const baseX = iW / 2;
+    const baseY = iH + (nameFontSize + 26) + extraRotBottom;
+
+    const xTitleG = g.append('g').attr('class', 'axis-title-group x-title-group')
+      .attr('transform', `translate(${baseX + xox}, ${baseY + xoy})`)
+      .style('cursor', 'move');
+
+    const xTitleEl = xTitleG.append('text').attr('class', 'axis-label')
+      .attr('x', 0).attr('y', 0)
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'hanging')
+      .attr('font-size', axisTitleFontSize + 'px')
+      .attr('font-weight', axisTitleWeight)
+      .style('font-family', activeFont)
+      .attr('fill', '#000000');
+    renderRichText(xTitleEl, co.xTitleText || 'Reaction Step');
+
+    bindPrecisionDrag(
+      xTitleG,
+      () => ({ x: co.xTitleOffset.x || 0, y: co.xTitleOffset.y || 0 }),
+      (newX, newY) => {
+        co.xTitleOffset = { x: newX, y: newY };
+        xTitleG.attr('transform', `translate(${baseX + newX}, ${baseY + newY})`);
+      },
+      () => saveState(),
+      () => { co.xTitleOffset = { x: 0, y: 0 }; saveAndRender(); }
+    );
+  }
+
+  // Y Title
+  const yTitleStr = (co.yTitleText && co.yTitleText.trim())
+    ? `${co.yTitleText.trim()} (${app.displayUnit})`
+    : `Energy Gap (${app.displayUnit})`;
+
+  if (!co.yTitleOffset) co.yTitleOffset = { x: 0, y: 0 };
+  const yox = co.yTitleOffset.x || 0;
+  const yoy = co.yTitleOffset.y || 0;
+  const baseYX = -iH / 2;
+  const baseYY = -(margin.left - 20);
+
+  const yTitleG = g.append('g').attr('class', 'axis-title-group y-title-group')
+    .attr('transform', `translate(${yox}, ${yoy}) rotate(-90)`)
+    .style('cursor', 'move');
+
+  const yTitleEl = yTitleG.append('text').attr('class', 'axis-label')
+    .attr('x', baseYX).attr('y', baseYY)
+    .attr('text-anchor', 'middle')
+    .attr('dominant-baseline', 'middle')
+    .attr('font-size', axisTitleFontSize + 'px')
+    .attr('font-weight', axisTitleWeight)
+    .style('font-family', activeFont)
+    .attr('fill', '#000000');
+  renderRichText(yTitleEl, yTitleStr);
+
+  bindPrecisionDrag(
+    yTitleG,
+    () => ({ x: co.yTitleOffset.x || 0, y: co.yTitleOffset.y || 0 }),
+    (newX, newY) => {
+      co.yTitleOffset = { x: newX, y: newY };
+      yTitleG.attr('transform', `translate(${newX}, ${newY}) rotate(-90)`);
+    },
+    () => saveState(),
+    () => { co.yTitleOffset = { x: 0, y: 0 }; saveAndRender(); }
+  );
+
+  // Plot Area Border Resizing Handles
+  renderPlotBoxHandles(svg, margin, iW, iH);
+
+  // Render Reference Lines / Thresholds
+  renderRefLines(g, yScale, iW, activeFont);
+
+  // Render Free Text Annotations
+  renderTextAnnotations(svg, activeFont);
+
+  // Render Draggable & Resizable Legend
+  renderLegend(svg, activeGroups, activeFont);
+}
+
+// Plot Box Drag Resize Handles
+function renderPlotBoxHandles(svg, margin, iW, iH) {
+  const handlesG = svg.append('g').attr('class', 'plot-box-handles');
+  const boxL = margin.left, boxR = margin.left + iW;
+  const boxT = margin.top, boxB = margin.top + iH;
+  const hitW = 12;
+
+  function bindBorderDrag(sel, updateFn, dblFn) {
+    sel.on('pointerdown', function(ev) {
+      if (ev.button !== 0) return;
+      ev.preventDefault(); ev.stopPropagation();
+      const startPt = getSvgPoint(ev);
+      const startMargins = { ...app.chartOptions.plotMargins };
+      document.body.style.userSelect = 'none';
+
+      function onMove(e) {
+        e.preventDefault();
+        const curPt = getSvgPoint(e);
+        updateFn(curPt.x - startPt.x, curPt.y - startPt.y, startMargins);
+        renderChart();
+      }
+      function onUp() {
+        document.body.style.userSelect = '';
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        saveState();
+      }
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    });
+    if (dblFn) sel.on('dblclick', function(ev) { ev.stopPropagation(); dblFn(); });
+  }
+
+  // Left Border
+  const leftEdge = handlesG.append('line').attr('class', 'plot-edge-hit')
+    .attr('x1', boxL).attr('y1', boxT).attr('x2', boxL).attr('y2', boxB)
+    .style('stroke', 'transparent').style('stroke-width', hitW + 'px').style('cursor', 'ew-resize')
+    .attr('title', '拖曳調整圖表左邊界');
+  bindBorderDrag(leftEdge, (dx, dy, sm) => {
+    if (!app.chartOptions.plotMargins) app.chartOptions.plotMargins = {};
+    const base = (sm.left !== null && sm.left !== undefined) ? sm.left : currentPlotMargin.left;
+    app.chartOptions.plotMargins.left = Math.max(20, Math.min(cW - 100, Math.round(base + dx)));
+  }, () => { if (app.chartOptions.plotMargins) { app.chartOptions.plotMargins.left = null; saveAndRender(); } });
+
+  // Right Border
+  const rightEdge = handlesG.append('line').attr('class', 'plot-edge-hit')
+    .attr('x1', boxR).attr('y1', boxT).attr('x2', boxR).attr('y2', boxB)
+    .style('stroke', 'transparent').style('stroke-width', hitW + 'px').style('cursor', 'ew-resize')
+    .attr('title', '拖曳調整圖表右邊界');
+  bindBorderDrag(rightEdge, (dx, dy, sm) => {
+    if (!app.chartOptions.plotMargins) app.chartOptions.plotMargins = {};
+    const base = (sm.right !== null && sm.right !== undefined) ? sm.right : currentPlotMargin.right;
+    app.chartOptions.plotMargins.right = Math.max(10, Math.min(cW - 100, Math.round(base - dx)));
+  }, () => { if (app.chartOptions.plotMargins) { app.chartOptions.plotMargins.right = null; saveAndRender(); } });
+
+  // Top Border
+  const topEdge = handlesG.append('line').attr('class', 'plot-edge-hit')
+    .attr('x1', boxL).attr('y1', boxT).attr('x2', boxR).attr('y2', boxT)
+    .style('stroke', 'transparent').style('stroke-width', hitW + 'px').style('cursor', 'ns-resize')
+    .attr('title', '拖曳調整圖表上邊界');
+  bindBorderDrag(topEdge, (dx, dy, sm) => {
+    if (!app.chartOptions.plotMargins) app.chartOptions.plotMargins = {};
+    const base = (sm.top !== null && sm.top !== undefined) ? sm.top : currentPlotMargin.top;
+    app.chartOptions.plotMargins.top = Math.max(15, Math.min(cH - 80, Math.round(base + dy)));
+  }, () => { if (app.chartOptions.plotMargins) { app.chartOptions.plotMargins.top = null; saveAndRender(); } });
+
+  // Bottom Border
+  const botEdge = handlesG.append('line').attr('class', 'plot-edge-hit')
+    .attr('x1', boxL).attr('y1', boxB).attr('x2', boxR).attr('y2', boxB)
+    .style('stroke', 'transparent').style('stroke-width', hitW + 'px').style('cursor', 'ns-resize')
+    .attr('title', '拖曳調整圖表下邊界');
+  bindBorderDrag(botEdge, (dx, dy, sm) => {
+    if (!app.chartOptions.plotMargins) app.chartOptions.plotMargins = {};
+    const base = (sm.bottom !== null && sm.bottom !== undefined) ? sm.bottom : currentPlotMargin.bottom;
+    app.chartOptions.plotMargins.bottom = Math.max(20, Math.min(cH - 80, Math.round(base - dy)));
+  }, () => { if (app.chartOptions.plotMargins) { app.chartOptions.plotMargins.bottom = null; saveAndRender(); } });
+}
+
+// Draggable & Interactive Resizable Legend (Matching energy-profile-plotter.html)
+function renderLegend(svg, activeGroups, activeFont) {
+  if (app.legend && app.legend.visible === false) return;
+  if (!activeGroups.length) return;
+
+  if (!app.legend) app.legend = { visible: true, x: 85, y: 40, orientation: 'vertical', showBorder: true, titles: {} };
+  const lx = app.legend.x !== undefined ? app.legend.x : 85;
+  const ly = app.legend.y !== undefined ? app.legend.y : 40;
+
+  const legG = svg.append('g').attr('class', 'chart-legend')
+    .attr('transform', `translate(${lx}, ${ly})`);
+
+  // Drag moving legend (ignoring resize handle clicks)
+  legG.call(d3.drag()
+    .filter(function(ev) {
+      return !ev.target.closest('.legend-resize-handle');
+    })
+    .on('drag', function(ev) {
+      app.legend.x = (app.legend.x !== undefined ? app.legend.x : lx) + ev.dx;
+      app.legend.y = (app.legend.y !== undefined ? app.legend.y : ly) + ev.dy;
+      d3.select(this).attr('transform', `translate(${app.legend.x}, ${app.legend.y})`);
+    })
+    .on('end', () => saveState())
+  );
+
+  const numLSize = parseInt(app.chartOptions?.legendFontSize) || 13;
+  const lWeight = app.chartOptions?.legendFontWeight || '500';
+  const itemH = Math.max(20, numLSize + 8);
+  const padX = 12, padY = 8;
+  const swatchW = 16, swatchH = 12;
+  const textStartX = padX + swatchW + 8;
+
+  // Background Box
+  const bgRect = legG.append('rect')
+    .attr('class', 'chart-legend-bg')
+    .attr('fill', 'white')
+    .attr('stroke', app.legend.showBorder !== false ? '#000000' : 'none')
+    .attr('stroke-width', 1)
+    .attr('rx', 4).attr('ry', 4);
+
+  const itemsG = legG.append('g').attr('class', 'legend-items-container');
+
+  activeGroups.forEach((gr, idx) => {
+    const itemY = padY + idx * itemH;
+    const ig = itemsG.append('g').attr('class', 'legend-item')
+      .attr('transform', `translate(${padX}, ${itemY})`)
+      .attr('title', '雙擊修改圖例名稱 / Double click to edit')
+      .on('dblclick', function(ev) {
+        ev.stopPropagation();
+        const curName = app.legend.titles?.[gr.id] || gr.name;
+        const n = prompt(t('editLegendPrompt'), curName);
+        if (n !== null && n.trim()) {
+          if (!app.legend.titles) app.legend.titles = {};
+          app.legend.titles[gr.id] = n.trim();
+          saveAndRender();
+        }
+      });
+
+    // Swatch rect with border
+    ig.append('rect')
+      .attr('x', 0).attr('y', 2)
+      .attr('width', swatchW).attr('height', swatchH)
+      .attr('fill', gr.color)
+      .attr('stroke', '#000000')
+      .attr('stroke-width', 1);
+
+    // Label Text
+    const labelTxt = app.legend.titles?.[gr.id] || gr.name;
+    const txt = ig.append('text')
+      .attr('x', swatchW + 8)
+      .attr('y', swatchH / 2 + 3)
+      .attr('dominant-baseline', 'middle')
+      .attr('font-size', numLSize + 'px')
+      .attr('font-weight', lWeight)
+      .style('font-family', activeFont)
+      .attr('fill', '#000000');
+    renderRichText(txt, labelTxt);
+  });
+
+  // Calculate tight automatic size based on rendered items
+  let maxTextRight = 0;
+  itemsG.selectAll('.legend-item text').each(function() {
+    try {
+      const bb = this.getBBox();
+      const right = textStartX + bb.width;
+      if (right > maxTextRight) maxTextRight = right;
+    } catch(e){}
+  });
+
+  if (maxTextRight === 0) {
+    activeGroups.forEach(gr => {
+      const txt = app.legend.titles?.[gr.id] || gr.name;
+      maxTextRight = Math.max(maxTextRight, textStartX + txt.length * (numLSize * 0.7));
+    });
+  }
+
+  const autoW = Math.max(65, Math.round(maxTextRight + padX));
+  const autoH = Math.max(26, Math.round(padY * 2 + activeGroups.length * itemH - 4));
+
+  const boxW = (app.legend.customWidth && app.legend.customWidth > 40) ? app.legend.customWidth : autoW;
+  const boxH = (app.legend.customHeight && app.legend.customHeight > 20) ? app.legend.customHeight : autoH;
+
+  bgRect.attr('width', boxW).attr('height', boxH);
+
+  // Resize Handle (bottom-right corner - matching energy-profile-plotter)
+  const handleG = legG.append('g').attr('class', 'legend-resize-handle')
+    .attr('transform', `translate(${boxW}, ${boxH})`)
+    .style('cursor', 'se-resize')
+    .attr('title', t('legendResizeHint'));
+
+  // Grip lines
+  handleG.append('path')
+    .attr('d', 'M -9 -2 L -2 -9 M -6 -2 L -2 -6 M -3 -2 L -2 -3')
+    .attr('stroke', '#8c959f')
+    .attr('stroke-width', 1.2)
+    .attr('stroke-linecap', 'round');
+
+  // Hit area
+  handleG.append('rect')
+    .attr('x', -12).attr('y', -12)
+    .attr('width', 14).attr('height', 14)
+    .attr('fill', 'transparent');
+
+  // Drag logic for resizing
+  let startW = boxW, startH = boxH;
+  handleG.call(d3.drag()
+    .on('start', function() {
+      startW = (app.legend.customWidth && app.legend.customWidth > 40) ? app.legend.customWidth : autoW;
+      startH = (app.legend.customHeight && app.legend.customHeight > 20) ? app.legend.customHeight : autoH;
+    })
+    .on('drag', function(ev) {
+      startW = Math.max(45, startW + ev.dx);
+      startH = Math.max(22, startH + ev.dy);
+      app.legend.customWidth = Math.round(startW);
+      app.legend.customHeight = Math.round(startH);
+      bgRect.attr('width', app.legend.customWidth).attr('height', app.legend.customHeight);
+      handleG.attr('transform', `translate(${app.legend.customWidth}, ${app.legend.customHeight})`);
+    })
+    .on('end', function() {
+      saveState();
+    })
+  );
+
+  // Double click resets to auto size
+  handleG.on('dblclick', function(ev) {
+    ev.stopPropagation();
+    delete app.legend.customWidth;
+    delete app.legend.customHeight;
+    saveAndRender();
+    showToast('已還原圖例框為自適應尺寸');
+  });
+}
+
+// Reference Lines (e.g. Overpotential / Benchmark / PDS)
+function renderRefLines(g, yScale, iW, activeFont) {
+  if (!app.referenceLines || !app.referenceLines.length) return;
+
+  app.referenceLines.forEach((ref) => {
+    const yVal = dispE(ref.value || 0);
+    const yPx = yScale(yVal);
+    const col = ref.color || '#d32f2f';
+    const dash = ref.dash || '6,3';
+    const thick = ref.thickness || 1.5;
+
+    const refG = g.append('g').attr('class', 'ref-line-group');
+
+    // Horizontal Line
+    refG.append('line')
+      .attr('x1', 0).attr('y1', yPx)
+      .attr('x2', iW).attr('y2', yPx)
+      .style('stroke', col)
+      .style('stroke-width', thick + 'px')
+      .style('stroke-dasharray', dash);
+
+    // Label
+    if (ref.label && ref.label.trim()) {
+      const lblX = (ref.xOffset !== undefined) ? ref.xOffset : (iW - 10);
+      const lblY = yPx - 6 + (ref.yOffset || 0);
+
+      const txtG = refG.append('g')
+        .attr('transform', `translate(${lblX}, ${lblY})`)
+        .style('cursor', 'move');
+
+      const textEl = txtG.append('text')
+        .attr('text-anchor', 'end')
+        .attr('font-size', (ref.fontSize || 12) + 'px')
+        .attr('font-weight', ref.fontWeight || '700')
+        .style('font-family', activeFont)
+        .attr('fill', col);
+      renderRichText(textEl, ref.label.trim());
+
+      bindPrecisionDrag(
+        txtG,
+        () => ({ x: ref.xOffset || (iW - 10), y: ref.yOffset || 0 }),
+        (newX, newY) => {
+          ref.xOffset = newX;
+          ref.yOffset = newY;
+          txtG.attr('transform', `translate(${newX}, ${yPx - 6 + newY})`);
+        },
+        () => saveState()
+      );
+    }
+  });
+}
+
+// Free Text Annotations
+function renderTextAnnotations(svg, activeFont) {
+  if (!app.textAnnotations || !app.textAnnotations.length) return;
+
+  app.textAnnotations.forEach((txt) => {
+    const txtG = svg.append('g').attr('class', 'text-annotation-group')
+      .attr('transform', `translate(${txt.x || 100}, ${txt.y || 100})`)
+      .style('cursor', 'move');
+
+    const textEl = txtG.append('text')
+      .attr('font-size', (txt.fontSize || 14) + 'px')
+      .attr('font-weight', txt.bold ? '700' : '400')
+      .attr('font-style', txt.italic ? 'italic' : 'normal')
+      .style('font-family', activeFont)
+      .attr('fill', txt.color || '#000000');
+    renderRichText(textEl, txt.text || '');
+
+    textEl.on('click', function(ev) {
+      ev.stopPropagation();
+      showTextPopup(txt, ev);
+    });
+
+    bindPrecisionDrag(
+      txtG,
+      () => ({ x: txt.x || 100, y: txt.y || 100 }),
+      (newX, newY) => {
+        txt.x = newX; txt.y = newY;
+        txtG.attr('transform', `translate(${newX}, ${newY})`);
+      },
+      () => saveState()
+    );
+  });
+}
+
+// ============================================================
+// 13. POPUPS & EDIT MODALS
+// ============================================================
+const popup = document.getElementById('style-popup');
+const popBody = document.getElementById('popup-body');
+const popTitle = document.getElementById('popup-title');
+
+function hidePopup() { if (popup) popup.classList.add('hidden'); }
+
+function posPopup(ev) {
+  if (!popup) return;
+  popup.classList.remove('hidden');
+  let x = ev.clientX + 12, y = ev.clientY - 10;
+  if (x + 280 > window.innerWidth) x = ev.clientX - 280;
+  if (y + 350 > window.innerHeight) y = window.innerHeight - 360;
+  if (y < 10) y = 10;
+  popup.style.left = x + 'px';
+  popup.style.top = y + 'px';
+}
+
+function showBarPopup(gr, itObj, ev) {
+  popTitle.textContent = `${gr.name} : ${itObj.name}`;
+  popBody.innerHTML = '';
+
+  // 1. Energy Value Input
+  const rVal = document.createElement('div'); rVal.className = 'popup-row';
+  rVal.innerHTML = `<label>能差 (ΔG)：</label>`;
+  const inpVal = document.createElement('input');
+  inpVal.type = 'number'; inpVal.step = '0.001';
+  inpVal.value = gr.values[itObj.id] !== undefined ? gr.values[itObj.id] : 0.000;
+  inpVal.oninput = () => { gr.values[itObj.id] = parseFloat(inpVal.value) || 0.000; renderChart(); };
+  inpVal.onchange = () => saveAndRender();
+  rVal.appendChild(inpVal);
+  popBody.appendChild(rVal);
+
+  // 2. Bar Color
+  const rCol = document.createElement('div'); rCol.className = 'popup-row';
+  rCol.innerHTML = `<label>柱子色彩：</label>`;
+  const curColor = gr.customColors[itObj.id] || gr.color;
+  const colBtn = createColorButton(curColor, newCol => {
+    gr.customColors[itObj.id] = newCol;
+    renderChart();
+  }, {
+    title: '選取色彩',
+    onSave: () => saveState()
+  });
+  rCol.appendChild(colBtn);
+  popBody.appendChild(rCol);
+
+  // 3. Show Value Toggle
+  const rShowVal = document.createElement('div'); rShowVal.className = 'popup-row';
+  rShowVal.innerHTML = `<label>顯示數值標籤：</label>`;
+  const cbVal = document.createElement('input'); cbVal.type = 'checkbox';
+  cbVal.checked = gr.showValues[itObj.id] !== false;
+  cbVal.onchange = () => { gr.showValues[itObj.id] = cbVal.checked; saveAndRender(); };
+  rShowVal.appendChild(cbVal);
+  popBody.appendChild(rShowVal);
+
+  // 4. Reset bar color to default group color
+  const rReset = document.createElement('div'); rReset.className = 'popup-row'; rReset.style.marginTop = '6px';
+  const btnReset = document.createElement('button');
+  btnReset.className = 'btn-panel btn-sm';
+  btnReset.textContent = '↺ 還原體系預設色';
+  btnReset.onclick = () => {
+    delete gr.customColors[itObj.id];
+    saveAndRender();
+    hidePopup();
+  };
+  rReset.appendChild(btnReset);
+  popBody.appendChild(rReset);
+
+  if (ev) posPopup(ev);
+}
+
+function showTextPopup(txt, ev) {
+  popTitle.textContent = '文字框設定';
+  popBody.innerHTML = '';
+
+  const rT = document.createElement('div'); rT.className = 'popup-row'; rT.style.alignItems = 'flex-start';
+  rT.innerHTML = `<label>文字：</label>`;
+  const ta = document.createElement('textarea');
+  ta.value = txt.text || '';
+  ta.style.width = '160px'; ta.style.height = '50px'; ta.style.fontSize = '12px'; ta.style.padding = '3px';
+  ta.oninput = () => { txt.text = ta.value; renderChart(); };
+  ta.onchange = () => saveState();
+  rT.appendChild(ta);
+  popBody.appendChild(rT);
+
+  // Font Size
+  const rS = document.createElement('div'); rS.className = 'popup-row';
+  rS.innerHTML = `<label>字級：</label>`;
+  const inpS = document.createElement('input'); inpS.type = 'number'; inpS.min = '8'; inpS.max = '64';
+  inpS.value = txt.fontSize || 14;
+  inpS.oninput = () => { txt.fontSize = parseInt(inpS.value) || 14; renderChart(); };
+  inpS.onchange = () => saveState();
+  rS.appendChild(inpS);
+  popBody.appendChild(rS);
+
+  // Color
+  const rC = document.createElement('div'); rC.className = 'popup-row';
+  rC.innerHTML = `<label>顏色：</label>`;
+  const colBtn = createColorButton(txt.color || '#000000', newCol => { txt.color = newCol; renderChart(); });
+  rC.appendChild(colBtn);
+  popBody.appendChild(rC);
+
+  // Bold & Italic
+  const rSt = document.createElement('div'); rSt.className = 'popup-row';
+  rSt.innerHTML = `<label>樣式：</label>`;
+  const wrap = document.createElement('div'); wrap.style.display = 'flex'; wrap.style.gap = '8px';
+  const cbB = document.createElement('input'); cbB.type = 'checkbox'; cbB.checked = !!txt.bold;
+  cbB.onchange = () => { txt.bold = cbB.checked; renderChart(); saveState(); };
+  const lblB = document.createElement('label'); lblB.appendChild(cbB); lblB.appendChild(document.createTextNode('粗體'));
+  wrap.appendChild(lblB);
+  rSt.appendChild(wrap);
+  popBody.appendChild(rSt);
+
+  // Delete
+  const rDel = document.createElement('div'); rDel.className = 'popup-row'; rDel.style.marginTop = '8px';
+  const btnDel = document.createElement('button'); btnDel.className = 'btn-panel btn-danger btn-sm';
+  btnDel.textContent = '✕ 刪除文字框';
+  btnDel.onclick = () => {
+    const idx = (app.textAnnotations || []).indexOf(txt);
+    if (idx >= 0) { app.textAnnotations.splice(idx, 1); hidePopup(); saveAndRender(); }
+  };
+  rDel.appendChild(btnDel);
+  popBody.appendChild(rDel);
+
+  if (ev) posPopup(ev);
+}
+
+document.getElementById('popup-close').onclick = hidePopup;
+document.addEventListener('click', e => {
+  if (popup && !popup.contains(e.target) && !popup.classList.contains('hidden')) {
+    hidePopup();
+  }
+});
+
+// ============================================================
+// 14. ANNOTATION / REFERENCE LINE UI
+// ============================================================
+function setupAnnotations() {
+  const toggle = document.getElementById('annotation-toggle');
+  const body = document.getElementById('annotation-body');
+  if (toggle && body) toggle.onclick = () => body.classList.toggle('hidden');
+
+  document.getElementById('btn-add-annotation').onclick = addRefLine;
+  const btnHeadRef = document.getElementById('btn-add-refline');
+  if (btnHeadRef) btnHeadRef.onclick = addRefLine;
+}
+
+function addRefLine() {
+  if (!app.referenceLines) app.referenceLines = [];
+  app.referenceLines.push({
+    id: gid(), value: 0.0, label: 'Threshold', color: '#d32f2f', dash: '6,3', thickness: 1.5, fontSize: 12, fontWeight: '700'
+  });
+  saveAndRender();
+  renderAnnotationUI();
+}
+
+function renderAnnotationUI() {
+  const list = document.getElementById('annotation-list');
+  if (!list) return;
+  list.innerHTML = '';
+
+  if (!app.referenceLines || app.referenceLines.length === 0) {
+    list.innerHTML = `<div style="font-size:11px; color:#757575; font-style:italic; padding:4px 0;">${t('noAnnotations')}</div>`;
+    return;
+  }
+
+  app.referenceLines.forEach((ref, i) => {
+    const row = document.createElement('div');
+    row.style.display = 'flex'; row.style.alignItems = 'center'; row.style.gap = '4px';
+    row.style.marginBottom = '5px'; row.style.padding = '4px 6px'; row.style.background = '#f9f9f9';
+    row.style.borderRadius = '4px'; row.style.border = '1px solid #eee';
+
+    // Label
+    const inpL = document.createElement('input');
+    inpL.type = 'text'; inpL.value = ref.label || '';
+    inpL.placeholder = '標籤 (如 η=0.45V)';
+    inpL.style.width = '100px'; inpL.style.fontSize = '11px'; inpL.style.padding = '2px 4px';
+    inpL.onchange = () => { ref.label = inpL.value; saveAndRender(); };
+    row.appendChild(inpL);
+
+    // Value (Y position)
+    const inpV = document.createElement('input');
+    inpV.type = 'number'; inpV.step = '0.05'; inpV.value = ref.value;
+    inpV.title = 'Y 軸數值位置';
+    inpV.style.width = '55px'; inpV.style.fontSize = '11px'; inpV.style.padding = '2px 3px';
+    inpV.onchange = () => { ref.value = parseFloat(inpV.value) || 0; saveAndRender(); };
+    row.appendChild(inpV);
+
+    // Color button
+    const colBtn = createColorButton(ref.color || '#d32f2f', newCol => { ref.color = newCol; renderChart(); });
+    row.appendChild(colBtn);
+
+    // Delete
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn-toggle-eye'; delBtn.style.color = '#c62828'; delBtn.textContent = '✕';
+    delBtn.onclick = () => {
+      app.referenceLines.splice(i, 1);
+      saveAndRender();
+      renderAnnotationUI();
+    };
+    row.appendChild(delBtn);
+
+    list.appendChild(row);
+  });
+}
+
+// ============================================================
+// 15. EXPORT & STYLE PRESETS
+// ============================================================
+function inlineCSS(el) {
+  el.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  const ff = getActiveFontFamily();
+  const s = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+  s.textContent = `
+    text { font-family: ${ff}; }
+    .axis path, .axis line { stroke: #000000; }
+    .axis text { fill: #000000; font-family: ${ff}; }
+    .axis-label { fill: #000000; font-family: ${ff}; }
+    .grid line { stroke: #e0e0e0; stroke-dasharray: 4,4; }
+    .grid path { stroke: none; }
+    .zero-line { stroke: #000000; stroke-width: 1.5px; }
+    .chart-legend-bg { fill: white; stroke: #000000; stroke-width: 1px; rx: 4px; ry: 4px; }
+    .legend-item text { fill: #000000; font-family: ${ff}; }
+    .legend-resize-handle { display: none !important; }
+    .plot-box-handles { display: none !important; }
+  `;
+  el.insertBefore(s, el.firstChild);
+}
+
+function exportSVG() {
+  const cl = document.getElementById('chart-svg').cloneNode(true);
+  inlineCSS(cl);
+  cl.setAttribute('width', cW);
+  cl.setAttribute('height', cH);
+  cl.setAttribute('viewBox', `0 0 ${cW} ${cH}`);
+  const str = '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(cl);
+  downloadFile(str, `reaction-energy-gap-${cW}x${cH}.svg`, 'image/svg+xml');
+  showToast(t('exportSVGMsg'));
+}
+
+function exportPNG() {
+  const cl = document.getElementById('chart-svg').cloneNode(true);
+  inlineCSS(cl);
+  cl.setAttribute('width', cW);
+  cl.setAttribute('height', cH);
+  cl.setAttribute('viewBox', `0 0 ${cW} ${cH}`);
+
+  const str = new XMLSerializer().serializeToString(cl);
+  const url = URL.createObjectURL(new Blob([str], { type: 'image/svg+xml;charset=utf-8' }));
+  const sc = (app.canvasConfig && app.canvasConfig.scale) ? app.canvasConfig.scale : 3;
+  const cv = document.createElement('canvas');
+  cv.width = cW * sc;
+  cv.height = cH * sc;
+  const ctx = cv.getContext('2d');
+  ctx.scale(sc, sc);
+
+  const img = new Image();
+  img.onload = () => {
+    ctx.drawImage(img, 0, 0, cW, cH);
+    URL.revokeObjectURL(url);
+    cv.toBlob(b => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(b);
+      a.download = `reaction-energy-gap-${cW}x${cH}@${sc}x.png`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      showToast(`${t('exportPNGMsg')} (${cW * sc} × ${cH * sc} px)`);
+    }, 'image/png');
+  };
+  img.src = url;
+}
+
+function exportJSON() {
+  downloadFile(JSON.stringify(app, null, 2), 'reaction-energy-gap-project.json', 'application/json');
+}
+
+function importJSON(file) {
+  const rd = new FileReader();
+  rd.onload = e => {
+    try {
+      const d = JSON.parse(e.target.result);
+      if (d.intermediates && d.groups) {
+        app = d;
+        if (app.activeGroup >= app.groups.length) app.activeGroup = 0;
+        if (app.lang) currentLang = app.lang;
+        initUnits();
+        initCanvasConfig();
+        initChartOptions();
+        applyLang();
+        saveAndRender();
+        showToast('已成功載入專案資料！');
+      } else {
+        alert('無效的專案檔案格式！');
+      }
+    } catch(err) {
+      alert('載入失敗：' + err.message);
+    }
+  };
+  rd.readAsText(file);
+}
+
+function downloadFile(content, name, mime) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content], { type: mime }));
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function setupExport() {
+  const btnText = document.getElementById('btn-add-text');
+  if (btnText) {
+    btnText.onclick = () => {
+      if (!app.textAnnotations) app.textAnnotations = [];
+      const dims = getCanvasDimensions();
+      app.textAnnotations.push({
+        id: gid(), text: currentLang === 'zh' ? '自訂標籤' : 'Custom Text',
+        x: dims.w / 2, y: dims.h / 3, fontSize: 14, color: '#000000', bold: false, italic: false
+      });
+      saveAndRender();
+      showToast('已新增文字框（可拖曳移動，點擊編輯）');
+    };
+  }
+
+  document.getElementById('btn-export-svg').onclick = exportSVG;
+  document.getElementById('btn-export-png').onclick = exportPNG;
+  document.getElementById('btn-save-json').onclick = exportJSON;
+  document.getElementById('btn-load-json').onclick = () => document.getElementById('file-input').click();
+  document.getElementById('file-input').onchange = e => {
+    if (e.target.files.length) { importJSON(e.target.files[0]); e.target.value = ''; }
+  };
+}
+
+function showToast(msg) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2300);
+}
+
+// ============================================================
+// 16. LOCAL STORAGE & UNDO/REDO
+// ============================================================
+function saveState() {
+  const snap = JSON.stringify(app);
+  if (prevSnapshot !== null && prevSnapshot !== snap) {
+    undoStack.push(prevSnapshot);
+    if (undoStack.length > MAX_UNDO) undoStack.shift();
+    redoStack.length = 0;
+  }
+  prevSnapshot = snap;
+  try { localStorage.setItem(STORAGE_KEY, snap); } catch(e){}
+}
+
+function restoreApp(snap) {
+  const d = JSON.parse(snap);
+  app = d;
+  if (app.activeGroup >= app.groups.length) app.activeGroup = 0;
+  if (app.lang) currentLang = app.lang;
+  initCanvasConfig();
+  initChartOptions();
+  prevSnapshot = snap;
+  applyLang();
+  saveAndRender();
+}
+
+function undo() {
+  if (!undoStack.length) return;
+  redoStack.push(prevSnapshot || JSON.stringify(app));
+  restoreApp(undoStack.pop());
+  showToast('↩ 已復原');
+}
+
+function redo() {
+  if (!redoStack.length) return;
+  undoStack.push(prevSnapshot || JSON.stringify(app));
+  restoreApp(redoStack.pop());
+  showToast('↪ 已重做');
+}
+
+function loadState() {
+  try {
+    const s = localStorage.getItem(STORAGE_KEY);
+    if (s) {
+      const d = JSON.parse(s);
+      if (d.intermediates && d.groups) app = d;
+    }
+  } catch(e){}
+  prevSnapshot = JSON.stringify(app);
+}
+
+function saveAndRender() {
+  saveState();
+  renderGroups();
+  renderTable();
+  renderAnnotationUI();
+  renderChart();
+  updateBatch();
+}
+
+function setupKB() {
+  document.addEventListener('keydown', e => {
+    const f = document.activeElement;
+    const inInput = f && (f.tagName === 'INPUT' || f.tagName === 'SELECT' || f.tagName === 'TEXTAREA');
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+      e.preventDefault(); undo(); return;
+    }
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey) || (e.key === 'Z'))) {
+      e.preventDefault(); redo(); return;
+    }
+    if (e.key === 'Escape') {
+      hidePopup();
+      hideColorPopover();
+      document.getElementById('preset-examples-modal')?.classList.add('hidden');
+      document.getElementById('batch-input-modal')?.classList.add('hidden');
+      document.getElementById('g-calculator-modal')?.classList.add('hidden');
+    }
+  });
+}
+
+function setupResize() {
+  let t;
+  window.addEventListener('resize', () => {
+    clearTimeout(t);
+    t = setTimeout(() => renderChart(), 150);
+  });
+}
+
+// ============================================================
+// 17. LANGUAGE TOGGLE
+// ============================================================
+function applyLang() {
+  document.getElementById('app-title').textContent = t('title');
+  document.getElementById('btn-lang').textContent = t('langBtn');
+  document.getElementById('lbl-input-unit').textContent = t('inputUnit');
+  document.getElementById('lbl-display-unit').textContent = t('displayUnit');
+  document.getElementById('lbl-canvas-ratio').textContent = t('canvasRatio');
+  document.getElementById('lbl-dpi').textContent = t('dpiLabel');
+  document.getElementById('lbl-btn-presets').textContent = t('btnPresets');
+  document.getElementById('btn-add-text').textContent = t('addText');
+  document.getElementById('btn-add-refline').textContent = t('addRefLine');
+
+  document.getElementById('th-name').textContent = t('thName');
+  document.getElementById('th-energy').textContent = t('thEnergy');
+  document.getElementById('th-color').textContent = t('thColor');
+  document.getElementById('btn-add-row').textContent = t('addState');
+  document.getElementById('btn-delete-rows').textContent = t('deleteSelected');
+  document.getElementById('btn-select-all').textContent = t('selectAll');
+  document.getElementById('btn-deselect-all').textContent = t('deselect');
+  document.getElementById('btn-batch-input').textContent = t('batchInput');
+  document.getElementById('paste-hint').textContent = t('pasteHint');
+
+  document.getElementById('batch-title').textContent = t('batchTitle');
+  document.getElementById('btn-batch-apply').textContent = t('apply');
+
+  if (document.getElementById('lbl-x-rotation')) document.getElementById('lbl-x-rotation').textContent = t('xLabelRotation');
+  if (document.getElementById('lbl-x-align')) document.getElementById('lbl-x-align').textContent = t('xLabelAlign');
+  if (document.getElementById('lbl-x-multiline')) document.getElementById('lbl-x-multiline').textContent = t('xLabelMultiline');
+  if (document.getElementById('lbl-x-offset-y')) document.getElementById('lbl-x-offset-y').textContent = t('xLabelOffsetY');
+
+  document.title = t('title').replace('⚛ ', '');
+}
+
+function toggleLang() {
+  currentLang = currentLang === 'zh' ? 'en' : 'zh';
+  app.lang = currentLang;
+  applyLang();
+  saveAndRender();
+}
+
+// ============================================================
+// 18. INITIALIZATION
+// ============================================================
+function init() {
+  loadState();
+  initUnits();
+  initCanvasConfig();
+  initChartOptions();
+  setupActions();
+  setupAnnotations();
+  setupExport();
+  setupPaste();
+  setupKB();
+  setupResize();
+  setupColorPopoverEvents();
+  document.getElementById('btn-lang').onclick = toggleLang;
+  applyLang();
+  renderGroups();
+  renderTable();
+  renderAnnotationUI();
+  renderChart();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+</script>
+</body>
+</html>
